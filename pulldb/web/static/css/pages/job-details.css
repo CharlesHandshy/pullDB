@@ -13,6 +13,24 @@
 .job-details-page {
     max-width: 900px;
     margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 120px); /* Account for header/footer */
+}
+
+#job-details-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+/* Ensure all cards above the logs-card maintain their natural height */
+#job-details-content > .card:not(.logs-card),
+#job-details-content > .phase-stepper,
+#job-details-content > .page-header-row,
+#job-details-content > .alert {
+    flex-shrink: 0;
 }
 
 .job-id-code {
@@ -353,6 +371,20 @@
     opacity: 0.7;
 }
 
+/* Event count badge in Execution Log header */
+.event-count-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-1) var(--space-2);
+    margin-left: var(--space-2);
+    font-size: 0.7rem;
+    font-weight: var(--font-medium);
+    color: var(--color-text-tertiary);
+    background: var(--color-surface-elevated);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-border);
+}
+
 /* ===========================================
    PERFORMANCE PROFILE
    =========================================== */
@@ -489,21 +521,20 @@
    =========================================== */
 
 .logs-container {
-    background: var(--gray-950);
-    color: var(--gray-100);
-    padding: var(--space-4);
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    line-height: 1.6;
-    flex: 1 1 auto;
-    min-height: 200px;
-    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg-secondary);
+    overflow: hidden;
     border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
-[data-theme="light"] .logs-container {
-    background: var(--gray-50);
-    color: var(--gray-900);
+#virtual-log-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Log Block - Contains header + details */
@@ -779,8 +810,14 @@
 .logs-card {
     display: flex;
     flex-direction: column;
-    max-height: 800px;
+    flex: 1 1 0;
+    min-height: 300px;
     overflow: hidden;
+}
+
+.logs-card > .logs-container {
+    flex: 1 1 0;
+    min-height: 0;
 }
 
 .logs-header-sticky {

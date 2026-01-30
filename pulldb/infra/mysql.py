@@ -2476,6 +2476,187 @@ class JobRepository:
             rows = cursor.fetchall()
             return [self._row_to_job_event(row) for row in rows]
 
+    def get_job_events_paginated(
+        self,
+        job_id: str,
+        limit: int = 50,
+        cursor: int | None = None,
+        direction: str = "older",
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Fetch paginated events for a job.
+
+        Supports cursor-based pagination for efficient scrolling through
+        large event histories. Events are returned in descending order
+        (newest first) for "older" direction, ascending for "newer".
+
+        Args:
+            job_id: Job UUID.
+            limit: Max events to return.
+            cursor: Event ID for pagination (None = latest events).
+            direction: "older" (id < cursor) or "newer" (id > cursor).
+
+        Returns:
+            Tuple of (events, total_count) where events is a list of dicts
+            with keys: id, event_type, logged_at, detail.
+        """
+        with self.pool.connection() as conn:
+            # Get total count
+            count_cursor = TypedTupleCursor(conn.cursor())
+            count_cursor.execute(
+                "SELECT COUNT(*) FROM job_events WHERE job_id = %s",
+                (job_id,),
+            )
+            count_row = count_cursor.fetchone()
+            total_count = count_row[0] if count_row else 0
+
+            # Build events query
+            dict_cursor = TypedDictCursor(conn.cursor(dictionary=True))
+
+            if cursor is None:
+                # No cursor: get newest events
+                dict_cursor.execute(
+                    """
+                    SELECT id, event_type, detail, logged_at
+                    FROM job_events
+                    WHERE job_id = %s
+                    ORDER BY id DESC
+                    LIMIT %s
+                    """,
+                    (job_id, limit),
+                )
+            elif direction == "newer":
+                # Get events newer than cursor (id > cursor)
+                dict_cursor.execute(
+                    """
+                    SELECT id, event_type, detail, logged_at
+                    FROM job_events
+                    WHERE job_id = %s AND id > %s
+                    ORDER BY id ASC
+                    LIMIT %s
+                    """,
+                    (job_id, cursor, limit),
+                )
+            else:
+                # Default: older direction (id < cursor)
+                dict_cursor.execute(
+                    """
+                    SELECT id, event_type, detail, logged_at
+                    FROM job_events
+                    WHERE job_id = %s AND id < %s
+                    ORDER BY id DESC
+                    LIMIT %s
+                    """,
+                    (job_id, cursor, limit),
+                )
+
+            rows = dict_cursor.fetchall()
+
+            # Convert to event dicts
+            # Format timestamp: use Z for UTC, handle timezone-aware datetimes
+            def _format_ts(dt: datetime) -> str:
+                iso = dt.isoformat()
+                return iso.replace("+00:00", "Z") if iso.endswith("+00:00") else iso + "Z"
+
+            def _parse_detail(detail: str | None) -> dict | None:
+                """Parse detail as JSON, falling back to message dict for plain text."""
+                if not detail:
+                    return None
+                # Try JSON first
+                if detail.startswith('{'):
+                    try:
+                        return json.loads(detail)
+                    except json.JSONDecodeError:
+                        pass
+                # Plain text - wrap in message dict for consistent structure
+                return {"message": detail}
+
+            events = [
+                {
+                    "id": row["id"],
+                    "event_type": row["event_type"],
+                    "logged_at": _format_ts(row["logged_at"]),
+                    "detail": _parse_detail(row["detail"]),
+                }
+                for row in rows
+            ]
+
+            return events, total_count
+
+    def get_job_events_by_offset(
+        self,
+        job_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Fetch events for a job by position offset.
+
+        Used for scrollbar jump navigation where cursor-based pagination
+        isn't possible. Events are returned newest-first (position 0 = newest).
+
+        Args:
+            job_id: Job UUID.
+            limit: Max events to return.
+            offset: Position offset (0 = start with newest event).
+
+        Returns:
+            Tuple of (events, total_count) where events is a list of dicts
+            with keys: id, event_type, logged_at, detail.
+        """
+        with self.pool.connection() as conn:
+            # Get total count
+            count_cursor = TypedTupleCursor(conn.cursor())
+            count_cursor.execute(
+                "SELECT COUNT(*) FROM job_events WHERE job_id = %s",
+                (job_id,),
+            )
+            count_row = count_cursor.fetchone()
+            total_count = count_row[0] if count_row else 0
+
+            # Get events at offset, newest first
+            dict_cursor = TypedDictCursor(conn.cursor(dictionary=True))
+            dict_cursor.execute(
+                """
+                SELECT id, event_type, detail, logged_at
+                FROM job_events
+                WHERE job_id = %s
+                ORDER BY id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (job_id, limit, offset),
+            )
+
+            rows = dict_cursor.fetchall()
+
+            # Format timestamp
+            def _format_ts(dt: datetime) -> str:
+                iso = dt.isoformat()
+                return iso.replace("+00:00", "Z") if iso.endswith("+00:00") else iso + "Z"
+
+            def _parse_detail(detail: str | None) -> dict | None:
+                """Parse detail as JSON, falling back to message dict for plain text."""
+                if not detail:
+                    return None
+                # Try JSON first
+                if detail.startswith('{'):
+                    try:
+                        return json.loads(detail)
+                    except json.JSONDecodeError:
+                        pass
+                # Plain text - wrap in message dict for consistent structure
+                return {"message": detail}
+
+            events = [
+                {
+                    "id": row["id"],
+                    "event_type": row["event_type"],
+                    "logged_at": _format_ts(row["logged_at"]),
+                    "detail": _parse_detail(row["detail"]),
+                }
+                for row in rows
+            ]
+
+            return events, total_count
+
     def prune_job_events(self, retention_days: int = 90) -> int:
         """Delete job events older than retention period.
 

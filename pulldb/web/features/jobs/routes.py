@@ -846,6 +846,8 @@ async def job_details(
 
     job = None
     logs = []
+    initial_events: list[dict[str, Any]] = []
+    total_event_count = 0
     profile = None
     job_can_cancel = False
     current_phase = "queued"
@@ -881,6 +883,43 @@ async def job_details(
 
             # Deduplicate logs for display (collapse repetitive processlist updates)
             logs = _deduplicate_logs(raw_logs)
+
+            # Prepare initial events for VirtualLog widget (serialized for JSON)
+            # Take latest 50 events for initial render (newest first, matching API order)
+            # Use raw_logs (not deduplicated) for consistency with paginated API
+            def _format_timestamp(dt: datetime | None) -> str | None:
+                """Format datetime to ISO 8601 with Z suffix for UTC."""
+                if dt is None:
+                    return None
+                # Use Z for UTC, remove +00:00 if present
+                iso = dt.isoformat()
+                return iso.replace("+00:00", "Z") if iso.endswith("+00:00") else iso + "Z"
+
+            def _parse_detail(detail: str | dict | None) -> dict | None:
+                """Parse detail JSON string to dict, or return dict as-is."""
+                if detail is None:
+                    return None
+                if isinstance(detail, dict):
+                    return detail
+                if isinstance(detail, str) and detail.startswith('{'):
+                    try:
+                        return json.loads(detail)
+                    except json.JSONDecodeError:
+                        return {"message": detail}
+                return {"message": detail} if detail else None
+
+            # Get newest 50 events in descending order (newest first)
+            newest_events = list(reversed(raw_logs[-50:]))
+            initial_events = [
+                {
+                    "id": getattr(e, "id", i),
+                    "event_type": e.event_type,
+                    "logged_at": _format_timestamp(e.logged_at),
+                    "detail": _parse_detail(e.detail),
+                }
+                for i, e in enumerate(newest_events)
+            ]
+            total_event_count = len(raw_logs)
 
             # Compute can_cancel for this user
             # Must have permission AND job must still be in cancelable state
@@ -931,6 +970,9 @@ async def job_details(
         flash_message = delete_success
         flash_type = "success"
 
+    # Determine if job is still active (controls HTMX polling for progress bars)
+    is_active = job.status in (JobStatus.QUEUED, JobStatus.RUNNING) if job else False
+
     return templates.TemplateResponse(
         "features/jobs/details.html",
         {
@@ -938,6 +980,8 @@ async def job_details(
             "breadcrumbs": get_breadcrumbs("job_detail", job=job_id[:8]),
             "job": job,
             "logs": logs,
+            "initial_events": initial_events if job else [],
+            "total_event_count": total_event_count if job else 0,
             "profile": profile,
             "user": user,
             "active_nav": "jobs",
@@ -952,6 +996,7 @@ async def job_details(
             "restore_stats": restore_stats,
             "atomic_rename_stats": atomic_rename_stats,
             "staging_warnings": staging_warnings,
+            "is_active": is_active,
             # Retention management
             "can_manage_retention": (
                 job.owner_user_id == user.user_id or user.is_admin
@@ -961,6 +1006,66 @@ async def job_details(
             # Zombie job detection - show force-complete button for admins
             "is_zombie_deleting": _is_zombie_deleting_job(job),
             "can_force_complete": user.is_admin and job.status in (JobStatus.DELETING, JobStatus.FAILED),
+        },
+    )
+
+
+@router.get("/{job_id}/progress", response_class=HTMLResponse)
+async def job_progress_bars(
+    request: Request,
+    job_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> HTMLResponse:
+    """Return just the progress bars partial for HTMX polling.
+    
+    This endpoint is called every 2s by HTMX to update the progress bars
+    while keeping the VirtualLog JavaScript handling log updates separately.
+    """
+    job = None
+    profile = None
+    download_stats: dict[str, Any] | None = None
+    extraction_stats: dict[str, Any] | None = None
+    restore_stats: dict[str, Any] | None = None
+    atomic_rename_stats: dict[str, Any] | None = None
+
+    if hasattr(state, "job_repo") and state.job_repo:
+        job = state.job_repo.get_job_by_id(job_id)
+        if job:
+            raw_logs = state.job_repo.get_job_events(job_id)
+
+            # Calculate all progress stats
+            download_stats = _calculate_download_stats(raw_logs)
+            extraction_stats = _calculate_extraction_stats(raw_logs)
+            restore_stats = _calculate_restore_stats(raw_logs)
+            atomic_rename_stats = _calculate_atomic_rename_stats(raw_logs)
+
+            # Get profile if job is complete
+            if job.status in (JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.DEPLOYED):
+                from pulldb.worker.profiling import parse_profile_from_event
+
+                for event in raw_logs:
+                    if event.event_type == "restore_profile" and event.detail:
+                        profile = parse_profile_from_event(event.detail)
+                        break
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Determine if job is still active (controls HTMX polling)
+    is_active = job.status in (JobStatus.QUEUED, JobStatus.RUNNING)
+
+    return templates.TemplateResponse(
+        "partials/job_progress_bars.html",
+        {
+            "request": request,
+            "job": job,
+            "profile": profile,
+            "download_stats": download_stats,
+            "extraction_stats": extraction_stats,
+            "restore_stats": restore_stats,
+            "atomic_rename_stats": atomic_rename_stats,
+            "is_active": is_active,
         },
     )
 
@@ -2346,6 +2451,173 @@ async def api_resubmit_job(
     except Exception as e:
         logger.exception("Resubmit failed for job %s", job_id)
         return JSONResponse(content={"detail": str(e)}, status_code=500)
+
+
+@router.get("/{job_id}/events")
+async def get_job_events_api(
+    request: Request,
+    job_id: str,
+    cursor: int | None = None,
+    offset: int | None = None,
+    direction: str = "older",
+    limit: int = 50,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> JSONResponse:
+    """Paginated events API for VirtualLog widget.
+
+    Query params:
+        cursor: Event ID for pagination (omit for latest)
+        offset: Position offset for jump scrolling (0 = newest)
+        direction: "older" (default) or "newer"
+        limit: Max events to return (default 50, max 100)
+
+    Note: If offset is provided, cursor is ignored. Offset-based loading
+    is used for scrollbar drag/jump navigation.
+
+    Returns JSON:
+        {
+            "events": [...],
+            "total_count": 1234,
+            "has_more": true,
+            "oldest_id": 5,
+            "newest_id": 55,
+        }
+    """
+    from fastapi.concurrency import run_in_threadpool
+
+    # Validate limit (clamp to 1-100)
+    limit = max(1, min(100, limit))
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return JSONResponse(
+            content={"detail": "Job repository unavailable"},
+            status_code=503,
+        )
+
+    # Get job to ensure it exists
+    job = await run_in_threadpool(state.job_repo.get_job_by_id, job_id)
+    if not job:
+        return JSONResponse(
+            content={"detail": "Job not found"},
+            status_code=404,
+        )
+
+    # Get paginated events - use offset if provided, otherwise cursor
+    if offset is not None:
+        events, total_count = await run_in_threadpool(
+            state.job_repo.get_job_events_by_offset,
+            job_id,
+            limit,
+            offset,
+        )
+    else:
+        events, total_count = await run_in_threadpool(
+            state.job_repo.get_job_events_paginated,
+            job_id,
+            limit,
+            cursor,
+            direction,
+        )
+
+    # Calculate has_more based on whether there are more events in the direction
+    has_more = False
+    if events:
+        if offset is not None:
+            # For offset-based, check if there are more after this batch
+            has_more = (offset + len(events)) < total_count
+        elif direction == "newer":
+            # Check if there are events with id > max returned id
+            newest_returned = max(e["id"] for e in events)
+            has_more = newest_returned < total_count  # Approximation
+        else:
+            # Check if there are events with id < min returned id
+            oldest_returned = min(e["id"] for e in events)
+            has_more = oldest_returned > 1
+
+    # Extract oldest_id and newest_id from returned events
+    oldest_id = min(e["id"] for e in events) if events else None
+    newest_id = max(e["id"] for e in events) if events else None
+
+    # Include job status so client can detect completion and stop polling
+    job_status = job.status.value if hasattr(job.status, 'value') else str(job.status)
+    is_active = job_status in ('queued', 'running', 'canceling')
+
+    return JSONResponse(
+        content={
+            "events": events,
+            "total_count": total_count,
+            "has_more": has_more,
+            "oldest_id": oldest_id,
+            "newest_id": newest_id,
+            "offset": offset,  # Echo back for client tracking
+            "job_status": job_status,
+            "is_active": is_active,  # False = job complete, stop polling
+        },
+        status_code=200,
+    )
+
+
+@router.get("/{job_id}/status")
+async def get_job_status_api(
+    request: Request,
+    job_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> JSONResponse:
+    """Lightweight status endpoint for polling running jobs.
+
+    Returns only what's needed for progress bar updates.
+
+    Returns JSON:
+        {
+            "status": "running",
+            "newest_event_id": 456,
+            "download_stats": {...} | null,
+            "extraction_stats": {...} | null,
+            "restore_stats": {...} | null,
+            "atomic_rename_stats": {...} | null,
+        }
+    """
+    from fastapi.concurrency import run_in_threadpool
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return JSONResponse(
+            content={"detail": "Job repository unavailable"},
+            status_code=503,
+        )
+
+    # Get job to ensure it exists
+    job = await run_in_threadpool(state.job_repo.get_job_by_id, job_id)
+    if not job:
+        return JSONResponse(
+            content={"detail": "Job not found"},
+            status_code=404,
+        )
+
+    # Get all events to calculate stats and newest_event_id
+    raw_logs = await run_in_threadpool(state.job_repo.get_job_events, job_id)
+
+    # Get newest event ID
+    newest_event_id = max(getattr(e, "id", 0) for e in raw_logs) if raw_logs else None
+
+    # Calculate progress stats using existing helper functions
+    download_stats = _calculate_download_stats(raw_logs)
+    extraction_stats = _calculate_extraction_stats(raw_logs)
+    restore_stats = _calculate_restore_stats(raw_logs)
+    atomic_rename_stats = _calculate_atomic_rename_stats(raw_logs)
+
+    return JSONResponse(
+        content={
+            "status": job.status.value,
+            "newest_event_id": newest_event_id,
+            "download_stats": download_stats,
+            "extraction_stats": extraction_stats,
+            "restore_stats": restore_stats,
+            "atomic_rename_stats": atomic_rename_stats,
+        },
+        status_code=200,
+    )
 
 
 def _validate_resubmit(

@@ -6,11 +6,12 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="/static/css/pages/job-details.css">
+<link rel="stylesheet" href="/static/widgets/virtual_log/virtual_log.css">
 {% endblock %}
 
 {% block content %}
 {% from "partials/icons/_index.html" import icon %}
-<div class="job-details-page" id="job-details-container" hx-get="{{ request.url.path }}" {% if job.status.value in ['running', 'queued'] %}hx-trigger="every 5s"{% endif %} hx-select="#job-details-content" hx-swap="innerHTML" hx-target="#job-details-content">
+<div class="job-details-page" id="job-details-container">
     <div id="job-details-content">
     
     {% if flash_message %}
@@ -280,7 +281,7 @@
     <!-- Logs -->
     <div class="card logs-card">
         <div class="card-header-row logs-header-sticky">
-            <h3 class="card-title">Execution Log</h3>
+            <h3 class="card-title">Execution Log <span class="event-count-badge" id="event-count-badge">{{ total_event_count | default(0) }} events</span></h3>
             {% if job.status.value in ['running', 'queued'] %}
             <button type="button" class="btn btn-ghost btn-sm" id="auto-refresh-toggle" onclick="toggleAutoRefresh()" title="Toggle auto-refresh" aria-label="Toggle auto-refresh">
                 <span id="refresh-icon">⏸</span>
@@ -289,455 +290,20 @@
             {% endif %}
         </div>
         
-        {# Progress bars in sticky area - above scrollable logs #}
-        {% if download_stats or extraction_stats or restore_stats or atomic_rename_stats %}
-        <div class="logs-progress-sticky">
-            {# Download progress bar #}
-            {% if download_stats %}
-            <div class="log-progress log-progress--download{% if download_stats.is_complete %} log-progress--complete{% endif %}" id="download-progress">
-                <div class="log-progress-bar-row">
-                    <span class="log-progress-label">{% if download_stats.is_complete %}✓{% endif %} Download</span>
-                    <div class="log-progress-bar-container">
-                        <div class="log-progress-bar" style="width: {{ download_stats.percent_complete }}%"></div>
-                    </div>
-                    <div class="log-progress-percent">{{ "%.1f" | format(download_stats.percent_complete) }}%</div>
-                </div>
-                {% if download_stats.is_complete %}
-                <div class="log-progress-stats-row">
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">size</span><span class="log-progress-stat-value">{{ download_stats.total_bytes | format_filesize }}</span></span>
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">time</span><span class="log-progress-stat-value">{{ download_stats.duration_seconds | format_duration if download_stats.duration_seconds else '—' }}</span></span>
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">speed</span><span class="log-progress-stat-value">{{ download_stats.speed_bps | format_speed }}</span></span>
-                </div>
-                {% elif download_stats.downloaded_bytes > 0 %}
-                <div class="log-progress-stats-row">
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">downloaded</span><span class="log-progress-stat-value">{{ download_stats.downloaded_bytes | format_filesize }} / {{ download_stats.total_bytes | format_filesize }}</span></span>
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">speed</span><span class="log-progress-stat-value">{{ download_stats.speed_bps | format_speed }}</span></span>
-                    {% if download_stats.eta_seconds > 0 %}
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">eta</span><span class="log-progress-stat-value">{{ download_stats.eta_seconds | format_eta }}</span></span>
-                    {% endif %}
-                </div>
-                {% endif %}
-            </div>
-            {% endif %}
-
-            {# Extraction progress bar #}
-            {% if extraction_stats %}
-            <div class="log-progress log-progress--extraction{% if extraction_stats.is_complete %} log-progress--complete{% endif %}{% if extraction_stats.has_failed %} log-progress--failed{% endif %}" id="extraction-progress">
-                <div class="log-progress-bar-row">
-                    <span class="log-progress-label">{% if extraction_stats.is_complete %}✓{% endif %} Extraction</span>
-                    <div class="log-progress-bar-container">
-                        <div class="log-progress-bar" style="width: {{ extraction_stats.percent_complete }}%"></div>
-                    </div>
-                    <div class="log-progress-percent">{{ "%.1f" | format(extraction_stats.percent_complete) }}%</div>
-                </div>
-                {% if extraction_stats.has_failed %}
-                <div class="log-progress-stats-row">
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">error</span><span class="log-progress-stat-value text-danger">{{ extraction_stats.error_message or 'Extraction failed' }}</span></span>
-                </div>
-                {% elif extraction_stats.is_complete %}
-                <div class="log-progress-stats-row">
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">extracted</span><span class="log-progress-stat-value">{{ extraction_stats.total_bytes | format_filesize }}</span></span>
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">files</span><span class="log-progress-stat-value">{{ "{:,}".format(extraction_stats.total_files) }}</span></span>
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">time</span><span class="log-progress-stat-value">{{ extraction_stats.duration_seconds | format_duration if extraction_stats.duration_seconds else '—' }}</span></span>
-                </div>
-                {% elif extraction_stats.extracted_bytes > 0 %}
-                <div class="log-progress-stats-row">
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">extracted</span><span class="log-progress-stat-value">{{ extraction_stats.extracted_bytes | format_filesize }} / {{ extraction_stats.total_bytes | format_filesize }}</span></span>
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">files</span><span class="log-progress-stat-value">{{ "{:,}".format(extraction_stats.files_extracted) }}/{{ "{:,}".format(extraction_stats.total_files) }}</span></span>
-                    {% if extraction_stats.eta_seconds > 0 %}
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">eta</span><span class="log-progress-stat-value">{{ extraction_stats.eta_seconds | format_eta }}</span></span>
-                    {% endif %}
-                </div>
-                {% endif %}
-            </div>
-            {% endif %}
-
-            {# Restore progress bar - overall progress + per-table #}
-            {% if restore_stats %}
-            {% set restore_percent_clamped = [restore_stats.percent_complete, 100.0] | min %}
-            <div class="log-progress log-progress--restore{% if restore_stats.is_complete %} log-progress--complete{% endif %}" id="restore-progress">
-                <div class="log-progress-bar-row">
-                    <span class="log-progress-label">{% if restore_stats.is_complete %}✓{% endif %} Restore</span>
-                    <div class="log-progress-bar-container">
-                        <div class="log-progress-bar" style="width: {{ restore_percent_clamped }}%"></div>
-                    </div>
-                    <div class="log-progress-percent">{{ "%.1f" | format(restore_percent_clamped) }}%</div>
-                </div>
-                {% if restore_stats.is_complete %}
-                <div class="log-progress-stats-row">
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">rows</span><span class="log-progress-stat-value">{{ "{:,}".format(restore_stats.total_rows) if restore_stats.total_rows else '—' }}</span></span>
-                    {% if restore_stats.tables_total %}
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">tables</span><span class="log-progress-stat-value">{{ restore_stats.tables_total }}</span></span>
-                    {% endif %}
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">time</span><span class="log-progress-stat-value">{{ restore_stats.duration_seconds | format_duration if restore_stats.duration_seconds else '—' }}</span></span>
-                    {% if restore_stats.rows_per_second and restore_stats.rows_per_second > 0 %}
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">rate</span><span class="log-progress-stat-value">{{ "{:,}".format(restore_stats.rows_per_second) }} rows/s</span></span>
-                    {% endif %}
-                </div>
-                {% elif restore_stats.rows_per_second or restore_stats.active_threads or restore_stats.tables_completed is defined %}
-                <div class="log-progress-stats-row">
-                    {% if restore_stats.rows_per_second and restore_stats.rows_per_second > 0 %}
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">rate</span><span class="log-progress-stat-value">{{ "{:,}".format(restore_stats.rows_per_second) }} rows/s</span></span>
-                    {% endif %}
-                    {% if restore_stats.active_threads and restore_stats.active_threads > 0 %}
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">threads</span><span class="log-progress-stat-value">{{ restore_stats.active_threads }}</span></span>
-                    {% endif %}
-                    {% if restore_stats.tables_completed is defined and restore_stats.tables_total is defined and restore_stats.tables_total > 0 %}
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">tables</span><span class="log-progress-stat-value">{{ restore_stats.tables_completed }}/{{ restore_stats.tables_total }}</span></span>
-                    {% endif %}
-                    {% if restore_stats.eta_seconds %}
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">eta</span><span class="log-progress-stat-value">{{ restore_stats.eta_seconds | format_eta }}</span></span>
-                    {% endif %}
-                </div>
-                {% endif %}
-                
-                {# Per-table progress bars from processlist - ONLY show active tables (not complete) #}
-                {# Tables disappear when their thread finishes - no lingering at 100% #}
-                {% if restore_stats.tables and not atomic_rename_stats %}
-                {% set active_tables = restore_stats.tables | dictsort | rejectattr('1.is_complete') | list %}
-                {% if active_tables %}
-                <div class="log-progress-tables">
-                    {% for table_name, table in active_tables %}
-                    {% set is_analyzing = table.phase == 'analyzing' %}
-                    {% set is_indexing = table.phase == 'indexing' %}
-                    {% set is_loading = not is_indexing and not is_analyzing %}
-                    {# Indexing/Analyzing shows 99% (indeterminate), loading shows actual percent #}
-                    {% set display_percent = 99 if (is_indexing or is_analyzing) else table.percent %}
-                    <div class="log-progress-table-row{% if is_indexing %} log-progress-table-row--indexing{% elif is_analyzing %} log-progress-table-row--analyzing{% endif %}">
-                        {# Phase icon: spinning loader for loading, spinning wrench for indexing, spinning magnifying glass for analyzing #}
-                        {% if is_analyzing %}
-                        <span class="icon-analyze-spin" title="Analyzing table statistics" role="img" aria-label="Analyzing table statistics"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></span>
-                        {% elif is_indexing %}
-                        <span class="icon-spin" title="Building indexes" role="img" aria-label="Building indexes"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
-                        {% else %}
-                        <span class="icon-loader-spin" title="Loading data" role="img" aria-label="Loading data"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></span>
-                        {% endif %}
-                        <span class="log-progress-table-name" title="{{ table_name }}">{{ table_name }}</span>
-                        <div class="log-progress-table-bar-container">
-                            <div class="log-progress-table-bar{% if is_loading %} log-progress-table-bar--loading{% elif is_indexing %} log-progress-table-bar--indexing{% elif is_analyzing %} log-progress-table-bar--analyzing{% endif %}" style="width: {{ display_percent }}%"></div>
-                        </div>
-                        {% if is_analyzing %}
-                        <span class="log-progress-table-phase">99%</span>
-                        {% elif is_indexing %}
-                        <span class="log-progress-table-phase">99%</span>
-                        {% else %}
-                        <span class="log-progress-table-percent">{{ "%.0f" | format(table.percent) }}%</span>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                </div>
-                {% endif %}
-                {% endif %}
-            </div>
-            {% endif %}
-
-            {# Rename progress bar (formerly Atomic Rename) #}
-            {% if atomic_rename_stats %}
-            <div class="log-progress log-progress--rename{% if atomic_rename_stats.is_complete %} log-progress--complete{% endif %}" id="atomic-rename-progress">
-                <div class="log-progress-bar-row">
-                    <span class="log-progress-label">{% if atomic_rename_stats.is_complete %}✓{% endif %} Rename</span>
-                    <div class="log-progress-bar-container">
-                        <div class="log-progress-bar" style="width: {{ atomic_rename_stats.percent_complete }}%"></div>
-                    </div>
-                    <div class="log-progress-percent">{{ "%.1f" | format(atomic_rename_stats.percent_complete) }}%</div>
-                </div>
-                {% if atomic_rename_stats.is_complete %}
-                <div class="log-progress-stats-row">
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">tables</span><span class="log-progress-stat-value">{{ atomic_rename_stats.total_tables }}</span></span>
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">time</span><span class="log-progress-stat-value">{{ atomic_rename_stats.duration_seconds | format_duration if atomic_rename_stats.duration_seconds else '—' }}</span></span>
-                </div>
-                {% elif atomic_rename_stats.total_tables > 0 %}
-                <div class="log-progress-stats-row">
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">tables</span><span class="log-progress-stat-value">{{ atomic_rename_stats.tables_renamed }} / {{ atomic_rename_stats.total_tables }}</span></span>
-                    {% if atomic_rename_stats.current_table %}
-                    <span class="log-progress-stat"><span class="log-progress-stat-label">current</span><span class="log-progress-stat-value">{{ atomic_rename_stats.current_table }}</span></span>
-                    {% endif %}
-                </div>
-                {% endif %}
-            </div>
-            {% endif %}
-
-            {# Performance summary row - shown after job completion #}
-            {% if profile and job.status.value in ['deployed', 'complete', 'superseded'] %}
-            <div class="log-progress-summary">
-                <span class="log-progress-summary-icon">✓</span>
-                <span class="log-progress-summary-text">
-                    Complete: {{ profile.total_duration_seconds | format_duration }} total
-                    <span class="log-progress-separator">•</span>
-                    {{ profile.total_bytes | format_filesize }}
-                    <span class="log-progress-separator">•</span>
-                    {% if profile.total_duration_seconds > 0 %}
-                    {{ "%.2f"|format((profile.total_bytes / 1024 / 1024) / profile.total_duration_seconds) }} MB/s avg
-                    {% else %}
-                    — MB/s avg
-                    {% endif %}
-                </span>
-            </div>
-            {% endif %}
-        </div>
-        {% endif %}
+        {# Progress bars - uses partial with HTMX auto-refresh for running jobs #}
+        {% set is_active = job.status.value in ['running', 'queued'] %}
+        {% include "partials/job_progress_bars.html" %}
         
         <div class="logs-container" id="logs-container">
-            {% if logs %}
-            {% set ns = namespace(current_type='') %}
-            {% for log in logs %}
-            {% set is_new_block = log.event_type != ns.current_type %}
-            {% if is_new_block %}{% set ns.current_type = log.event_type %}{% endif %}
-            {% set data = log.detail | parse_json %}
-            
-            {% if is_new_block %}
-            <div class="log-block {% if log.event_type in ['failed', 'error'] %}log-block--error{% elif log.event_type in ['complete', 'deployed', 'restore_complete', 'atomic_rename_complete', 'atomic_rename_validation_pass'] %}log-block--success{% endif %}">
-                <div class="log-header">
-                    <span class="log-timestamp" data-utc="{{ log.logged_at.isoformat() }}Z" data-format="time">{{ log.logged_at.strftime('%H:%M:%S') }}</span>
-                    <span class="log-task">{{ log.event_type | format_event_label }}</span>
-                    {# Special header info for certain event types #}
-                    {% if log.event_type == 'post_sql_script_complete' and data is mapping %}
-                    <span class="log-header-meta">{{ data.total_scripts }} scripts from {{ data.source | default('templates') }}</span>
-                    {% elif log.event_type == 'restore_progress' and data is mapping %}
-                    <span class="log-header-meta">myloader progress</span>
-                    {% elif log.event_type == 'atomic_rename_progress' and data is mapping %}
-                    <span class="log-header-meta">renaming tables ({{ data.percent | default(0) }}%)</span>
-                    {% elif log.event_type == 'backup_selected' and data is mapping %}
-                    <span class="log-header-meta">{{ data.location | default('') }} / {{ data.location_format | default('') }}</span>
-                    {% elif log.event_type == 'restore_profile' and data is mapping %}
-                    <span class="log-header-meta">{{ data.total_duration_seconds | format_duration }} total</span>
-                    {% endif %}
-                </div>
-                <div class="log-details">
-            {% endif %}
-            
-                    {# Format based on event type #}
-                    {% if log.event_type == 'post_sql_script_complete' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">script</span>{{ data.script_name | default('?') }}</span>
-                        <span class="log-field"><span class="log-field-label">#</span>{{ data.script_index | default('?') }}</span>
-                        <span class="log-field"><span class="log-field-label">time</span>{{ data.duration_seconds | format_duration }}</span>
-                        <span class="log-field"><span class="log-field-label">rows</span>{{ data.rows_affected | default(0) }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'restore_progress' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">progress</span>{{ data.percent | format_percent }}</span>
-                        {% if data.detail is mapping %}
-                        {% if data.detail.file %}
-                        <span class="log-field"><span class="log-field-label">file</span>{{ data.detail.file }}</span>
-                        {% endif %}
-                        {% if data.detail.status %}
-                        <span class="log-field"><span class="log-field-label">status</span>{{ data.detail.status }}</span>
-                        {% endif %}
-                        {% endif %}
-                    </div>
-                    
-                    {% elif log.event_type == 'backup_selected' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">bucket</span>{{ data.bucket | default('?') }}</span>
-                        <span class="log-field"><span class="log-field-label">size</span>{{ "%.1f"|format((data.size_bytes|default(0)|int) / 1024 / 1024) }} MB</span>
-                    </div>
-                    <div class="log-detail log-detail--path">
-                        <span class="log-field-label">key</span>{{ data.key | default('?') }}
-                    </div>
-                    
-                    {% elif log.event_type in ['download_started'] and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">bucket</span>{{ data.bucket | default('?') }}</span>
-                    </div>
-                    <div class="log-detail log-detail--path">
-                        <span class="log-field-label">key</span>{{ data.key | default('?') }}
-                    </div>
-                    
-                    {% elif log.event_type in ['download_complete', 'extraction_complete'] and data is mapping %}
-                    <div class="log-detail log-detail--path">
-                        <span class="log-field-label">path</span>{{ data.path | default('?') }}
-                    </div>
-                    
-                    {% elif log.event_type == 'format_detected' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">version</span>{{ data.detected_version | default('?') }}</span>
-                        <span class="log-field"><span class="log-field-label">format</span>{{ data.format_tag | default('?') }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'restore_started' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">staging</span>{{ data.staging_db | default('?') }}</span>
-                        <span class="log-field"><span class="log-field-label">backup</span>{{ data.backup_filename | default('?') }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'schema_creating' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">table</span>{{ data.table | default('?') }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'schema_created' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">table</span>{{ data.table | default('?') }}</span>
-                        <span class="log-field"><span class="log-field-label">progress</span>{{ data.tables_created | default(1) }}/{{ data.tables_total | default('?') }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'restore_file_loaded' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">table</span>{{ data.table | default('?') }}</span>
-                        <span class="log-field"><span class="log-field-label">file</span>{{ data.file_index | default(1) }} of {{ data.file_count | default(1) }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'restore_table_ready' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">table</span>{{ data.table | default('?') }}</span>
-                        {% if data.file_count and data.file_count > 1 %}
-                        <span class="log-field"><span class="log-field-label">files</span>{{ data.files_loaded | default(data.file_count) }} loaded</span>
-                        {% endif %}
-                    </div>
-                    
-                    {% elif log.event_type == 'table_restore_complete' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">table</span>{{ data.table | default('?') }}</span>
-                        {% if data.rows %}
-                        <span class="log-field"><span class="log-field-label">rows</span>{{ "{:,}".format(data.rows) }}</span>
-                        {% endif %}
-                        {% if data.duration_seconds %}
-                        <span class="log-field"><span class="log-field-label">time</span>{{ data.duration_seconds | format_duration }}</span>
-                        {% endif %}
-                        {% if data.rows_per_second %}
-                        <span class="log-field"><span class="log-field-label">rate</span>{{ "{:,}".format(data.rows_per_second) }} rows/s</span>
-                        {% endif %}
-                    </div>
-                    
-                    {% elif log.event_type in ['post_sql_started', 'metadata_started'] and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">staging</span>{{ data.staging_db | default('?') }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'post_sql_complete' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">scripts</span>{{ data.scripts_executed | default(0) }}</span>
-                        <span class="log-field"><span class="log-field-label">time</span>{{ data.duration_seconds | format_duration }}</span>
-                        <span class="log-field"><span class="log-field-label">source</span>{{ data.source | default('?') }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'metadata_complete' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">time</span>{{ data.duration_seconds | format_duration }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'atomic_rename_started' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">staging</span>{{ data.staging_db | default('?') }}</span>
-                        <span class="log-field"><span class="log-field-label">target</span>{{ data.target_db | default('?') }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'atomic_rename_validating' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">phase</span>{{ data.phase | replace('_', ' ') | title }}</span>
-                        {% if data.table_count %}
-                        <span class="log-field"><span class="log-field-label">tables</span>{{ data.table_count }}</span>
-                        {% elif data.expected_tables %}
-                        <span class="log-field"><span class="log-field-label">expected</span>{{ data.expected_tables }}</span>
-                        {% endif %}
-                    </div>
-                    
-                    {% elif log.event_type == 'atomic_rename_validation_pass' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">phase</span>{{ data.phase | replace('_', ' ') | title }}</span>
-                        {% if data.table_count %}
-                        <span class="log-field"><span class="log-field-label">tables</span>{{ data.table_count }}</span>
-                        {% endif %}
-                    </div>
-                    
-                    {% elif log.event_type == 'atomic_rename_checking_procedure' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">version</span>{{ data.expected_version }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'atomic_rename_procedure_ready' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">version</span>{{ data.version }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'atomic_rename_executing' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">staging</span>{{ data.staging_db | default('?') }}</span>
-                        <span class="log-field"><span class="log-field-label">target</span>{{ data.target_db | default('?') }}</span>
-                        <span class="log-field"><span class="log-field-label">tables</span>{{ data.expected_tables }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'atomic_rename_target_dropped' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">target</span>{{ data.target_db | default('?') }}</span>
-                        {% if data.message %}
-                        <span class="log-field">{{ data.message }}</span>
-                        {% endif %}
-                    </div>
-                    
-                    {% elif log.event_type == 'atomic_rename_progress' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">progress</span>{{ data.tables_renamed | default(0) }} / {{ data.total_tables | default(0) }} tables ({{ data.percent | default(0) }}%)</span>
-                        {% if data.message %}
-                        <span class="log-field"><span class="log-field-label">table</span>{{ data.message }}</span>
-                        {% endif %}
-                    </div>
-                    
-                    {% elif log.event_type == 'atomic_rename_complete' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">target</span>{{ data.target_db | default('?') }}</span>
-                        <span class="log-field"><span class="log-field-label">time</span>{{ data.duration_seconds | format_duration }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'restore_complete' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">target</span>{{ data.target | default('?') }}</span>
-                        <span class="log-field"><span class="log-field-label">backup</span>{{ data.backup_filename | default('?') }}</span>
-                    </div>
-                    
-                    {% elif log.event_type == 'restore_profile' and data is mapping %}
-                    <div class="log-detail log-detail--table">
-                        <span class="log-field"><span class="log-field-label">total</span>{{ data.total_duration_seconds | format_duration }}</span>
-                        <span class="log-field"><span class="log-field-label">size</span>{{ data.total_bytes | default(0) | format_filesize }}</span>
-                    </div>
-                    {% if data.phases is mapping %}
-                    {% for phase_name, phase in data.phases.items() %}
-                    <div class="log-detail log-detail--phase">
-                        <span class="log-phase-name">{{ phase_name }}</span>
-                        <span class="log-phase-duration">{{ phase.duration_seconds | format_duration if phase.duration_seconds else '—' }}</span>
-                        {% if phase.mbps %}
-                        <span class="log-phase-speed">{{ "%.1f"|format(phase.mbps) }} MB/s</span>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                    {% endif %}
-                    
-                    {% elif data is mapping %}
-                    {# Generic JSON formatting with special field handling #}
-                    <div class="log-detail log-detail--json">
-                        {% for key, val in data.items() %}
-                        <span class="log-json-field">
-                            <span class="log-json-key">{{ key }}</span>
-                            {% if key == 'percent' or key.endswith('_percent') %}
-                            <span class="log-json-value">{{ val | format_percent }}</span>
-                            {% elif key == 'duration_seconds' or key.endswith('_seconds') %}
-                            <span class="log-json-value">{{ val | format_duration }}</span>
-                            {% else %}
-                            <span class="log-json-value">{{ val }}</span>
-                            {% endif %}
-                        </span>
-                        {% endfor %}
-                    </div>
-                    {% else %}
-                    <div class="log-detail">{{ log.detail | default('—', true) }}</div>
-                    {% endif %}
-                    
-            {% if loop.last or logs[loop.index].event_type != ns.current_type %}
+            <div id="virtual-log-container"
+                 data-job-id="{{ job.id }}"
+                 data-total-events="{{ total_event_count | default(0) }}"
+                 data-is-running="{{ 'true' if job.status.value in ['running', 'queued'] else 'false' }}">
+                <!-- Loading state while JS initializes -->
+                <div class="virtual-log-loading" id="virtual-log-loading">
+                    <span>Loading events...</span>
                 </div>
             </div>
-            {% endif %}
-            {% endfor %}
-            {% else %}
-            <div class="logs-empty">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="logs-empty-icon">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                </svg>
-                <p>No log entries yet</p>
-            </div>
-            {% endif %}
         </div>
     </div>
     
@@ -793,124 +359,52 @@ function showCopySuccess(btn) {
 }
 </script>
 
-{% if job.status.value in ['running', 'queued'] %}
+
+<script src="/static/widgets/virtual_log/virtual_log.js"></script>
 <script>
-(function() {
-    const STORAGE_KEY = 'pulldb_job_autorefresh';
-    let container = null;
-    let logsWasAtBottom = true;
-    let savedScrollPositions = { page: 0, logs: 0 };
+document.addEventListener('DOMContentLoaded', function() {
+    const container = document.getElementById('virtual-log-container');
+    if (!container) return;
     
-    function isLogsAtBottom() {
-        const logsContainer = document.getElementById('logs-container');
-        if (!logsContainer) return true;
-        return logsContainer.scrollHeight - logsContainer.scrollTop - logsContainer.clientHeight < 50;
-    }
+    // Hide loading indicator
+    const loadingEl = document.getElementById('virtual-log-loading');
+    if (loadingEl) loadingEl.style.display = 'none';
     
-    function scrollLogsToBottom() {
-        const logsContainer = document.getElementById('logs-container');
-        if (logsContainer) {
-            logsContainer.scrollTop = logsContainer.scrollHeight;
-        }
-    }
-    
-    function saveScrollPositions() {
-        savedScrollPositions.page = window.scrollY || document.documentElement.scrollTop;
-        const logsContainer = document.getElementById('logs-container');
-        savedScrollPositions.logs = logsContainer ? logsContainer.scrollTop : 0;
-    }
-    
-    function restoreScrollPositions() {
-        // Restore page scroll position
-        window.scrollTo(0, savedScrollPositions.page);
-        // Restore logs scroll if user wasn't at bottom
-        const logsContainer = document.getElementById('logs-container');
-        if (logsContainer && !logsWasAtBottom) {
-            logsContainer.scrollTop = savedScrollPositions.logs;
-        }
-    }
-    
-    document.body.addEventListener('htmx:beforeSwap', function(evt) {
-        if (evt.detail.target && (evt.detail.target.id === 'job-details-container' || evt.detail.target.id === 'job-details-content')) {
-            logsWasAtBottom = isLogsAtBottom();
-            saveScrollPositions();
-        }
+    const virtualLog = new VirtualLog({
+        container: container,
+        jobId: container.dataset.jobId,
+        totalEvents: parseInt(container.dataset.totalEvents, 10) || 0,
+        isRunning: container.dataset.isRunning === 'true',
+        initialEvents: {{ initial_events | default([]) | tojson }},
     });
     
-    document.body.addEventListener('htmx:afterSwap', function(evt) {
-        if (evt.detail.target && (evt.detail.target.id === 'job-details-container' || evt.detail.target.id === 'job-details-content')) {
-            if (logsWasAtBottom) {
-                scrollLogsToBottom();
-            } else {
-                restoreScrollPositions();
-            }
-        }
-    });
+    // Store reference for cleanup and auto-refresh control
+    window._virtualLog = virtualLog;
+});
+
+// Toggle auto-refresh for running jobs (pause/resume VirtualLog polling)
+function toggleAutoRefresh() {
+    const virtualLog = window._virtualLog;
+    if (!virtualLog) return;
     
-    function initAutoRefresh() {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        const isPaused = saved === 'paused';
-        
-        if (isPaused) {
-            // Only call pauseRefresh if we need to stop polling
-            pauseRefresh();
-        } else {
-            // Don't re-process HTMX on init - it's already active from server render
-            // Just update the button state
-            updateButton(false);
-            localStorage.setItem(STORAGE_KEY, 'active');
-        }
+    const icon = document.getElementById('refresh-icon');
+    const label = document.getElementById('refresh-label');
+    
+    if (virtualLog.isRunning) {
+        // Currently polling - pause it
+        virtualLog._stopPolling();
+        virtualLog.isRunning = false;
+        if (icon) icon.textContent = '▶';
+        if (label) label.textContent = 'Resume';
+    } else {
+        // Currently paused - resume polling
+        virtualLog.isRunning = true;
+        virtualLog._startPolling();
+        if (icon) icon.textContent = '⏸';
+        if (label) label.textContent = 'Pause';
     }
-    
-    function pauseRefresh() {
-        if (container) {
-            container.removeAttribute('hx-trigger');
-            htmx.process(container);
-        }
-        updateButton(true);
-        localStorage.setItem(STORAGE_KEY, 'paused');
-    }
-    
-    function resumeRefresh() {
-        if (container) {
-            container.setAttribute('hx-trigger', 'every 5s');
-            htmx.process(container);
-        }
-        updateButton(false);
-        localStorage.setItem(STORAGE_KEY, 'active');
-    }
-    
-    function updateButton(isPaused) {
-        const icon = document.getElementById('refresh-icon');
-        const label = document.getElementById('refresh-label');
-        if (icon && label) {
-            icon.textContent = isPaused ? '▶' : '⏸';
-            label.textContent = isPaused ? 'Resume' : 'Pause';
-        }
-    }
-    
-    window.toggleAutoRefresh = function() {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved === 'paused') {
-            resumeRefresh();
-        } else {
-            pauseRefresh();
-        }
-    };
-    
-    // Wait for HTMX to be ready and process the DOM before we initialize
-    document.addEventListener('DOMContentLoaded', function() {
-        container = document.getElementById('job-details-container');
-        
-        // Give HTMX a moment to scan and initialize polling
-        setTimeout(function() {
-            initAutoRefresh();
-            scrollLogsToBottom();
-        }, 100);
-    });
-})();
+}
 </script>
-{% endif %}
 {% endblock %}
 
 {% block modals %}

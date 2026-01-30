@@ -1,0 +1,178 @@
+/**
+ * VirtualLog Widget Styles
+ * ========================
+ * HCA Layer: widgets (Layer 3)
+ * 
+ * Simple scrollable log viewer for job execution events.
+ * Uses ONLY tokens defined in manifest-dark.css / manifest-light.css.
+ */
+
+/* ==========================================================================
+   Container Structure
+   ========================================================================== */
+
+.virtual-log-widget {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.virtual-log-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+    
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-scrollbar-thumb) var(--color-scrollbar-track);
+}
+
+.virtual-log-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.virtual-log-scroll::-webkit-scrollbar-track {
+    background: var(--color-scrollbar-track);
+}
+
+.virtual-log-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--color-scrollbar-thumb);
+    border-radius: 4px;
+}
+
+.virtual-log-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-scrollbar-thumb-hover);
+}
+
+/* Spacer sets total scrollable height for virtual scroll */
+.virtual-log-spacer {
+    width: 100%;
+    pointer-events: none;
+}
+
+/* Content is positioned absolutely within scroll area */
+.virtual-log-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    will-change: transform;
+}
+
+/* ==========================================================================
+   Log Entry
+   ========================================================================== */
+
+.virtual-log-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: var(--leading-relaxed);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.virtual-log-entry:last-child {
+    border-bottom: none;
+}
+
+.virtual-log-entry:hover {
+    background-color: var(--color-surface-hover);
+}
+
+.virtual-log-entry__time {
+    flex-shrink: 0;
+    width: 65px;
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.virtual-log-entry__type {
+    flex-shrink: 0;
+    min-width: 100px;
+    max-width: 150px;
+    color: var(--color-primary);
+    font-weight: var(--font-medium);
+}
+
+.virtual-log-entry__msg {
+    flex: 1;
+    color: var(--color-text-secondary);
+    word-break: break-word;
+}
+
+/* ==========================================================================
+   Event Type Variants
+   ========================================================================== */
+
+.virtual-log-entry--success .virtual-log-entry__type {
+    color: var(--color-success);
+}
+
+.virtual-log-entry--error .virtual-log-entry__type {
+    color: var(--color-error);
+}
+
+.virtual-log-entry--warning .virtual-log-entry__type {
+    color: var(--color-warning);
+}
+
+.virtual-log-entry--info .virtual-log-entry__type {
+    color: var(--color-info);
+}
+
+.virtual-log-entry--loading {
+    opacity: 0.5;
+}
+
+.virtual-log-entry--loading .virtual-log-entry__msg {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+/* ==========================================================================
+   States
+   ========================================================================== */
+
+.virtual-log-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-8);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+}
+
+.virtual-log-loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+}
+
+.virtual-log-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-8);
+    color: var(--color-text-muted);
+    text-align: center;
+}
+
+.virtual-log-empty__icon {
+    font-size: 2rem;
+    margin-bottom: var(--space-2);
+    opacity: 0.5;
+}
+
+.virtual-log-empty__msg {
+    font-size: var(--text-sm);
+}

@@ -630,9 +630,10 @@ def orchestrate_restore_workflow(
             """Event callback that also queues completed tables for analysis."""
             _emit_event(event_type, data)
             # Queue table for analysis when index building completes
-            # In early_analyze mode: table_index_complete fires when indexes done
-            # In traditional mode: table_restore_complete fires (indexes done = table done)
-            if event_type in ("table_index_complete", "table_restore_complete") and early_analyze_worker:
+            # CRITICAL: Only queue on table_index_complete, NOT table_restore_complete!
+            # table_restore_complete is emitted AGAIN after analyze completes, which would
+            # cause an infinite loop: analyze -> emit -> queue -> analyze -> ...
+            if event_type == "table_index_complete" and early_analyze_worker:
                 table_name = data.get("table")
                 if table_name:
                     early_analyze_worker.queue_table(table_name)

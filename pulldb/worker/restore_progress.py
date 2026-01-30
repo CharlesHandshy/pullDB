@@ -1043,22 +1043,32 @@ class RestoreProgressTracker:
         Lifecycle: loading → indexing → analyzing → complete
                                             ↑ YOU ARE HERE
 
+        NOTE: This method does NOT call _mark_table_complete() because that would
+        emit table_restore_complete, which could trigger re-queueing. The worker
+        already emits table_analyze_complete which is the correct completion event.
+
         Args:
             table_name: Table name to mark as analyze complete.
         """
         bare_name = self._normalize_table_name(table_name)
-        now = time.monotonic()
 
         with self._lock:
             state = self._tables.get(bare_name)
             if state is None:
                 return
 
-            # Set analyze_complete flag
+            # Set analyze_complete flag and mark complete WITHOUT emitting
+            # table_restore_complete (which would cause re-queueing loop)
             state.analyze_complete = True
 
             if not state.is_complete:
-                self._mark_table_complete(state, now)
+                # Mark complete directly without _mark_table_complete to avoid
+                # emitting table_restore_complete event
+                state.is_complete = True
+                state.percent_complete = 100.0
+                state.phase = "complete"
+                self._tables_completed.add(bare_name)
+
                 logger.info(
                     f"Table {bare_name} fully complete: "
                     f"data={state.data_complete}, index={state.index_complete}, "

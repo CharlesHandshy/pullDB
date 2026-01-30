@@ -133,6 +133,11 @@ class EarlyAnalyzeWorker:
         self._stats = EarlyAnalyzeStats()
         self._stats_lock = threading.Lock()
 
+        # Deduplication: track tables already queued to prevent re-analysis
+        # This is a safety net in case events fire multiple times
+        self._queued_tables: set[str] = set()
+        self._queued_tables_lock = threading.Lock()
+
         # Progress tracker (set by run_myloader to update UI)
         self._progress_tracker: Any = None
 
@@ -182,14 +187,24 @@ class EarlyAnalyzeWorker:
     def queue_table(self, table_name: str) -> None:
         """Add a table to the analyze queue.
 
-        Called when a table finishes loading+indexing (table_restore_complete).
+        Called when a table finishes loading+indexing (table_index_complete).
         Uses non-blocking put to avoid deadlocking myloader if queue is full.
+
+        Deduplication: Each table is only queued once, even if the event fires
+        multiple times. This prevents re-analyzing the same table.
 
         Args:
             table_name: Table name (without database prefix).
         """
         if self._stopping:
             return
+
+        # Deduplication check - only queue each table once
+        with self._queued_tables_lock:
+            if table_name in self._queued_tables:
+                logger.debug("early_analyze_already_queued", extra={"table": table_name})
+                return
+            self._queued_tables.add(table_name)
 
         try:
             # Use put_nowait to avoid blocking myloader's callback thread

@@ -1,0 +1,214 @@
+{#
+   Job Progress Bars Partial
+   =========================
+   HCA Layer: pages (partials)
+   
+   Displays download, extraction, restore, and atomic rename progress bars.
+   Used by job details page with HTMX polling for live updates.
+   
+   Required context:
+   - download_stats: DownloadStats | None
+   - extraction_stats: ExtractionStats | None  
+   - restore_stats: RestoreStats | None
+   - atomic_rename_stats: AtomicRenameStats | None
+   - profile: RestoreProfile | None (for completion summary)
+   - job: Job (for status check)
+   - is_active: bool (whether job is still running - controls HTMX polling)
+#}
+
+{# Wrapper div with HTMX for auto-refresh when job is active #}
+<div id="progress-bars-container"
+     {% if is_active %}
+     hx-get="/web/jobs/{{ job.id }}/progress"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+{% if download_stats or extraction_stats or restore_stats or atomic_rename_stats %}
+<div class="logs-progress-sticky">
+    {# Download progress bar #}
+    {% if download_stats %}
+    <div class="log-progress log-progress--download{% if download_stats.is_complete %} log-progress--complete{% endif %}" id="download-progress">
+        <div class="log-progress-bar-row">
+            <span class="log-progress-label">{% if download_stats.is_complete %}✓{% endif %} Download</span>
+            <div class="log-progress-bar-container">
+                <div class="log-progress-bar" style="width: {{ download_stats.percent_complete }}%"></div>
+            </div>
+            <div class="log-progress-percent">{{ "%.1f" | format(download_stats.percent_complete) }}%</div>
+        </div>
+        {% if download_stats.is_complete %}
+        <div class="log-progress-stats-row">
+            <span class="log-progress-stat"><span class="log-progress-stat-label">size</span><span class="log-progress-stat-value">{{ download_stats.total_bytes | format_filesize }}</span></span>
+            <span class="log-progress-stat"><span class="log-progress-stat-label">time</span><span class="log-progress-stat-value">{{ download_stats.duration_seconds | format_duration if download_stats.duration_seconds else '—' }}</span></span>
+            <span class="log-progress-stat"><span class="log-progress-stat-label">speed</span><span class="log-progress-stat-value">{{ download_stats.speed_bps | format_speed }}</span></span>
+        </div>
+        {% elif download_stats.downloaded_bytes > 0 %}
+        <div class="log-progress-stats-row">
+            <span class="log-progress-stat"><span class="log-progress-stat-label">downloaded</span><span class="log-progress-stat-value">{{ download_stats.downloaded_bytes | format_filesize }} / {{ download_stats.total_bytes | format_filesize }}</span></span>
+            <span class="log-progress-stat"><span class="log-progress-stat-label">speed</span><span class="log-progress-stat-value">{{ download_stats.speed_bps | format_speed }}</span></span>
+            {% if download_stats.eta_seconds > 0 %}
+            <span class="log-progress-stat"><span class="log-progress-stat-label">eta</span><span class="log-progress-stat-value">{{ download_stats.eta_seconds | format_eta }}</span></span>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# Extraction progress bar #}
+    {% if extraction_stats %}
+    <div class="log-progress log-progress--extraction{% if extraction_stats.is_complete %} log-progress--complete{% endif %}{% if extraction_stats.has_failed %} log-progress--failed{% endif %}" id="extraction-progress">
+        <div class="log-progress-bar-row">
+            <span class="log-progress-label">{% if extraction_stats.is_complete %}✓{% endif %} Extraction</span>
+            <div class="log-progress-bar-container">
+                <div class="log-progress-bar" style="width: {{ extraction_stats.percent_complete }}%"></div>
+            </div>
+            <div class="log-progress-percent">{{ "%.1f" | format(extraction_stats.percent_complete) }}%</div>
+        </div>
+        {% if extraction_stats.has_failed %}
+        <div class="log-progress-stats-row">
+            <span class="log-progress-stat"><span class="log-progress-stat-label">error</span><span class="log-progress-stat-value text-danger">{{ extraction_stats.error_message or 'Extraction failed' }}</span></span>
+        </div>
+        {% elif extraction_stats.is_complete %}
+        <div class="log-progress-stats-row">
+            <span class="log-progress-stat"><span class="log-progress-stat-label">extracted</span><span class="log-progress-stat-value">{{ extraction_stats.total_bytes | format_filesize }}</span></span>
+            <span class="log-progress-stat"><span class="log-progress-stat-label">files</span><span class="log-progress-stat-value">{{ "{:,}".format(extraction_stats.total_files) }}</span></span>
+            <span class="log-progress-stat"><span class="log-progress-stat-label">time</span><span class="log-progress-stat-value">{{ extraction_stats.duration_seconds | format_duration if extraction_stats.duration_seconds else '—' }}</span></span>
+        </div>
+        {% elif extraction_stats.extracted_bytes > 0 %}
+        <div class="log-progress-stats-row">
+            <span class="log-progress-stat"><span class="log-progress-stat-label">extracted</span><span class="log-progress-stat-value">{{ extraction_stats.extracted_bytes | format_filesize }} / {{ extraction_stats.total_bytes | format_filesize }}</span></span>
+            <span class="log-progress-stat"><span class="log-progress-stat-label">files</span><span class="log-progress-stat-value">{{ "{:,}".format(extraction_stats.files_extracted) }}/{{ "{:,}".format(extraction_stats.total_files) }}</span></span>
+            {% if extraction_stats.eta_seconds > 0 %}
+            <span class="log-progress-stat"><span class="log-progress-stat-label">eta</span><span class="log-progress-stat-value">{{ extraction_stats.eta_seconds | format_eta }}</span></span>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# Restore progress bar - overall progress + per-table #}
+    {% if restore_stats %}
+    {% set restore_percent_clamped = [restore_stats.percent_complete, 100.0] | min %}
+    <div class="log-progress log-progress--restore{% if restore_stats.is_complete %} log-progress--complete{% endif %}" id="restore-progress">
+        <div class="log-progress-bar-row">
+            <span class="log-progress-label">{% if restore_stats.is_complete %}✓{% endif %} Restore</span>
+            <div class="log-progress-bar-container">
+                <div class="log-progress-bar" style="width: {{ restore_percent_clamped }}%"></div>
+            </div>
+            <div class="log-progress-percent">{{ "%.1f" | format(restore_percent_clamped) }}%</div>
+        </div>
+        {% if restore_stats.is_complete %}
+        <div class="log-progress-stats-row">
+            <span class="log-progress-stat"><span class="log-progress-stat-label">rows</span><span class="log-progress-stat-value">{{ "{:,}".format(restore_stats.total_rows) if restore_stats.total_rows else '—' }}</span></span>
+            {% if restore_stats.tables_total %}
+            <span class="log-progress-stat"><span class="log-progress-stat-label">tables</span><span class="log-progress-stat-value">{{ restore_stats.tables_total }}</span></span>
+            {% endif %}
+            <span class="log-progress-stat"><span class="log-progress-stat-label">time</span><span class="log-progress-stat-value">{{ restore_stats.duration_seconds | format_duration if restore_stats.duration_seconds else '—' }}</span></span>
+            {% if restore_stats.rows_per_second and restore_stats.rows_per_second > 0 %}
+            <span class="log-progress-stat"><span class="log-progress-stat-label">rate</span><span class="log-progress-stat-value">{{ "{:,}".format(restore_stats.rows_per_second) }} rows/s</span></span>
+            {% endif %}
+        </div>
+        {% elif restore_stats.rows_per_second or restore_stats.active_threads or restore_stats.tables_completed is defined %}
+        <div class="log-progress-stats-row">
+            {% if restore_stats.rows_per_second and restore_stats.rows_per_second > 0 %}
+            <span class="log-progress-stat"><span class="log-progress-stat-label">rate</span><span class="log-progress-stat-value">{{ "{:,}".format(restore_stats.rows_per_second) }} rows/s</span></span>
+            {% endif %}
+            {% if restore_stats.active_threads and restore_stats.active_threads > 0 %}
+            <span class="log-progress-stat"><span class="log-progress-stat-label">threads</span><span class="log-progress-stat-value">{{ restore_stats.active_threads }}</span></span>
+            {% endif %}
+            {% if restore_stats.tables_completed is defined and restore_stats.tables_total is defined and restore_stats.tables_total > 0 %}
+            <span class="log-progress-stat"><span class="log-progress-stat-label">tables</span><span class="log-progress-stat-value">{{ restore_stats.tables_completed }}/{{ restore_stats.tables_total }}</span></span>
+            {% endif %}
+            {% if restore_stats.eta_seconds %}
+            <span class="log-progress-stat"><span class="log-progress-stat-label">eta</span><span class="log-progress-stat-value">{{ restore_stats.eta_seconds | format_eta }}</span></span>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        {# Per-table progress bars from processlist - ONLY show active tables (not complete) #}
+        {# Tables disappear when their thread finishes - no lingering at 100% #}
+        {% if restore_stats.tables and not atomic_rename_stats %}
+        {% set active_tables = restore_stats.tables | dictsort | rejectattr('1.is_complete') | list %}
+        {% if active_tables %}
+        <div class="log-progress-tables">
+            {% for table_name, table in active_tables %}
+            {% set is_analyzing = table.phase == 'analyzing' %}
+            {% set is_indexing = table.phase == 'indexing' %}
+            {% set is_loading = not is_indexing and not is_analyzing %}
+            {# Indexing/Analyzing shows 99% (indeterminate), loading shows actual percent #}
+            {% set display_percent = 99 if (is_indexing or is_analyzing) else table.percent %}
+            <div class="log-progress-table-row{% if is_indexing %} log-progress-table-row--indexing{% elif is_analyzing %} log-progress-table-row--analyzing{% endif %}">
+                {# Phase icon: spinning loader for loading, spinning wrench for indexing, spinning magnifying glass for analyzing #}
+                {% if is_analyzing %}
+                <span class="icon-analyze-spin" title="Analyzing table statistics" role="img" aria-label="Analyzing table statistics"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></span>
+                {% elif is_indexing %}
+                <span class="icon-spin" title="Building indexes" role="img" aria-label="Building indexes"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
+                {% else %}
+                <span class="icon-loader-spin" title="Loading data" role="img" aria-label="Loading data"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></span>
+                {% endif %}
+                <span class="log-progress-table-name" title="{{ table_name }}">{{ table_name }}</span>
+                <div class="log-progress-table-bar-container">
+                    <div class="log-progress-table-bar{% if is_loading %} log-progress-table-bar--loading{% elif is_indexing %} log-progress-table-bar--indexing{% elif is_analyzing %} log-progress-table-bar--analyzing{% endif %}" style="width: {{ display_percent }}%"></div>
+                </div>
+                {% if is_analyzing %}
+                <span class="log-progress-table-phase">99%</span>
+                {% elif is_indexing %}
+                <span class="log-progress-table-phase">99%</span>
+                {% else %}
+                <span class="log-progress-table-percent">{{ "%.0f" | format(table.percent) }}%</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# Rename progress bar (formerly Atomic Rename) #}
+    {% if atomic_rename_stats %}
+    <div class="log-progress log-progress--rename{% if atomic_rename_stats.is_complete %} log-progress--complete{% endif %}" id="atomic-rename-progress">
+        <div class="log-progress-bar-row">
+            <span class="log-progress-label">{% if atomic_rename_stats.is_complete %}✓{% endif %} Rename</span>
+            <div class="log-progress-bar-container">
+                <div class="log-progress-bar" style="width: {{ atomic_rename_stats.percent_complete }}%"></div>
+            </div>
+            <div class="log-progress-percent">{{ "%.1f" | format(atomic_rename_stats.percent_complete) }}%</div>
+        </div>
+        {% if atomic_rename_stats.is_complete %}
+        <div class="log-progress-stats-row">
+            <span class="log-progress-stat"><span class="log-progress-stat-label">tables</span><span class="log-progress-stat-value">{{ atomic_rename_stats.total_tables }}</span></span>
+            <span class="log-progress-stat"><span class="log-progress-stat-label">time</span><span class="log-progress-stat-value">{{ atomic_rename_stats.duration_seconds | format_duration if atomic_rename_stats.duration_seconds else '—' }}</span></span>
+        </div>
+        {% elif atomic_rename_stats.total_tables > 0 %}
+        <div class="log-progress-stats-row">
+            <span class="log-progress-stat"><span class="log-progress-stat-label">tables</span><span class="log-progress-stat-value">{{ atomic_rename_stats.tables_renamed }} / {{ atomic_rename_stats.total_tables }}</span></span>
+            {% if atomic_rename_stats.current_table %}
+            <span class="log-progress-stat"><span class="log-progress-stat-label">current</span><span class="log-progress-stat-value">{{ atomic_rename_stats.current_table }}</span></span>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# Performance summary row - shown after job completion #}
+    {% if profile and job.status.value in ['deployed', 'complete', 'superseded'] %}
+    <div class="log-progress-summary">
+        <span class="log-progress-summary-icon">✓</span>
+        <span class="log-progress-summary-text">
+            Complete: {{ profile.total_duration_seconds | format_duration }} total
+            <span class="log-progress-separator">•</span>
+            {{ profile.total_bytes | format_filesize }}
+            <span class="log-progress-separator">•</span>
+            {% if profile.total_duration_seconds > 0 %}
+            {{ "%.2f"|format((profile.total_bytes / 1024 / 1024) / profile.total_duration_seconds) }} MB/s avg
+            {% else %}
+            — MB/s avg
+            {% endif %}
+        </span>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+</div>
