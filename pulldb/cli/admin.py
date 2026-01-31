@@ -74,7 +74,6 @@ from pulldb.cli.admin_commands import (
     run_retention_cleanup_cmd,
     users_group,
 )
-from pulldb.cli.admin_feature_requests import feature_requests_group
 from pulldb.cli.backup_commands import backups_group
 from pulldb.cli.secrets_commands import secrets_group
 from pulldb.cli.settings import settings_group
@@ -188,7 +187,6 @@ cli.add_command(hosts_group)
 cli.add_command(users_group)
 cli.add_command(keys_group)
 cli.add_command(disallow_group)
-cli.add_command(feature_requests_group)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
