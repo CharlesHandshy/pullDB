@@ -544,3 +544,200 @@ class TestSimulatedUserRepositoryDelete(unittest.TestCase):
         self.assertIsNone(updated_sub.manager_id)
 
 
+class TestOrphanDetectionSimulation(unittest.TestCase):
+    """Tests for orphan detection simulation bug fix.
+    
+    CRITICAL: This tests the fix for the bug where running jobs
+    were incorrectly classified as orphans in simulation mode.
+    
+    The fix ensures _detect_orphaned_databases_simulation() checks
+    if a matching job exists before classifying a database as orphan,
+    matching production behavior.
+    """
+
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.state = get_simulation_state()
+        self.state.clear()
+        
+        self.job_repo = SimulatedJobRepository()
+        self.user_repo = SimulatedUserRepository()
+        
+        # Create a test user
+        self.user = self.user_repo.create_user("testuser", "test01")
+        
+        # Set simulation mode
+        import os
+        os.environ["PULLDB_SIMULATION"] = "1"
+
+    def tearDown(self) -> None:
+        """Clean up after tests."""
+        import os
+        os.environ.pop("PULLDB_SIMULATION", None)
+        self.state.clear()
+
+    def test_staging_database_with_active_job_not_orphan(self) -> None:
+        """A staging database WITH an active job should NOT be classified as orphan.
+        
+        This was the bug: simulation didn't check for matching jobs.
+        """
+        from pulldb.worker.cleanup import _detect_orphaned_databases_simulation
+        
+        dbhost = "mysql-staging-01.example.com"
+        target = "devusrtestdb"
+        job_id = "abc123def456-7890-abcd-ef12-345678901234"
+        job_prefix = job_id[:12]  # "abc123def456"
+        staging_name = f"{target}_{job_prefix}"
+        
+        # Add staging database to simulation state
+        self.state.staging_databases[dbhost] = {staging_name}
+        
+        # Create a RUNNING job for this staging database
+        job = Job(
+            id=job_id,
+            owner_user_id=self.user.user_id,
+            owner_username=self.user.username,
+            owner_user_code=self.user.user_code,
+            target=target,
+            staging_name=staging_name,
+            dbhost=dbhost,
+            status=JobStatus.RUNNING,
+            submitted_at=datetime.now(UTC),
+        )
+        self.state.jobs[job_id] = job
+        
+        # Detect orphans - this database should NOT be an orphan
+        report = _detect_orphaned_databases_simulation(dbhost)
+        
+        assert not isinstance(report, str), f"Expected OrphanReport, got error: {report}"
+        self.assertEqual(len(report.orphans), 0, 
+            "Database with active job should not be classified as orphan")
+
+    def test_staging_database_without_job_is_orphan(self) -> None:
+        """A staging database WITHOUT any job should be classified as orphan."""
+        from pulldb.worker.cleanup import _detect_orphaned_databases_simulation
+        
+        dbhost = "mysql-staging-01.example.com"
+        target = "devusrorphandb"
+        job_prefix = "999888777666"
+        staging_name = f"{target}_{job_prefix}"
+        
+        # Add staging database to simulation state (but NO matching job)
+        self.state.staging_databases[dbhost] = {staging_name}
+        
+        # Detect orphans - this database SHOULD be an orphan
+        report = _detect_orphaned_databases_simulation(dbhost)
+        
+        assert not isinstance(report, str), f"Expected OrphanReport, got error: {report}"
+        self.assertEqual(len(report.orphans), 1,
+            "Database without job should be classified as orphan")
+        self.assertEqual(report.orphans[0].database_name, staging_name)
+        self.assertEqual(report.orphans[0].target_name, target)
+
+    def test_mixed_staging_databases(self) -> None:
+        """Mixed scenario: some databases have jobs, some don't."""
+        from pulldb.worker.cleanup import _detect_orphaned_databases_simulation
+        
+        dbhost = "mysql-staging-01.example.com"
+        
+        # Database 1: Has active job - NOT orphan
+        target1 = "devusractivejob"
+        job_id1 = "aaa111bbb222-7890-abcd-ef12-345678901234"
+        staging1 = f"{target1}_{job_id1[:12]}"
+        
+        # Database 2: No job - IS orphan
+        target2 = "devusrnojoborg"
+        staging2 = f"{target2}_ccc333ddd444"
+        
+        # Database 3: Has COMPLETE job - NOT orphan (job still exists)
+        target3 = "devusrcompletejob"
+        job_id3 = "eee555fff666-7890-abcd-ef12-345678901234"
+        staging3 = f"{target3}_{job_id3[:12]}"
+        
+        # Add all staging databases
+        self.state.staging_databases[dbhost] = {staging1, staging2, staging3}
+        
+        # Create jobs for database 1 and 3
+        job1 = Job(
+            id=job_id1,
+            owner_user_id=self.user.user_id,
+            owner_username=self.user.username,
+            owner_user_code=self.user.user_code,
+            target=target1,
+            staging_name=staging1,
+            dbhost=dbhost,
+            status=JobStatus.RUNNING,
+            submitted_at=datetime.now(UTC),
+        )
+        self.state.jobs[job_id1] = job1
+        
+        job3 = Job(
+            id=job_id3,
+            owner_user_id=self.user.user_id,
+            owner_username=self.user.username,
+            owner_user_code=self.user.user_code,
+            target=target3,
+            staging_name=staging3,
+            dbhost=dbhost,
+            status=JobStatus.COMPLETE,
+            submitted_at=datetime.now(UTC) - timedelta(hours=5),
+            completed_at=datetime.now(UTC) - timedelta(hours=4),
+        )
+        self.state.jobs[job_id3] = job3
+        
+        # Detect orphans
+        report = _detect_orphaned_databases_simulation(dbhost)
+        
+        assert not isinstance(report, str), f"Expected OrphanReport, got error: {report}"
+        # Only database 2 (no job) should be orphan
+        self.assertEqual(len(report.orphans), 1,
+            "Only database without job should be classified as orphan")
+        self.assertEqual(report.orphans[0].database_name, staging2)
+        self.assertEqual(report.orphans[0].target_name, target2)
+
+    def test_simulation_matches_production_behavior(self) -> None:
+        """Verify simulation orphan detection matches production logic.
+        
+        Production checks: job_repo.find_job_by_staging_prefix(target, dbhost, prefix)
+        Simulation must do the same check.
+        """
+        from pulldb.worker.cleanup import _detect_orphaned_databases_simulation
+        
+        dbhost = "mysql-staging-01.example.com"
+        target = "devusrparity"
+        job_id = "parity123456-7890-abcd-ef12-345678901234"
+        job_prefix = job_id[:12]
+        staging_name = f"{target}_{job_prefix}"
+        
+        # Add staging database
+        self.state.staging_databases[dbhost] = {staging_name}
+        
+        # Verify find_job_by_staging_prefix works correctly
+        result = self.job_repo.find_job_by_staging_prefix(target, dbhost, job_prefix)
+        self.assertIsNone(result, "No job exists yet")
+        
+        # Create the job
+        job = Job(
+            id=job_id,
+            owner_user_id=self.user.user_id,
+            owner_username=self.user.username,
+            owner_user_code=self.user.user_code,
+            target=target,
+            staging_name=staging_name,
+            dbhost=dbhost,
+            status=JobStatus.QUEUED,
+            submitted_at=datetime.now(UTC),
+        )
+        self.state.jobs[job_id] = job
+        
+        # Now find_job_by_staging_prefix should find it
+        result = self.job_repo.find_job_by_staging_prefix(target, dbhost, job_prefix)
+        self.assertIsNotNone(result, "Job should be found")
+        assert result is not None
+        self.assertEqual(result.id, job_id)
+        
+        # And orphan detection should NOT report it as orphan
+        report = _detect_orphaned_databases_simulation(dbhost)
+        assert not isinstance(report, str), f"Expected OrphanReport, got error: {report}"
+        self.assertEqual(len(report.orphans), 0,
+            "Database with matching job should not be orphan")

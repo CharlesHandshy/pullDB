@@ -1807,12 +1807,17 @@ def _detect_orphaned_databases_simulation(dbhost: str) -> OrphanReport | str:
     Returns mock orphan data from SimulationState, or an error string
     for hosts configured to fail (mysql-staging-03).
 
+    Matches production behavior by checking if a matching job exists
+    before classifying a database as orphaned. This prevents running
+    jobs from incorrectly appearing as orphans.
+
     Args:
         dbhost: Hostname to scan.
 
     Returns:
         OrphanReport with mock orphans, or error string for failing hosts.
     """
+    from pulldb.simulation.adapters.mock_mysql import SimulatedJobRepository
     from pulldb.simulation.core.state import get_simulation_state
 
     # Simulate connection failure for staging-03
@@ -1820,6 +1825,7 @@ def _detect_orphaned_databases_simulation(dbhost: str) -> OrphanReport | str:
         return f"Connection refused to {dbhost}"
 
     state = get_simulation_state()
+    job_repo = SimulatedJobRepository()
     report = OrphanReport(
         dbhost=dbhost,
         scanned_at=datetime.now(UTC),
@@ -1839,7 +1845,25 @@ def _detect_orphaned_databases_simulation(dbhost: str) -> OrphanReport | str:
                 continue
 
             target, job_prefix = parsed
-            
+
+            # BUG FIX: Check if a matching job exists before classifying as orphan
+            # This matches production behavior in detect_orphaned_databases()
+            job = job_repo.find_job_by_staging_prefix(
+                target=target,
+                dbhost=dbhost,
+                job_id_prefix=job_prefix,
+            )
+
+            if job is not None:
+                # Job exists for this database - not an orphan
+                logger.debug(
+                    "[SIMULATION] Skipping database %s - active job %s exists",
+                    db_name,
+                    job.id,
+                )
+                continue
+
+            # No matching job - this is an orphan
             # Get mock size from orphan_sizes dict, or generate deterministic size
             size_mb = state.orphan_sizes.get((dbhost, db_name))
             if size_mb is None:
