@@ -1,6 +1,50 @@
 CHANGELOG
 =========
 
+v1.0.8 - 2026-01-31
+-------------------
+### VirtualLog Widget & Real-Time UI Updates
+
+Feature release with VirtualLog widget, phase-weighted progress tracking, and UI/UX improvements.
+
+### Added
+- **VirtualLog Widget**: Virtualized event log with offset pagination and auto-pause on scroll
+- **HTMX Phase Stepper**: Real-time updates via `/header` endpoint polled every 2s
+- **Phase-Weighted Progress**: 85% data loading / 15% indexing prevents premature 100%
+- **Schema Creation Events**: `schema_creating` and `schema_created` visibility in logs
+- **Bytes-Based ETA**: ExtractionStats with priority chain (rows → bytes → files)
+- **Myloader 0.20.1**: Upgraded binary with `--drop-table` replacing `--overwrite-tables`
+
+### Fixed
+- **Job Completion State**: Reorder `_finalize_workflow` - `mark_job_deployed()` before `restore_profile` event
+- **Race Condition**: Handle effective_status for stale DB status during HTMX polling
+- **restore_profile Detection**: Check before is_active to ensure page reload triggers
+- **Early Analyze Phase**: Phase-aware progress tracking prevents premature 100%
+- **Heartbeat Suppression**: Skip heartbeat when meaningful events emitted within 30s
+
+### Changed
+- ProcesslistMonitor poll interval: 2.0s → 0.5s for faster index rebuild capture
+- Page reload delay on restore_profile: 500ms → 1500ms for better UX
+- Removed ~80 lines of dead code (unused imports, dead functions)
+
+### Breaking Changes
+- User code prefix validation removed from delete operations (pullDB table now authoritative)
+
+v1.0.7 - 2026-01-25
+-------------------
+### Database Protection & RBAC Updates
+
+Security-focused release with enhanced database protection and role-based access control.
+
+### Added
+- Pre-flight database protection checks before expensive operations
+- `can_delete_job_database()` authorization helper
+- Defense-in-depth protection via `_drop_target_database_unsafe()`
+
+### Changed
+- pullDB metadata table is now single source of truth for database ownership
+- Authorization handled upstream by dedicated functions
+
 v1.0.6 - 2026-01-21
 -------------------
 ### Help Documentation & Screenshots Refresh

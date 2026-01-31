@@ -6,17 +6,17 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 
 **Related:** [Deployment](hca/widgets/deployment.md) · [policies/](hca/plugins/policies/) · [terraform/](hca/plugins/terraform/)
 
-Last updated: 2026-01-26
-Current version: v1.0.7
+Last updated: 2026-01-31
+Current version: v1.0.8
 Phases complete: 0-6
 
 ---
 
-## Package Contents Summary (v1.0.7)
+## Package Contents Summary (v1.0.8)
 
 | Component | Path in Package | Size |
 |-----------|-----------------|------|
-| Python wheel | `/opt/pulldb.service/dist/pulldb-1.0.7-py3-none-any.whl` | ~16MB |
+| Python wheel | `/opt/pulldb.service/dist/pulldb-1.0.8-py3-none-any.whl` | ~16MB |
 | myloader binary | `/opt/pulldb.service/bin/myloader-0.20.1-1` | 8.4MB |
 | Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 24 SQL files |
 | Systemd units | `/opt/pulldb.service/systemd/` | 6 files |
@@ -43,7 +43,7 @@ Phases complete: 0-6
 
 ---
 
-## API Reference (v1.0.7)
+## API Reference (v1.0.8)
 
 Complete API documentation: [docs/api/README.md](api/README.md)
 
@@ -94,7 +94,7 @@ Complete API documentation: [docs/api/README.md](api/README.md)
 
 ## Index (categories)
 - **Architecture Diagrams** - [docs/diagrams/pulldb-flowchart.md](diagrams/pulldb-flowchart.md) (Mermaid)
-- **API Reference** (v1.0.7)
+- **API Reference** (v1.0.8)
 - **Package Contents Summary** (Updated - v0.3.0)
 - **Default Accounts & Provisioning** (v0.2.0)
 - **CLI HMAC Authentication** (Phase 6) - includes multi-host API key management
@@ -920,7 +920,7 @@ The Worker performs all actual operations (database drops, S3 downloads, restore
 │ │BAR  │                  (content-body)                           │
 │ │HOVER│               Scrolls independently                       │
 │ │     ├───────────────────────────────────────────────────────────┤
-│ │     │ © 2026 pullDB • v1.0.7    │    Service Titan/Field Routes │
+│ │     │ © 2026 pullDB • v1.0.8    │    Service Titan/Field Routes │
 └───────┴───────────────────────────────────────────────────────────┘
 ```
 

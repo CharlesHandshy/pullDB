@@ -1,6 +1,6 @@
 # pullDB
 
-[![Release](https://img.shields.io/badge/version-1.0.6-blue)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/version-1.0.8-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-520%2B-success.svg)](pulldb/tests/)
@@ -44,10 +44,10 @@ pulldb status
 
 ```bash
 # Download the latest release
-wget https://github.com/CharlesHandshy/pullDB/releases/download/v1.0.6/pulldb_1.0.6_amd64.deb
+wget https://github.com/CharlesHandshy/pullDB/releases/download/v1.0.8/pulldb_1.0.8_amd64.deb
 
 # Install (creates user, venv, systemd services)
-sudo dpkg -i pulldb_1.0.6_amd64.deb
+sudo dpkg -i pulldb_1.0.8_amd64.deb
 
 # Configure
 sudo /opt/pulldb.service/scripts/configure-pulldb.sh
@@ -240,4 +240,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-*pullDB v1.0.6 - January 2026*
+*pullDB v1.0.8 - January 2026*
