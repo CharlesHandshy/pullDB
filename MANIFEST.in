@@ -1,6 +1,6 @@
-# Myloader binary - unified to 0.20.1-1 for all backup formats
+# Myloader binary - unified to 0.21.1-1 for all backup formats
 # Legacy backups are supported via metadata synthesis
-include pulldb/binaries/myloader-0.20.1-1
+include pulldb/binaries/myloader-0.21.1-1
 
 # Post-restore SQL scripts (sanitize customer data for dev environments)
 recursive-include pulldb/template_after_sql *.sql *.md
@@ -9,7 +9,7 @@ recursive-include pulldb/template_after_sql *.sql *.md
 prune pulldb/tests
 prune tests
 
-# Exclude legacy myloader binaries (superseded by 0.20.1-1)
+# Exclude legacy myloader binaries (superseded by 0.21.1-1)
 exclude pulldb/binaries/myloader-0.9.5
 exclude pulldb/binaries/myloader-0.19.3-3
 

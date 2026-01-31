@@ -3388,7 +3388,7 @@ async def myloader_args_preview(
     args = list(build_myloader_args_from_settings(db_settings))
 
     # Get the myloader binary path for full command display
-    myloader_binary = state.config.myloader_binary if hasattr(state, "config") else "/opt/pulldb.service/bin/myloader-0.20.1-1"
+    myloader_binary = state.config.myloader_binary if hasattr(state, "config") else "/opt/pulldb.service/bin/myloader-0.21.1-1"
     full_command = f"{myloader_binary} {' '.join(args)}" if args else myloader_binary
 
     return {"args": args, "full_command": full_command}

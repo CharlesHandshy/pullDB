@@ -10,7 +10,7 @@ The pullDB client provides command-line access to the pullDB restore service. It
 |-----------|-------------|
 | **Operating System** | Ubuntu 22.04+ (recommended) or Ubuntu 20.04 (legacy) |
 | **Python** | 3.12+ |
-| **Network** | Outbound access to pullDB API server (port 8000) |
+| **Network** | Outbound access to pullDB API server (port 8080) |
 
 ### Ubuntu 20.04 (Legacy Support)
 

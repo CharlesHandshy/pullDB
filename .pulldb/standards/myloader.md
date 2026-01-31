@@ -6,126 +6,85 @@
 
 ## myloader Invocation Pattern
 
-### Binary Selection
+### Binary Configuration (v1.0.8+)
+
+**Single Binary Strategy**: pullDB uses only `myloader-0.21.1-1` for all backups.
+
+- Legacy backups (mydumper 0.9.x format) are supported via **metadata synthesis**
+- No binary selection logic needed at runtime
+- Binary path: `/opt/pulldb.service/bin/myloader-0.21.1-1`
 
 ```python
-MYLOADER_BINARIES = {
-    "0.9.5": "/opt/pulldb.service/bin/myloader-0.9.5",    # Older mydumper format
-    "0.19.3": "/opt/pulldb.service/bin/myloader-0.19.3-3", # Newer mydumper format
-}
+# Default myloader arguments (pulldb/domain/config.py)
+myloader_default_args: tuple[str, ...] = (
+    "--max-threads-for-post-actions=1",
+    "--rows=100000",
+    "--queries-per-transaction=5000",
+    "--optimize-keys=AFTER_IMPORT_PER_TABLE",
+    "--checksum=warn",
+    "--retry-count=20",
+    "--local-infile=TRUE",
+    "--ignore-errors=1146",
+    "--drop-table",          # Was --overwrite-tables in myloader <0.20
+    "--verbose=3",
+    "--max-threads-per-table=1",
+)
+myloader_timeout_seconds: float = 86400.0  # 24 hours
+myloader_threads: int = 4
+```
 
-def select_myloader(backup_format: str) -> Path:
-    """Select appropriate myloader binary based on backup format.
-    
-    Args:
-        backup_format: Either "legacy" or "modern" (detected from metadata)
-    
-    Returns:
-        Path to the correct myloader binary
-        
-    Raises:
-        RestoreConfigError: If binary not found or format unknown
-    """
-    version = "0.9.5" if backup_format == "legacy" else "0.19.3"
-    binary = Path(MYLOADER_BINARIES[version])
-    
-    if not binary.exists():
-        raise RestoreConfigError(
-            f"myloader binary not found at {binary}. "
-            f"Install with: make install-myloader"
-        )
-    
-    return binary
+### MyLoaderSpec Model
+
+```python
+from pulldb.domain.restore_models import MyLoaderSpec, build_configured_myloader_spec
+
+# Build spec using config defaults
+spec = build_configured_myloader_spec(
+    config=config,
+    job_id=job.job_id,
+    staging_db=staging_name,
+    backup_dir=str(backup_dir),
+    mysql_host=host,
+    mysql_port=port,
+    mysql_user=user,
+    mysql_password=password,
+)
 ```
 
 ### Subprocess Execution
 
 ```python
 def run_myloader(
-    binary: Path,
-    directory: Path,
-    host: str,
-    user: str,
-    password: str,
-    database: str,
-    threads: int = 4,
+    myloader_spec: MyLoaderSpec,
     *,
-    job_id: str,
-) -> subprocess.CompletedProcess:
+    timeout: float = 86400.0,  # 24 hours max
+) -> MyLoaderResult:
     """Execute myloader restore with full error capture.
     
-    FAIL HARD: Any non-zero exit code raises RestoreExecutionError.
+    FAIL HARD: Any non-zero exit code raises MyLoaderError.
     
     Args:
-        binary: Path to myloader binary
-        directory: Extracted backup directory containing SQL files
-        host: Target MySQL host
-        user: MySQL user with restore privileges
-        password: MySQL password
-        database: Target database name
-        threads: Parallel restore threads (default 4)
-        job_id: Job ID for logging context
+        myloader_spec: Full restore specification (host, user, db, etc.)
+        timeout: Maximum execution time in seconds (default 24 hours)
         
     Returns:
-        CompletedProcess on success
+        MyLoaderResult with stdout/stderr and timing
         
     Raises:
-        RestoreExecutionError: On any myloader failure (preserves stderr)
+        MyLoaderError: On any myloader failure (preserves stderr)
     """
     cmd = [
-        str(binary),
-        f"--host={host}",
-        f"--user={user}",
-        f"--password={password}",
-        f"--database={database}",
-        f"--directory={directory}",
-        f"--threads={threads}",
-        "--overwrite-tables",
-        "--verbose=3",
+        myloader_spec.binary_path,
+        f"--host={myloader_spec.mysql_host}",
+        f"--port={myloader_spec.mysql_port}",
+        f"--user={myloader_spec.mysql_user}",
+        f"--password={myloader_spec.mysql_password}",
+        f"--database={myloader_spec.staging_db}",
+        f"--directory={myloader_spec.backup_dir}",
+        *myloader_spec.extra_args,
     ]
     
-    logger.info("myloader_start", job_id=job_id, database=database, threads=threads)
-    
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=3600,  # 1 hour max
-            check=False,   # We handle errors ourselves
-        )
-    except subprocess.TimeoutExpired as e:
-        raise RestoreExecutionError(
-            f"myloader timed out after 3600s. "
-            f"Job: {job_id}, Database: {database}. "
-            f"Solutions: (1) Increase timeout, (2) Check disk I/O, (3) Reduce data size"
-        ) from e
-    
-    if result.returncode != 0:
-        # Parse stderr for specific error patterns
-        stderr = result.stderr or ""
-        
-        if "Access denied" in stderr:
-            raise RestoreExecutionError(
-                f"MySQL access denied during restore. "
-                f"User: {user}, Host: {host}, Database: {database}. "
-                f"Solutions: (1) Verify GRANT privileges, (2) Check password, (3) Verify host allowlist"
-            )
-        elif "doesn't exist" in stderr and "database" in stderr.lower():
-            raise RestoreExecutionError(
-                f"Target database does not exist. "
-                f"Database: {database}. "
-                f"Solutions: (1) Create database first, (2) Check staging name generation"
-            )
-        else:
-            raise RestoreExecutionError(
-                f"myloader failed with exit code {result.returncode}. "
-                f"Job: {job_id}, Database: {database}. "
-                f"stderr: {stderr[:500]}..."
-            )
-    
-    logger.info("myloader_complete", job_id=job_id, database=database)
-    return result
+    # ... execution via run_command_streaming() ...
 ```
 
 ---
@@ -287,33 +246,52 @@ def estimate_progress(
 ## Integration with Worker Service
 
 ```python
-# In worker/restore.py
+# In pulldb/worker/restore.py
 
-from pulldb.infra.exec import run_myloader, select_myloader, detect_backup_format
+from pulldb.domain.config import Config
+from pulldb.domain.restore_models import build_configured_myloader_spec
+from pulldb.worker.restore import run_restore_workflow, RestoreWorkflowSpec
 
-def execute_restore(job: Job, backup_dir: Path, credentials: MySQLCredentials) -> None:
+def execute_restore(job: Job, backup_dir: Path, config: Config) -> None:
     """Orchestrate full restore operation.
     
     FAIL HARD: Any step failure stops the restore immediately.
     """
-    # 1. Detect format
-    format_type = detect_backup_format(backup_dir)
-    logger.info("backup_format_detected", job_id=job.job_id, format=format_type)
-    
-    # 2. Select binary
-    binary = select_myloader(format_type)
-    
-    # 3. Execute restore
-    run_myloader(
-        binary=binary,
-        directory=backup_dir,
-        host=credentials.host,
-        user=credentials.username,
-        password=credentials.password,
-        database=job.staging_database,
+    # Build myloader spec from config (applies all defaults)
+    myloader_spec = build_configured_myloader_spec(
+        config=config,
         job_id=job.job_id,
+        staging_db=job.staging_database,
+        backup_dir=str(backup_dir),
+        mysql_host=config.mysql_host,
+        mysql_port=config.mysql_port,
+        mysql_user=config.mysql_user,
+        mysql_password=config.mysql_password,
     )
+    
+    # Execute via workflow spec
+    workflow_spec = RestoreWorkflowSpec(
+        job=job,
+        backup_filename=backup_filename,
+        staging_conn=staging_conn,
+        post_sql_conn=post_sql_conn,
+        myloader_spec=myloader_spec,
+        timeout=config.myloader_timeout_seconds,
+    )
+    
+    run_restore_workflow(workflow_spec)
 ```
+
+---
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `pulldb/domain/restore_models.py` | `MyLoaderSpec`, `build_configured_myloader_spec()` |
+| `pulldb/domain/config.py` | Default args, binary path, timeout |
+| `pulldb/worker/restore.py` | Execution wrapper, error translation |
+| `pulldb/worker/backup_metadata.py` | Metadata synthesis for legacy backups |
 
 ---
 

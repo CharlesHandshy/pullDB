@@ -139,7 +139,7 @@ class Config:
     qa_template_after_sql_dir: Path = (
         Path(__file__).parent.parent / "template_after_sql" / "quality"
     )
-    myloader_binary: str = "/opt/pulldb.service/bin/myloader-0.20.1-1"
+    myloader_binary: str = "/opt/pulldb.service/bin/myloader-0.21.1-1"
     myloader_default_args: tuple[str, ...] = (
         "--max-threads-for-post-actions=1",
         "--rows=100000",
@@ -253,7 +253,7 @@ class Config:
             s3_aws_profile=s3_aws_profile,
             default_dbhost=os.getenv("PULLDB_DEFAULT_DBHOST"),
             myloader_binary=myloader_binary
-            or "/opt/pulldb.service/bin/myloader-0.20.1-1",
+            or "/opt/pulldb.service/bin/myloader-0.21.1-1",
             myloader_default_args=_parse_myloader_default_args(default_args_env),
             myloader_extra_args=_parse_extra_args(
                 extra_args_env,

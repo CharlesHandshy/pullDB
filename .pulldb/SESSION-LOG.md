@@ -6,6 +6,51 @@
 
 ---
 
+## 2026-01-31 | Help Pages Documentation Audit
+
+### Context
+User requested comprehensive audit of web help pages for accuracy, compliance with actual codebase functionality, and style guide adherence. Required cross-validation of findings ("1000% sure").
+
+### What Was Done
+1. **Discovered help page structure**: 14 HTML pages across 6 categories
+2. **Deployed multi-agent audit**:
+   - Agent 1: Core pages (index.html, getting-started.html)
+   - Agent 2: Web UI pages (8 pages: dashboard, restore, jobs, profile, requests, manager, admin, index)
+   - Agent 3: Reference pages (api/index.html, cli/index.html, job-lifecycle.html, troubleshooting/index.html)
+3. **Cross-validation agent**: Verified critical findings independently
+
+### Issues Found & Fixed
+| Issue | File | Fix |
+|-------|------|-----|
+| Version mismatch (v1.0.7 vs v1.0.8) | `index.html` line 152 | Updated to v1.0.8 |
+| Pagination default (25 vs 20) | `jobs.html` line 256 | Updated to 20 jobs |
+| API docs scope unclear | `api/index.html` | Added info callout about 53 total endpoints |
+| Search index stale | `search-index.json` | Regenerated with build script |
+| HELP-PAGE-INDEX outdated | `docs/HELP-PAGE-INDEX.md` | Updated version to 1.0.8, added audit date |
+
+### Verified Accurate
+- ✅ Job lifecycle documentation (11 states) - 100% accurate
+- ✅ Troubleshooting page - all content still relevant
+- ✅ CLI reference - version 1.0.8 correct, commands accurate
+- ✅ Web UI pages - features match actual implementation
+- ✅ Voting system (single-vote-per-user) correctly documented
+- ✅ Port numbers: Web UI=8000, API=8080
+
+### Rationale
+- Applied multi-agent audit pattern for thorough coverage
+- Cross-validation ensures no false positives
+- Fixes address root cause (source HTML) rather than symptoms
+- Search index regenerated from source to maintain consistency
+
+### Files Modified
+- `pulldb/web/help/index.html` - version badge fix
+- `pulldb/web/help/pages/web-ui/jobs.html` - pagination fix
+- `pulldb/web/help/pages/api/index.html` - scope notice added
+- `pulldb/web/help/search-index.json` - regenerated
+- `docs/HELP-PAGE-INDEX.md` - version and audit date
+
+---
+
 ## 2026-01-28 | Fix: Restore Progress Shows 100% During Analyze Phase
 
 ### Context

@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 1.0.0 | **Last Updated**: January 2026
+> **Version**: 1.0.8 | **Last Updated**: January 2026
 
 This guide covers installing and configuring pullDB.
 
@@ -20,7 +20,7 @@ This guide covers installing and configuring pullDB.
 
 ```bash
 # Install client package
-sudo dpkg -i pulldb-client_0.2.0_amd64.deb
+sudo dpkg -i pulldb-client_1.0.8_amd64.deb
 
 # Set API endpoint
 echo 'PULLDB_API_URL=http://pulldb-api.internal:8080' >> ~/.bashrc
@@ -35,10 +35,10 @@ pulldb status
 
 ```bash
 # Install service package
-sudo dpkg -i pulldb_0.2.0_amd64.deb
+sudo dpkg -i pulldb_1.0.8_amd64.deb
 
 # Run setup wizard
-sudo /opt/pulldb.service/scripts/install_pulldb.sh
+sudo /opt/pulldb.service/scripts/configure-pulldb.sh
 
 # Start services
 sudo systemctl enable --now pulldb-worker pulldb-api
@@ -81,13 +81,13 @@ sudo systemctl enable --now pulldb-worker pulldb-api
 
 ```bash
 # Service package (on database servers)
-sudo dpkg -i pulldb_0.2.0_amd64.deb
+sudo dpkg -i pulldb_1.0.8_amd64.deb
 
 # Fix any missing dependencies
 sudo apt-get install -f
 
 # Client package (on developer workstations)
-sudo dpkg -i pulldb-client_0.2.0_amd64.deb
+sudo dpkg -i pulldb-client_1.0.8_amd64.deb
 ```
 
 **Installed Paths:**

@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 1.0.0 | **Last Updated**: January 2026
+> **Version**: 1.0.8 | **Last Updated**: January 2026
 
 This guide covers setting up a development environment, coding standards, testing, and contributing to pullDB.
 
@@ -35,8 +35,8 @@ This guide covers setting up a development environment, coding standards, testin
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/pulldb.git
-cd pulldb
+git clone https://github.com/CharlesHandshy/pullDB.git
+cd pullDB
 
 # Create virtual environment
 python3 -m venv venv

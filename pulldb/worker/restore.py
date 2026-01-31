@@ -378,7 +378,7 @@ def run_myloader(
         # 1. stdout contains "Restore completed" (myloader's success message)
         # 2. stderr is empty or trivial (no actual errors)
         #
-        # See: https://github.com/mydumper/mydumper/blob/v0.20.1-1/src/myloader/myloader.c
+        # See: https://github.com/mydumper/mydumper/blob/v0.21.1-1/src/myloader/myloader.c
         # The 'errors' counter increments for various conditions, but "Restore completed"
         # is only printed after successful restoration of all tables.
         stdout_lower = result.stdout.lower()

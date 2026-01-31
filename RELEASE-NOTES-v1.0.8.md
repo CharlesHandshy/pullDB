@@ -37,10 +37,11 @@ This release introduces the VirtualLog widget for virtualized job event viewing,
 - **Improved ETA**: Priority chain: rows → bytes → files (graceful fallback)
 - **Strike-Based Completion**: Replaces time-based detection for reliability
 
-### Myloader 0.20.1 Upgrade
-- **Updated Binary**: Upgrade from 0.19.x to 0.20.1-1
-- **Drop Table**: Replace `--overwrite-tables` with `--drop-table` (deprecated in 0.20)
+### Myloader 0.21.1 Upgrade
+- **Updated Binary**: Upgrade from 0.19.x to 0.21.1-1
+- **Drop Table**: Replace `--overwrite-tables` with `--drop-table` (now supports modes: FAIL, NONE, DROP, TRUNCATE, DELETE)
 - **OOM Prevention**: Add `--max-threads-for-index-creation=1` to prevent memory issues during index rebuilds
+- **AWS Support**: New `--source-control-command=AWS` option for replication configuration
 
 ## 🐛 Bug Fixes
 
@@ -98,7 +99,7 @@ This release introduces the VirtualLog widget for virtualized job event viewing,
 | Package | `pulldb-1.0.8-py3-none-any.whl` |
 | Debian | `pulldb_1.0.8_amd64.deb` |
 | Client | `pulldb-client_1.0.8_amd64.deb` |
-| myloader | 0.20.1-1 |
+| myloader | 0.21.1-1 |
 | Python | ≥3.12 |
 
 ## 🔄 Upgrade Path
@@ -113,9 +114,10 @@ sudo dpkg -i pulldb_1.0.8_amd64.deb
 pip install --upgrade pulldb
 ```
 
-**Note**: The myloader binary has been upgraded to 0.20.1. If you maintain custom myloader configurations, review the option changes:
-- `--overwrite-tables` → `--drop-table`
+**Note**: The myloader binary has been upgraded to 0.21.1. If you maintain custom myloader configurations, review the option changes:
+- `--overwrite-tables` → `--drop-table` (now with modes: FAIL, NONE, DROP, TRUNCATE, DELETE)
 - `--connection-timeout` has been removed (never existed in myloader)
+- Default without `--drop-table` parameter is now FAIL (was implicit DROP in 0.20.x)
 
 ## 📋 Key Files Changed
 

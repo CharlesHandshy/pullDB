@@ -128,9 +128,9 @@ verify_binaries() {
     fi
     
     # Check myloader binary exists
-    local myloader_bin="${bin_dir}/myloader-0.20.1-1"
+    local myloader_bin="${bin_dir}/myloader-0.21.1-1"
     if [[ -x "$myloader_bin" ]]; then
-        check_pass "myloader binary found: myloader-0.20.1-1"
+        check_pass "myloader binary found: myloader-0.21.1-1"
     elif [[ -f "$myloader_bin" ]]; then
         check_warn "myloader binary exists but not executable"
     else

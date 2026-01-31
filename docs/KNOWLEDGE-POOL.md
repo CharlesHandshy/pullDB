@@ -17,8 +17,8 @@ Phases complete: 0-6
 | Component | Path in Package | Size |
 |-----------|-----------------|------|
 | Python wheel | `/opt/pulldb.service/dist/pulldb-1.0.8-py3-none-any.whl` | ~16MB |
-| myloader binary | `/opt/pulldb.service/bin/myloader-0.20.1-1` | 8.4MB |
-| Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 24 SQL files |
+| myloader binary | `/opt/pulldb.service/bin/myloader-0.21.1-1` | 7.7MB |
+| Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 17 SQL files |
 | Systemd units | `/opt/pulldb.service/systemd/` | 6 files |
 | Config templates | `/opt/pulldb.service/env.example`, `aws.config.example` | - |
 | After-SQL templates | `/opt/pulldb.service/template_after_sql/` | 12 customer scripts |
@@ -47,7 +47,7 @@ Phases complete: 0-6
 
 Complete API documentation: [docs/api/README.md](api/README.md)
 
-### REST API (port 8080) - 56 endpoints
+### REST API (port 8080) - 53 endpoints
 
 | Category | Count | Key Endpoints |
 |----------|-------|---------------|
@@ -64,7 +64,7 @@ Complete API documentation: [docs/api/README.md](api/README.md)
 | Backups | 2 | `/api/customers/search`, `/api/backups/search` |
 | Features | 6 | `/api/feature-requests`, `/api/feature-requests/{id}`, `/api/feature-requests/{id}/vote` |
 
-### Web UI API (port 8000) - 142 routes
+### Web UI API (port 8000) - 150 routes
 
 | Module | Prefix | Route Count | Key Routes |
 |--------|--------|-------------|------------|
@@ -736,6 +736,41 @@ The web package follows HCA internally for UI component organization.
 | **widgets** | `web/widgets/` | `sidebar/`, `filter_bar/`, `lazy_table/`, `virtual_table/`, `breadcrumbs/`, `bulk_actions/`, `searchable_dropdown/` |
 | **pages** | `web/pages/` | Empty - pages co-located within features (`features/<name>/pages/`) |
 
+### Feature Packages (v1.0.8)
+
+| Package | Files | Routes | Purpose |
+|---------|-------|--------|---------|
+| `auth/` | 2 | 12 | Login, logout, password change, profile |
+| `dashboard/` | 2 | 1 | Role-specific landing page |
+| `jobs/` | 2 | 16 | Job list, details, cancel, events |
+| `restore/` | 2 | 4 | New restore submission wizard |
+| `admin/` | 3 | 88 | Users, hosts, settings, API keys |
+| `manager/` | 2 | 7 | Team management |
+| `audit/` | 2 | 3 | Audit log viewer |
+| `requests/` | 2 | 10 | Feature request board |
+| `mockup/` | 2 | 1 | Development mockup pages |
+
+### Widget Packages (v1.0.8)
+
+| Package | Files | Purpose |
+|---------|-------|---------|
+| `sidebar/` | 2 | Collapsible navigation sidebar |
+| `virtual_table/` | 2 | Virtualized table with infinite scroll |
+| `virtual_log/` | 1 | Virtualized log viewer |
+| `lazy_table/` | 1 | Lazy-loading table |
+| `filter_bar/` | 1 | Search/filter controls |
+| `bulk_actions/` | 1 | Bulk selection controls |
+| `searchable_dropdown/` | 1 | Autocomplete dropdown |
+
+### Shared Packages
+
+| Package | Files | Purpose |
+|---------|-------|---------|
+| `layouts/` | 4 | base.html, app_layout.html, _skeleton.html |
+| `contracts/` | 3 | service_contracts.py, page_contracts.py |
+| `ui/` | 1 | Reusable UI components |
+| `utils/` | 1 | Utility functions |
+
 ### Key Files
 
 | File | Purpose |
@@ -1271,6 +1306,40 @@ This file should be created and applied in the production account only. Keep sec
 - Atomic rename via stored procedure: `pulldb_atomic_rename` / `pulldb_atomic_rename_preview` exists and is versioned
 - **Progress deduplication** (v0.2.0): ProcesslistMonitor polls every 2s but events only emit when overall percent OR any table's percent changes by 1%+. Dedup key: `(int(percent), active_threads, tuple(sorted(table_progress)))`. CLI uses TTY detection for in-place line updates (`\r`). Web UI has `_deduplicate_logs()`.
 
+### Worker Process Features (v1.0.8)
+
+| Feature | Description | Source |
+|---------|-------------|--------|
+| **Phase Weighting** | Progress split: 85% data load, 15% index rebuild | `pulldb/worker/restore_progress.py` |
+| **Heartbeat Suppression** | Skip heartbeat if meaningful event emitted within 30s | `pulldb/worker/heartbeat.py`, `pulldb/worker/executor.py` |
+| **Early Analyze** | Background ANALYZE TABLE during restore for statistics | `pulldb/worker/early_analyze.py` |
+| **Strike-based Completion** | 3-5 poll cycles (2s each) without activity = table complete | `pulldb/worker/restore_progress.py` |
+| **Processlist Monitor** | MySQL SHOW PROCESSLIST polling for progress tracking | `pulldb/worker/processlist_monitor.py` |
+| **Metadata Synthesis** | Generate myloader 0.19-compatible metadata for legacy backups | `pulldb/worker/backup_metadata.py` |
+
+#### Phase Weighting Details
+
+```python
+# Progress calculation in restore_progress.py
+DATA_PHASE_WEIGHT = 0.85   # Data loading = 85% of total
+INDEX_PHASE_WEIGHT = 0.15  # Index rebuild = 15% of total
+
+# Overall progress = (data_progress * 0.85) + (index_progress * 0.15)
+```
+
+#### Heartbeat Suppression
+
+Prevents excessive heartbeat events when meaningful progress is being emitted:
+
+```python
+HEARTBEAT_SUPPRESSION_WINDOW_SECONDS = 30.0
+
+# In executor.py:
+# - Track last meaningful event timestamp
+# - Skip heartbeat if meaningful event emitted within window
+# - Meaningful events: table_progress, download_progress, etc.
+```
+
 ## Database Schema (Quick Reference)
 - **Canonical Source**: `docs/hca/entities/mysql-schema.md` (Read this for full column definitions)
 - **Hosts Table**: `db_hosts` (NOT `hosts`) - contains registered database servers
@@ -1290,7 +1359,8 @@ This file should be created and applied in the production account only. Keep sec
 ## Local Environment & Binaries
 - myloader binaries location: `/opt/pulldb.service/bin/` (installed)
   - Source location: `pulldb/binaries/`
-  - Available versions: `myloader-0.9.5`, `myloader-0.19.3-3`
+  - Current version: `myloader-0.21.1-1` (unified binary for all backup formats)
+  - Legacy backup support: Metadata synthesis in `pulldb/worker/backup_metadata.py`
 
 ## System Paths & Service Locations
 - **Installation Root**: `/opt/pulldb.service`
@@ -1390,7 +1460,7 @@ grep -v "changeLog" resume | grep -v "salesRoutesAccess" | head
 **Common Mistakes**:
 1. ❌ Putting "completed" files in resume (opposite of intended behavior)
 2. ❌ Including metadata file references (myloader ignores non-.sql.gz entries)
-3. ❌ Using `--overwrite-tables` with existing partial data (use DROP + resume instead)
+3. ❌ Using `--drop-table` with existing partial data (use DROP + resume instead)
 4. ❌ Forgetting to include schema files (tables won't exist to load data into)
 
 ### Packaging & Installation Lessons (Jan 2026)

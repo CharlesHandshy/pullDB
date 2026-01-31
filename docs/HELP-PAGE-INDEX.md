@@ -1,9 +1,10 @@
 # Help Page Index
 
 > **Generated:** 2026-01-17  
+> **Last Audited:** 2026-01-31  
 > **Total Pages:** 14 (indexed in search-index.json)  
 > **Base URL:** http://localhost:8000/web/help/
-> **Version:** 1.0.2
+> **Version:** 1.0.8
 
 ## Page Inventory
 
@@ -20,7 +21,7 @@
 | 9 | `/web/help/pages/web-ui/restore.html` | Restore Workflow | Web UI | ✅ |
 | 10 | `/web/help/pages/web-ui/jobs.html` | Jobs Management | Web UI | ✅ |
 | 11 | `/web/help/pages/web-ui/profile.html` | Profile & API Keys | Web UI | ✅ |
-| 12 | `/web/help/pages/web-ui/requests.html` | Feature Requests | Web UI | ✅ **NEW** |
+| 12 | `/web/help/pages/web-ui/requests.html` | Feature Requests | Web UI | ✅ |
 | 13 | `/web/help/pages/web-ui/manager.html` | Manager Interface | Web UI | ✅ |
 | 14 | `/web/help/pages/web-ui/admin.html` | Admin Panel | Web UI | ✅ |
 
@@ -54,7 +55,7 @@
 
 ## Static Assets
 - `GET /web/help/css/help.css` → Main stylesheet
-- `GET /web/help/search-index.json` → Search index (13 pages indexed)
+- `GET /web/help/search-index.json` → Search index (14 pages indexed)
 - `GET /web/help/js/help.js` → Search functionality
 
 ---
@@ -225,8 +226,8 @@
    - Arrow icons now display at correct size within category cards
 
 3. **~~404 CONSOLE ERRORS~~** (all pages)
-   - **Fixed:** Added favicon `<link>` tags to all 12 HTML files
-   - Remaining 404 is `search-index.json` (search feature not yet implemented)
+   - **Fixed:** Added favicon `<link>` tags to all 14 HTML files
+   - **Fixed:** search-index.json now generated and functional
 
 4. **~~Missing "Web UI" Nav Link~~** (5 pages)
    - **Fixed:** Added "Web UI" nav link to:
@@ -239,13 +240,8 @@
 ### Remaining Minor Issues
 
 5. **Footer Inconsistency**
-   - Some pages have full footer (index.html)
-   - Other pages have minimal footer (web-ui pages)
-   - Consider standardizing in future update
-
-6. **Search Feature**
-   - `search-index.json` returns 404
-   - Search functionality not yet implemented
+   - Main index.html has full footer with version string
+   - Subpages have minimal footer (intentional design hierarchy)
 
 ---
 

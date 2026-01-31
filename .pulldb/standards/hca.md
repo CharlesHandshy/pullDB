@@ -38,7 +38,7 @@ LAW 6: Plugin Escape      → External code in plugins/
 |-----------|------------------|----------|
 | **shared** | `pulldb/infra/` | mysql.py, s3.py, secrets.py, logging.py |
 | **entities** | `pulldb/domain/` | models.py, config.py, errors.py |
-| **features** | `pulldb/worker/` | restore_job.py, downloader.py, staging.py |
+| **features** | `pulldb/worker/` | restore.py, downloader.py, staging.py |
 | **widgets** | `pulldb/worker/service.py` | Job orchestration combining features |
 | **pages** | `pulldb/cli/`, `pulldb/web/` | User-facing entry points |
 | **plugins** | `pulldb/binaries/` | myloader, external tools |
@@ -49,7 +49,7 @@ LAW 6: Plugin Escape      → External code in plugins/
 # ✅ ALLOWED - importing from lower layer
 from pulldb.infra.mysql import MySQLClient      # shared → feature
 from pulldb.domain.models import Job            # entities → feature
-from pulldb.worker.restore_job import RestoreJob # features → widget
+from pulldb.worker.restore import run_restore_workflow  # features → widget
 
 # ❌ FORBIDDEN - importing from higher layer
 from pulldb.cli.commands import restore_cmd     # pages → feature (VIOLATION)
@@ -62,9 +62,9 @@ Files should include parent context in their name:
 
 ```
 # ✅ GOOD - explicit naming
-pulldb/infra/mysql_client.py       # Layer + purpose
-pulldb/worker/restore_job.py       # Feature + job type
-pulldb/cli/restore_command.py      # CLI + action
+pulldb/infra/mysql.py              # Layer + purpose
+pulldb/worker/restore.py           # Feature + operation
+pulldb/cli/main.py                 # CLI + entry point
 
 # ❌ BAD - ambiguous naming
 pulldb/infra/client.py             # What kind of client?
@@ -109,7 +109,7 @@ Before committing code, verify:
 ### Violation: Feature importing from Widget
 
 ```python
-# ❌ restore_job.py importing from service.py
+# ❌ restore.py importing from service.py
 from pulldb.worker.service import get_worker_config
 
 # ✅ FIX: Extract shared config to domain layer
@@ -119,8 +119,8 @@ from pulldb.domain.config import get_worker_config
 ### Violation: Shared importing from Feature
 
 ```python
-# ❌ mysql.py importing from restore_job.py
-from pulldb.worker.restore_job import JobStatus
+# ❌ mysql.py importing from restore.py
+from pulldb.worker.restore import JobStatus
 
 # ✅ FIX: Move JobStatus to domain layer
 from pulldb.domain.models import JobStatus

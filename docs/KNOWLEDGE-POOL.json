@@ -3,8 +3,8 @@
   "last_updated": "2026-01-31",
   "package": {
     "wheel": "pulldb-1.0.8-py3-none-any.whl",
-    "myloader": "myloader-0.20.1-1",
-    "schema_files": 24,
+    "myloader": "myloader-0.21.1-1",
+    "schema_files": 17,
     "systemd_units": 6,
     "after_sql_templates": 12
   },
@@ -20,7 +20,7 @@
     "rest_api": {
       "doc": "docs/api/REST-API.md",
       "port": 8080,
-      "endpoint_count": 56,
+      "endpoint_count": 53,
       "authentication": "HMAC signature (X-API-Key, X-Timestamp, X-Signature)",
       "source": "pulldb/api/main.py",
       "categories": ["health", "auth", "users", "hosts", "jobs", "lifecycle", "manager", "admin", "dropdown", "backups", "feature-requests"]
@@ -28,7 +28,7 @@
     "web_api": {
       "doc": "docs/api/WEB-API.md",
       "port": 8000,
-      "route_count": 142,
+      "route_count": 150,
       "authentication": "session cookie (session_token)",
       "source_dir": "pulldb/web/features/"
     },
@@ -195,7 +195,7 @@
   },
   "binaries": {
     "myloader_path": "/opt/pulldb.service/bin/",
-    "myloader_binary": "myloader-0.20.1-1",
+    "myloader_binary": "myloader-0.21.1-1",
     "myloader_source": "pulldb/binaries/"
   },
   "lessons_learned": [
@@ -307,6 +307,35 @@
       "features": "web/features/",
       "widgets": "web/widgets/",
       "pages": "web/pages/"
+    },
+    "packages": {
+      "features": {
+        "auth": {"files": 2, "routes": 12, "purpose": "login/logout/password/profile"},
+        "dashboard": {"files": 2, "routes": 1, "purpose": "role-specific dashboard"},
+        "jobs": {"files": 2, "routes": 16, "purpose": "job list/details/cancel"},
+        "restore": {"files": 2, "routes": 4, "purpose": "new restore submission"},
+        "admin": {"files": 3, "routes": 88, "purpose": "admin panels: users/hosts/settings/keys"},
+        "manager": {"files": 2, "routes": 7, "purpose": "team management"},
+        "audit": {"files": 2, "routes": 3, "purpose": "audit log viewer"},
+        "requests": {"files": 2, "routes": 10, "purpose": "feature request board"},
+        "mockup": {"files": 2, "routes": 1, "purpose": "development mockup pages"}
+      },
+      "widgets": {
+        "sidebar": {"files": 2, "purpose": "collapsible navigation sidebar"},
+        "virtual_table": {"files": 2, "purpose": "virtualized table with infinite scroll"},
+        "virtual_log": {"files": 1, "purpose": "virtualized log viewer"},
+        "lazy_table": {"files": 1, "purpose": "lazy-loading table"},
+        "filter_bar": {"files": 1, "purpose": "search/filter controls"},
+        "bulk_actions": {"files": 1, "purpose": "bulk selection controls"},
+        "searchable_dropdown": {"files": 1, "purpose": "autocomplete dropdown"}
+      },
+      "shared": {
+        "layouts": {"files": 4, "purpose": "base.html, app_layout.html, _skeleton.html"},
+        "contracts": {"files": 3, "purpose": "service_contracts.py, page_contracts.py"},
+        "ui": {"files": 1, "purpose": "reusable UI components"},
+        "utils": {"files": 1, "purpose": "utility functions"}
+      },
+      "entities": {"files": 1, "purpose": "HTML component templates"}
     }
   },
   "auth": {
@@ -360,6 +389,13 @@
   "admin_task_types": ["force_delete_user", "scan_user_orphans", "bulk_delete_jobs", "retention_cleanup"],
   "simulation": {
     "package": "pulldb/simulation/",
+    "hca_layer": "features",
+    "packages": {
+      "root": {"files": 1, "purpose": "package exports via __init__.py"},
+      "api": {"files": 2, "purpose": "simulation control API router"},
+      "core": {"files": 7, "purpose": "engine.py, bus.py, state.py, seeding.py, queue_runner.py, scenarios.py"},
+      "adapters": {"files": 4, "purpose": "mock_mysql.py, mock_s3.py, mock_exec.py"}
+    },
     "components": {
       "api": "simulation/api/router.py",
       "engine": "simulation/core/engine.py",
@@ -409,6 +445,8 @@
     "package": "pulldb/audit/",
     "hca_layer": "features",
     "documentation": "docs/AUDIT-AGENT.md",
+    "package_files": 9,
+    "files": ["__init__.py", "agent.py", "drift.py", "inventory.py", "analyzers.py", "mappings.py", "knowledge_pool.py", "report.py", "__main__.py"],
     "exports": [
       "DocumentationAuditAgent",
       "AuditReport",
@@ -440,6 +478,14 @@
       "copilot_context": "python -m pulldb.audit --drift --copilot",
       "severity_filter": "python -m pulldb.audit --drift --severity high"
     }
+  },
+  "binaries": {
+    "package": "pulldb/binaries/",
+    "hca_layer": "plugins",
+    "files": 1,
+    "purpose": "External tool binaries (myloader)",
+    "binary_path": "/opt/pulldb.service/bin/myloader-0.21.1-1",
+    "source_files": ["__init__.py", "myloader-0.21.1-1"]
   },
   "consolidated_schema": {
     "note": "Legacy 007xx migrations consolidated into base table files",
@@ -512,7 +558,7 @@
     },
     "myloader_flags": {
       "resume": "--resume (expects resume file in backup dir)",
-      "no_overwrite": "Do NOT use --overwrite-tables with partial data"
+      "drop_table": "--drop-table replaces --overwrite-tables in myloader 0.20+"
     },
     "discovery_date": "2026-01-19",
     "lesson": "myloader --help says: 'Expect to find resume file in backup dir and will only process those files'"

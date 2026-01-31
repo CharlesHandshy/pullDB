@@ -50,7 +50,7 @@ class TestMinimalFromEnv:
         assert config.aws_profile is None
         assert config.s3_aws_profile is None
         assert config.default_dbhost is None
-        assert config.myloader_binary == "/opt/pulldb.service/bin/myloader-0.20.1-1"
+        assert config.myloader_binary == "/opt/pulldb.service/bin/myloader-0.21.1-1"
         assert config.myloader_extra_args == ()
         assert config.myloader_timeout_seconds == 86400.0
         assert config.myloader_threads == 8

@@ -135,10 +135,10 @@ WHERE setting_key = 'setting_name';
 
 | Variable | Source | Default | Description |
 |----------|--------|---------|-------------|
-| `PULLDB_MYLOADER_BINARY` | env, mysql | `/opt/pulldb.service/bin/myloader-0.19.3-3` | myloader executable path |
+| `PULLDB_MYLOADER_BINARY` | env, mysql | `/opt/pulldb.service/bin/myloader-0.21.1-1` | myloader executable path |
 | `PULLDB_MYLOADER_DEFAULT_ARGS` | env, mysql | (see below) | Default myloader CLI arguments |
 | `PULLDB_MYLOADER_EXTRA_ARGS` | env, mysql | (empty) | Additional myloader arguments |
-| `PULLDB_MYLOADER_THREADS` | env, mysql | `8` | Thread count for parallel restore |
+| `PULLDB_MYLOADER_THREADS` | env, mysql | `4` | Thread count for parallel restore |
 | `PULLDB_MYLOADER_TIMEOUT_SECONDS` | env, mysql | `86400` | Maximum restore duration (seconds) |
 
 **Default myloader arguments:**
@@ -151,7 +151,7 @@ WHERE setting_key = 'setting_name';
 --retry-count=20
 --local-infile=TRUE
 --ignore-errors=1146
---overwrite-tables
+--drop-table
 --verbose=3
 --max-threads-per-table=1
 ```

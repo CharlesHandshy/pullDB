@@ -1,0 +1,164 @@
+Usage:
+  myloader-0.21.1-1 [OPTION…] multi-threaded MySQL loader
+
+Connection Options
+  -h, --host                            The host to connect to
+  -u, --user                            Username with the necessary privileges
+  -p, --password                        User password
+  --default-connection-database         Set the database name to connect to. Default: INFORMATION_SCHEMA
+  -a, --ask-password                    Prompt For User password
+  -P, --port                            TCP/IP port to connect to
+  -S, --socket                          UNIX domain socket file to use for connection
+  --protocol                            The protocol to use for connection (tcp, socket)
+  -C, --compress-protocol               Use compression on the MySQL connection
+  --ssl                                 Connect using SSL
+  --ssl-mode                            Desired security state of the connection to the server: DISABLED, PREFERRED, REQUIRED, VERIFY_CA, VERIFY_IDENTITY
+  --key                                 The path name to the key file
+  --cert                                The path name to the certificate file
+  --ca                                  The path name to the certificate authority file
+  --capath                              The path name to a directory that contains trusted SSL CA certificates in PEM format
+  --cipher                              A list of permissible ciphers to use for SSL encryption
+  --tls-version                         Which protocols the server permits for encrypted connections
+  --enable-cleartext-plugin             Enable the clear text authentication plugin which is disable by default.
+
+Filter Options
+  -x, --regex                           Regular expression for 'db.table' matching
+  -s, --source-db                       Database to restore
+  --skip-triggers                       Do not import triggers. By default, it imports triggers
+  --skip-post                           Do not import events, stored procedures and functions. By default, it imports events, stored procedures or functions
+  --skip-constraints                    Do not import constraints. By default, it imports constraints
+  --skip-indexes                        Do not import secondary indexes on InnoDB tables. By default, it import the indexes
+  --no-data                             Do not dump or import table data
+  -O, --omit-from-file                  File containing a list of database.table entries to skip, one per line (skips before applying regex option)
+  -T, --tables-list                     Comma delimited table list to dump (does not exclude regex option). Table name must include database name. For instance: test.t1,test.t2
+
+PMM Options
+  --pmm-path                            which default value will be /usr/local/percona/pmm2/collectors/textfile-collector/high-resolution
+  --pmm-resolution                      which default will be high
+
+Execution Options
+  -e, --enable-binlog                   This option is discouraged. Use [myloader_session_variables] in the --defaults-file or --defaults-extra-file instead
+  --innodb-optimize-keys                Option --innodb-optimize-keys is deprecated use --optimize-keys instead
+  --optimize-keys                       Creates the table without the indexes unless SKIP is selected. It will add the indexes right after completing the table restoration by default or after importing all the tables. Options: AFTER_IMPORT_PER_TABLE, AFTER_IMPORT_ALL_TABLES and SKIP. Default: AFTER_IMPORT_PER_TABLE
+  --no-schema                           Do not import table schemas and triggers 
+  --purge-mode                          Option --purge-mode is deprecated use -o/--drop-table instead
+  --disable-redo-log                    Disables the REDO_LOG and enables it after, doesn't check initial status
+  --checksum                            Treat checksums: skip, fail(default), warn.
+  --drop-database                       Executes a DROP DATABASE if the schema database file is found. 
+  -o, --drop-table                      Executes or simulates a DROP TABLE if the table already exists. The drop modes can be: FAIL, NONE, DROP, TRUNCATE and DELETE. If the option is not set, the default is set to: FAIL. If the option is used without a parameter, the default is: DROP.
+  --overwrite-tables                    Option --overwrite-tables has been deprecated. User -o/--drop-table instead.
+  --overwrite-unsafe                    Same as --overwrite-tables but starts data load as soon as possible. May cause InnoDB deadlocks for foreign keys.
+  --retry-count                         Lock wait timeout exceeded retry count, default 10 (currently only for DROP TABLE)
+  --serialized-table-creation           Table recreation will be executed in series, one thread at a time. This means --max-threads-for-schema-creation=1. This option will be removed in future releases
+  --stream                              It will receive the stream from STDIN and create the file in the disk before start processing. Since v0.12.7-1, accepts NO_DELETE, NO_STREAM_AND_NO_DELETE and TRADITIONAL which is the default value and used if no parameter is given and also NO_STREAM since v0.16.3-1
+  --metadata-refresh-interval           Every this amount of tables the internal metadata will be refreshed. If the amount of tables you have in your metadata file is high, then you should increase this value. Default: 100
+  --skip-table-sorting                  Starting with largest table is better, but this can be ignored due performance impact when you have high amount of tables
+  --set-gtid-purged                     After import, it will execute the SET GLOBAL gtid_purged with the value found on source section of the metadata file
+  --num-sequences                       Amount of sequences in the backup. It is read from [config] in the metadata file. Default: 0 
+
+Threads Options
+  --max-threads-per-table               Maximum number of threads per table to use, defaults to --threads
+  --max-threads-for-index-creation      Maximum number of threads for index creation, default 4
+  --max-threads-for-post-actions        Maximum number of threads for post action like: constraints, procedure, views and triggers, default 1
+  --max-threads-for-schema-creation     Maximum number of threads for schema creation. When this is set to 1, is the same than --serialized-table-creation, default 4
+  --exec-per-thread                     Set the command that will receive by STDIN from the input file and write in the STDOUT
+  --exec-per-thread-extension           Set the input file extension when --exec-per-thread is used. Otherwise it will be ignored
+
+Statement Options
+  -r, --rows                            Split the INSERT statement into this many rows.
+  -q, --queries-per-transaction         Number of queries per transaction, default 1000
+  --max-statement-size                  Informs what is the max statement size. Currently not being used.
+  --max-transaction-size                Set the max size of the transaction in megabytes, default 1000
+  --append-if-not-exist                 Appends IF NOT EXISTS to the create table statements. This will be removed when https://bugs.mysql.com/bug.php?id=103791 has been implemented
+  --set-names                           Sets the names, use it at your own risk, default binary
+  --skip-definer                        Removes DEFINER from the CREATE statement. By default, statements are not modified
+  --ignore-set                          List of variables that will be ignored from the header of SET
+
+Load from metadata Options
+  -Q, --quote-character                 Identifier quote character used in INSERT statements. Possible values are: BACKTICK, bt, ` for backtick and DOUBLE_QUOTE, dt, " for double quote. Default: detect from metadata file if possible, otherwise BACKTICK
+  --local-infile                        Enables the ability to use the 'LOAD DATA LOCAL INFILE' statementDefault: detect from metadata file if possible, otherwise is disabled
+
+Application Options:
+  -?, --help                            Show help options
+  -d, --directory                       Directory of the dump to import
+  -L, --logfile                         Log file name to use, by default stdout is used
+  --fifodir                             Directory where the FIFO files will be created when needed. Default: Same as backup
+  -B, --database                        An alternative database to restore into
+  --show-warnings                       If enabled, during INSERT IGNORE the warnings will be printed
+  --resume                              Expect to find resume file in backup dir and will only process those files
+  -k, --kill-at-once                    When Ctrl+c is pressed it immediately terminates the process
+  --mysqldump                           It expect a mysqldump format when stream is used
+  --source-data                         It will include the options in the metadata file, to allow myloader to establish replication
+  -t, --threads                         Number of threads to use, 0 means to use number of CPUs. Default: 4, Minimum: 2
+  -V, --version                         Show the program version and exit
+  -v, --verbose                         Verbosity of output, 0 = silent, 1 = errors, 2 = warnings, 3 = info, default 2
+  --debug                               Turn on debugging output (automatically sets verbosity to 3)
+  --ignore-errors                       Not increment error count and Warning instead of Critical in case of any of the comma-separated error number list
+  --defaults-file                       Use a specific defaults file. Default: /etc/mydumper.cnf
+  --defaults-extra-file                 Use an additional defaults file. This is loaded after --defaults-file, replacing previous defined values
+  --source-control-command              Instruct the proper commands to execute depending where are configuring the replication. Options: TRADITIONAL, AWS
+  --optimize-keys-engines               List of engines that will be used to split the create table statement into multiple stages if possible. Default: InnoDB,ROCKSDB
+  --server-version                      Set the server version avoid automatic detection
+  --throttle                            Expects a string like Threads_running=10. It will check the SHOW GLOBAL STATUS and if it is higher, it will increase the sleep time between SELECT. If option is used without parameters it will use Threads_running and the amount of threads
+
+# host                                  = 
+# user                                  = 
+# password                              = 
+# ask-password                          = FALSE
+port                                    = 0
+# socket                                = 
+# protocol                              = 
+# compress-protocol                     = FALSE
+# ssl                                   = FALSE
+# ssl-mode                              = 
+# key                                   = 
+# cert                                  = 
+# ca                                    = 
+# capath                                = 
+# cipher                                = 
+# tls-version                           = 
+# regex                                 = ""
+# source-db                             = 
+# skip-triggers                         = FALSE
+# skip-constraints                      = FALSE
+# skip-indexes                          = FALSE
+# skip-post                             = FALSE
+# no-data                               = FALSE
+# omit-from-file                        = 
+# tables-list                           = 
+# pmm-path                              = 
+# pmm-resolution                        = 
+optimize-keys                           = AFTER_IMPORT_PER_TABLE
+# no-schemas                            = FALSE
+# local-infile                          = FALSE
+# disable-redo-log                      = FALSE
+# checksum                              = 
+# overwrite-tables                      = FALSE
+# overwrite-unsafe                      = FALSE
+retry-count                             = 10
+# serialized-table-creation             = FALSE
+# stream                                = FALSE
+max-threads-per-table                   = 4
+max-threads-for-index-creation          = 4
+max-threads-for-post-actions            = 1
+max-threads-for-schema-creation         = 4
+# exec-per-thread                       = 
+# exec-per-thread-extension             = 
+rows                                    = 0
+queries-per-transaction                 = 1000
+# append-if-not-exist                   = FALSE
+set-names                               = binary
+# skip-definer                          = FALSE
+help                                    = TRUE
+# directory                             = 
+# logfile                               = 
+# database                              = 
+quote-character                         = `
+# resume                                = FALSE
+threads                                 = 4
+# version                               = FALSE
+verbose                                 = TRUE
+# debug                                 = FALSE
+# defaults-file                         = 
+# defaults-extra-file                   = 
+# fifodir                               = 

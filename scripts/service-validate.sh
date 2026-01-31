@@ -147,7 +147,7 @@ validate_prerequisites() {
     fi
     
     # myloader binary
-    local myloader_bin="${PULLDB_MYLOADER_BINARY:-${INSTALL_PREFIX}/bin/myloader-0.20.1-1}"
+    local myloader_bin="${PULLDB_MYLOADER_BINARY:-${INSTALL_PREFIX}/bin/myloader-0.21.1-1}"
     if [[ -x "$myloader_bin" ]]; then
         local myloader_version
         myloader_version=$("$myloader_bin" --version 2>&1 | head -1 || echo "unknown")
