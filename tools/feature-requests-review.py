@@ -35,6 +35,7 @@ import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
@@ -55,6 +56,27 @@ except ImportError as e:
     print(f"Error: Missing dependency - {e}", file=sys.stderr)
     print("Install with: pip install boto3 pymysql", file=sys.stderr)
     sys.exit(1)
+
+
+# =============================================================================
+# JSON Encoder for Decimal/datetime
+# =============================================================================
+
+
+class CustomJSONEncoder(json.JSONEncoder):
+    """JSON encoder that handles Decimal and datetime types."""
+
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, Decimal):
+            return int(obj) if obj == int(obj) else float(obj)
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
+
+def json_dumps(obj: Any, **kwargs: Any) -> str:
+    """JSON dumps with custom encoder for Decimal/datetime."""
+    return json.dumps(obj, cls=CustomJSONEncoder, **kwargs)
 
 
 # =============================================================================
@@ -561,7 +583,7 @@ def cmd_list(args: argparse.Namespace) -> int:
                 for r in requests
             ],
         }
-        print(json.dumps(output, indent=2))
+        print(json_dumps(output, indent=2))
         return 0
 
     if not requests:
@@ -645,7 +667,7 @@ def cmd_show(args: argparse.Namespace) -> int:
                 for n in notes
             ],
         }
-        print(json.dumps(output, indent=2))
+        print(json_dumps(output, indent=2))
         return 0
 
     # Formatted detail view
@@ -738,7 +760,7 @@ def cmd_stats(args: argparse.Namespace) -> int:
                 for r in top_requests
             ],
         }
-        print(json.dumps(output, indent=2))
+        print(json_dumps(output, indent=2))
         return 0
 
     # Formatted stats view
