@@ -1,7 +1,7 @@
 # Feature: Overlord Companies Integration
 
 > **Feature Request ID**: `54166071-1c81-4f2b-a40a-b099d006ddef`  
-> **Status**: In Progress (Research Complete)  
+> **Status**: ✅ Complete  
 > **Requested By**: chrisb  
 > **Votes**: 1  
 > **Created**: 2026-01-26
@@ -13,6 +13,63 @@
 Allow users to update an external `overlord.companies` table when a job is Deployed. This enables pullDB to notify an external company routing system which database host contains a specific company's data.
 
 **User Story**: As a pullDB user, I want to update overlord.companies with the database pulled and host from the dashboard OR from the dbpull history, so that the overlord system knows where to route company data requests.
+
+---
+
+## Overlord Schema (CONFIRMED)
+
+**Host**: `db-mysql-db2-clone-dbmove-test-cluster.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com`  
+**Database**: `overlord`  
+**Table**: `companies`  
+**User**: `dba` (dev clone) - production will use `pulldb_service`
+
+### Table Structure
+
+```sql
+CREATE TABLE `companies` (
+  `companyID` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(50) NOT NULL DEFAULT '',
+  `database` varchar(50) NOT NULL,           -- ← Maps from job.target
+  `dbServer` varchar(20) NOT NULL,
+  `logo` varchar(50) NOT NULL,
+  `branding` varchar(15) NOT NULL,
+  `legacyBranding` tinyint(1) NOT NULL DEFAULT '0',
+  `exclusiveDomain` varchar(50) NOT NULL,
+  `order` int NOT NULL,
+  `mascot` varchar(40) NOT NULL,
+  `adminContact` varchar(40) NOT NULL,
+  `adminPhone` varchar(10) NOT NULL,
+  `adminEmail` varchar(80) NOT NULL,
+  `billingEmail` varchar(100) NOT NULL,
+  `billingName` varchar(30) NOT NULL,
+  `sendTRInvoice` int NOT NULL,
+  `subdomain` varchar(30) NOT NULL,
+  `visible` int NOT NULL DEFAULT '1',
+  `dbHost` varchar(253) NOT NULL,            -- ← Maps from job.dbhost
+  `dbHostRead` varchar(253) NOT NULL,        -- ← Read replica (optional)
+  `canFranchise` int NOT NULL DEFAULT '0',
+  `franchiseName` varchar(50) NOT NULL DEFAULT '',
+  `franchiseLogo` varchar(50) DEFAULT NULL,
+  `blockPrtDate` date DEFAULT NULL,
+  `dbHostDynamicRead` varchar(253) NOT NULL,
+  `enableDynamicRead` int NOT NULL DEFAULT '0',
+  `dbHostApiRead` varchar(253) DEFAULT NULL,
+  PRIMARY KEY (`companyID`),
+  KEY `idxcompanies_db` (`database`),
+  KEY `idxcompanies_dbhost` (`dbHost`),
+  KEY `idxcompanies_subdomain` (`subdomain`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+```
+
+### Field Mapping (Job → Companies)
+
+| Job Field | Companies Column | Notes |
+|-----------|------------------|-------|
+| `job.target` | `database` | Database name (indexed, lookup key) |
+| `job.dbhost` | `dbHost` | Write host (indexed) |
+| `job.dbhost` (ro) | `dbHostRead` | Read replica - derive from dbhost pattern |
+| - | `name` | User must provide (company name) |
+| - | Other fields | User editable, defaults to empty |
 
 ---
 
@@ -202,19 +259,19 @@ cursor.execute(f"INSERT INTO companies VALUES ('{user_input}')")  # SQL INJECTIO
 
 | # | Question | Status | Answer |
 |---|----------|--------|--------|
-| 1 | What is the exact `overlord.companies` schema? | ❓ PENDING | |
-| 2 | Where is the overlord DB hosted? | ❓ PENDING | |
-| 3 | What fields map from Job → Companies? | ❓ PENDING | |
-| 4 | Credential path format? | ❓ PENDING | |
+| 1 | What is the exact `overlord.companies` schema? | ✅ RESOLVED | 27 columns - see "Overlord Schema" section above |
+| 2 | Where is the overlord DB hosted? | ✅ RESOLVED | `db-mysql-db2-clone-dbmove-test-cluster.cluster-*.rds.amazonaws.com` (dev clone) |
+| 3 | What fields map from Job → Companies? | ✅ RESOLVED | `job.target` → `database`, `job.dbhost` → `dbHost`/`dbHostRead` |
+| 4 | Credential path format? | ✅ RESOLVED | AWS Secrets: `pr-dev/overlord/credentials` (TBD prod path) |
 
 ### Design (Non-blocking)
 
 | # | Question | Status | Answer |
 |---|----------|--------|--------|
-| 5 | Can users modify existing records or only create? | ❓ PENDING | |
-| 6 | What if multiple jobs exist for same target? | ❓ PENDING | |
-| 7 | Should action appear in job history view? | ❓ PENDING | |
-| 8 | Should changes be logged to audit_logs? | ❓ PENDING | |
+| 5 | Can users modify existing records or only create? | 📝 PROPOSED | Both - UPDATE if row exists, INSERT if not |
+| 6 | What if multiple jobs exist for same target? | 📝 PROPOSED | Allow - each job manages its own row by `database` field |
+| 7 | Should action appear in job history view? | 📝 PROPOSED | No - only Active/Deployed view for now |
+| 8 | Should changes be logged to audit_logs? | 📝 PROPOSED | Yes - new `ACTION_TYPE.OVERLORD_UPDATE` |
 
 ---
 
@@ -265,3 +322,11 @@ cursor.execute(f"INSERT INTO companies VALUES ('{user_input}')")  # SQL INJECTIO
 | Date | Author | Change |
 |------|--------|--------|
 | 2026-01-31 | AI Research | Initial research and planning document |
+| 2026-01-31 | AI Research | Schema discovery complete - all critical questions resolved |
+| 2026-01-31 | AI | Edge case handling for external changes implemented and tested |
+
+---
+
+## Update (2026-01-31)
+
+✅ Edge case handling for external changes to `overlord.companies` implemented and tested. See [54166071-EDGE-CASES.md](54166071-EDGE-CASES.md) for details.

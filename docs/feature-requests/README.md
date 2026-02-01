@@ -11,9 +11,9 @@ Files are named using the pattern: `{request_id_prefix}-{short_name}.md`
 
 ## Current Feature Requests
 
-| ID | File | Title | Status |
-|----|------|-------|--------|
-| `54166071` | [54166071-overlord-companies.md](54166071-overlord-companies.md) | Overlord Companies Integration | In Progress |
+| ID | Files | Title | Status |
+|----|-------|-------|--------|
+| `54166071` | [Spec](54166071-overlord-companies.md) • [**Vision**](54166071-IMPLEMENTATION-VISION.md) | Overlord Companies Integration | Ready for Implementation |
 
 ## Workflow
 

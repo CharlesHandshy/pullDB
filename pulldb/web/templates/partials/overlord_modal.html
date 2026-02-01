@@ -1,0 +1,555 @@
+<!-- Overlord Companies Modal
+     Feature: 54166071 - Button to update overlord.companies
+     HCA Layer: features
+     
+     This modal provides a form to view and edit overlord.companies routing data
+     for a deployed job's database. It includes:
+     - Read-only fields: database (auto-populated from job target)
+     - Editable fields: subdomain, name, dbHost, dbHostRead
+     - dbHost fields auto-populated from job's restore host
+     - Release dropdown to control cleanup behavior
+-->
+
+<div id="overlord-modal" class="modal modal-hidden">
+    <div class="modal-backdrop" onclick="closeOverlordModal()"></div>
+    <div class="modal-content modal-content-wide">
+        <!-- Header -->
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                Overlord Companies
+            </h3>
+            <button type="button" class="modal-close" onclick="closeOverlordModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" x2="6" y1="6" y2="18"/>
+                    <line x1="6" x2="18" y1="6" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        
+        <form id="overlord-form" onsubmit="return submitOverlordForm(event)">
+            <input type="hidden" id="overlord-job-id" name="job_id">
+            <input type="hidden" id="overlord-database" name="database">
+            
+            <div class="modal-body">
+                <!-- Status Banner (for existing tracking) -->
+                <div id="overlord-status-banner" class="alert mb-4 js-hidden">
+                    <span id="overlord-status-message"></span>
+                </div>
+                
+                <!-- Database Info -->
+                <div class="form-section">
+                    <div class="form-section-title">
+                        Database Identification
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Database Name</label>
+                            <div class="form-value-readonly" id="overlord-display-database">—</div>
+                            <span class="form-hint">Auto-set from job target (read-only)</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="overlord-subdomain" class="form-label required">Subdomain</label>
+                            <input type="text" id="overlord-subdomain" name="subdomain" class="form-input"
+                                   placeholder="company-name" required>
+                            <span class="form-hint">The subdomain used for routing (e.g., acme for acme.yourapp.com)</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Editable Fields -->
+                <div class="form-section">
+                    <div class="form-section-title">
+                        Company Information
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group form-group-wide">
+                            <label for="overlord-name" class="form-label">Company Name</label>
+                            <input type="text" id="overlord-name" name="name" class="form-input"
+                                   placeholder="Company display name">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Host Configuration -->
+                <div class="form-section">
+                    <div class="form-section-title">
+                        Host Configuration
+                        <span class="form-section-hint">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            These values route application traffic to your database host
+                        </span>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group form-group-wide">
+                            <label for="overlord-dbhost" class="form-label required">Primary Host (dbHost)</label>
+                            <input type="text" id="overlord-dbhost" name="dbHost" class="form-input"
+                                   placeholder="staging.db.example.com" required>
+                            <span class="form-hint">Main database connection for read/write operations</span>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group form-group-wide">
+                            <label for="overlord-dbhost-read" class="form-label">Read Replica (dbHostRead)</label>
+                            <input type="text" id="overlord-dbhost-read" name="dbHostRead" class="form-input"
+                                   placeholder="staging-read.db.example.com (optional)">
+                            <span class="form-hint">Read-only connection for reporting queries (optional)</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Release Control -->
+                <div class="form-section">
+                    <div class="form-section-title">
+                        Release Control
+                        <span class="form-section-hint">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            </svg>
+                            What happens when this job is deleted
+                        </span>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group form-group-wide">
+                            <label for="overlord-release-action" class="form-label">On Job Deletion</label>
+                            <select id="overlord-release-action" name="release_action" class="form-select">
+                                <option value="restore">🔄 Restore Original Values</option>
+                                <option value="clear">🧹 Clear Host Fields Only</option>
+                                <option value="delete">🗑️ Delete Record Completely</option>
+                            </select>
+                            <div class="form-hint release-hint" id="release-hint">
+                                Restores the previous dbHost values that existed before pullDB claimed this record.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Original Values (shown when restoring) -->
+                    <div id="overlord-original-values" class="overlord-original-values js-hidden">
+                        <div class="original-values-label">Original Values (will be restored):</div>
+                        <div class="original-values-grid">
+                            <div class="original-value-item">
+                                <span class="original-value-label">dbHost:</span>
+                                <code id="overlord-original-dbhost">—</code>
+                            </div>
+                            <div class="original-value-item">
+                                <span class="original-value-label">dbHostRead:</span>
+                                <code id="overlord-original-dbhost-read">—</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeOverlordModal()">Cancel</button>
+                <button type="submit" id="overlord-submit-btn" class="btn btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                        <polyline points="17 21 17 13 7 13 7 21"/>
+                        <polyline points="7 3 7 8 15 8"/>
+                    </svg>
+                    <span id="overlord-submit-text">Save Changes</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+/* Overlord Modal Styles */
+.overlord-original-values {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius-md);
+    border: 1px dashed var(--gray-200);
+}
+
+.original-values-label {
+    font-size: var(--text-sm);
+    color: var(--gray-600);
+    margin-bottom: var(--space-2);
+    font-weight: var(--font-medium);
+}
+
+.original-values-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-2);
+}
+
+.original-value-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.original-value-label {
+    font-size: var(--text-sm);
+    color: var(--gray-500);
+}
+
+.original-value-item code {
+    font-size: var(--text-sm);
+    padding: var(--space-1) var(--space-2);
+    background: var(--gray-100);
+    border-radius: var(--radius-sm);
+}
+
+.release-hint {
+    margin-top: var(--space-2);
+    padding: var(--space-2);
+    background: var(--blue-50);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--blue-400);
+}
+
+.form-value-readonly {
+    padding: var(--space-2) var(--space-3);
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--gray-600);
+}
+
+/* Badge for read-only indicator */
+.badge-info {
+    background: var(--blue-100);
+    color: var(--blue-700);
+}
+
+/* Form section styling */
+.form-section {
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.form-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.form-section-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--gray-700);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--space-3);
+}
+
+.form-section-hint {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    font-weight: var(--font-normal);
+    color: var(--gray-500);
+    text-transform: none;
+    letter-spacing: normal;
+}
+</style>
+
+<script>
+/**
+ * Overlord Modal Controller
+ * Feature: 54166071
+ */
+
+// Current state
+let overlordState = {
+    jobId: null,
+    database: null,
+    rowExistedBefore: false,
+    previousDbHost: null,
+    previousDbHostRead: null,
+};
+
+/**
+ * Open the overlord modal for a job
+ * @param {string} jobId - Job UUID
+ */
+async function openOverlordModal(jobId) {
+    const modal = document.getElementById('overlord-modal');
+    if (!modal) return;
+    
+    // Show modal immediately with loading state
+    modal.classList.remove('modal-hidden');
+    resetOverlordForm();
+    
+    try {
+        // Fetch current state from API
+        const response = await fetch(`/api/v1/overlord/${jobId}`);
+        
+        if (!response.ok) {
+            // Handle specific HTTP error codes
+            let errorMsg = 'Failed to load overlord data';
+            
+            // Try to get error detail from response body first
+            let errorData = null;
+            try {
+                errorData = await response.json();
+            } catch {
+                // Response body not JSON, use status-based fallback
+            }
+            
+            if (response.status === 503) {
+                errorMsg = 'Connection to overlord database failed. Please try again or contact administrator.';
+            } else if (response.status === 404) {
+                errorMsg = 'Job not found';
+            } else if (response.status === 403) {
+                errorMsg = 'You don\'t have permission to manage overlord for this job';
+            } else if (errorData && errorData.detail) {
+                // Use the specific error message from the API
+                errorMsg = errorData.detail;
+            }
+            
+            showOverlordError(errorMsg);
+            return;
+        }
+        
+        const data = await response.json();
+        
+        // Check if overlord is enabled at all
+        if (data.enabled === false) {
+            showOverlordError('Overlord integration is not configured');
+            return;
+        }
+        
+        // SUCCESS PATH: No tracking AND no company record = show "Create New Record" form
+        // This is handled in populateOverlordForm() which shows the create banner
+        populateOverlordForm(data);
+        
+    } catch (error) {
+        console.error('Failed to load overlord data:', error);
+        showOverlordError(error.message || 'Failed to load overlord data. Please try again.');
+    }
+}
+
+/**
+ * Close the modal
+ */
+function closeOverlordModal() {
+    const modal = document.getElementById('overlord-modal');
+    if (modal) {
+        modal.classList.add('modal-hidden');
+    }
+}
+
+/**
+ * Reset form to empty state
+ */
+function resetOverlordForm() {
+    document.getElementById('overlord-form').reset();
+    document.getElementById('overlord-job-id').value = '';
+    document.getElementById('overlord-database').value = '';
+    document.getElementById('overlord-display-database').textContent = '—';
+    document.getElementById('overlord-subdomain').value = '';
+    document.getElementById('overlord-status-banner').classList.add('js-hidden');
+    document.getElementById('overlord-original-values').classList.add('js-hidden');
+    
+    overlordState = {
+        jobId: null,
+        database: null,
+        restoreHost: null,
+        rowExistedBefore: false,
+        previousDbHost: null,
+        previousDbHostRead: null,
+    };
+}
+
+/**
+ * Populate form with data from API
+ * @param {Object} data - API response data
+ */
+function populateOverlordForm(data) {
+    const { tracking, company, job } = data;
+    const isNewRecord = !company;
+    
+    // Store state
+    overlordState.jobId = job.id;
+    overlordState.database = job.target;
+    overlordState.restoreHost = job.dbhost;  // Host where DB was restored
+    
+    // Hidden fields
+    document.getElementById('overlord-job-id').value = job.id;
+    document.getElementById('overlord-database').value = job.target;
+    
+    // Database name (read-only display)
+    document.getElementById('overlord-display-database').textContent = job.target;
+    
+    // Show status banner for new record
+    const banner = document.getElementById('overlord-status-banner');
+    const message = document.getElementById('overlord-status-message');
+    
+    if (isNewRecord) {
+        // New record - show create message and default populate fields
+        banner.classList.remove('js-hidden', 'alert-success', 'alert-warning');
+        banner.classList.add('alert-info');
+        message.innerHTML = '<strong>Create New Record</strong> — No existing overlord.companies entry found. Fill in the details below to create one.';
+        
+        // Default subdomain to target name
+        document.getElementById('overlord-subdomain').value = job.target;
+        
+        // Default company name empty
+        document.getElementById('overlord-name').value = '';
+        
+        // Default hosts to restore host
+        document.getElementById('overlord-dbhost').value = job.dbhost || '';
+        document.getElementById('overlord-dbhost-read').value = job.dbhost || '';
+        
+    } else {
+        // Existing record - use company values
+        document.getElementById('overlord-subdomain').value = company.subdomain || '';
+        document.getElementById('overlord-name').value = company.name || '';
+        
+        // Host fields - use existing values, or fall back to job.dbhost if empty
+        const existingDbHost = company.dbHost || '';
+        const existingDbHostRead = company.dbHostRead || '';
+        document.getElementById('overlord-dbhost').value = existingDbHost || job.dbhost || '';
+        document.getElementById('overlord-dbhost-read').value = existingDbHostRead || job.dbhost || '';
+    }
+    
+    // Tracking state (if we have a claim)
+    if (tracking) {
+        overlordState.rowExistedBefore = tracking.row_existed_before;
+        overlordState.previousDbHost = tracking.previous_dbhost;
+        overlordState.previousDbHostRead = tracking.previous_dbhost_read;
+        
+        // Update status banner (overrides new record message if we have tracking)
+        banner.classList.remove('js-hidden', 'alert-info', 'alert-success', 'alert-warning');
+        
+        if (tracking.status === 'synced') {
+            banner.classList.add('alert-success');
+            message.textContent = '✓ Overlord routing is active for this database';
+        } else if (tracking.status === 'claimed') {
+            banner.classList.add('alert-info');
+            message.textContent = 'Claimed but not yet synced. Save to activate routing.';
+        }
+        
+        // Show original values if they exist
+        if (tracking.row_existed_before && tracking.previous_dbhost) {
+            document.getElementById('overlord-original-dbhost').textContent = tracking.previous_dbhost || '(empty)';
+            document.getElementById('overlord-original-dbhost-read').textContent = tracking.previous_dbhost_read || '(empty)';
+        }
+        
+        updateReleaseHint();
+    }
+}
+
+/**
+ * Update release action hint text
+ */
+function updateReleaseHint() {
+    const action = document.getElementById('overlord-release-action').value;
+    const hint = document.getElementById('release-hint');
+    const originalValues = document.getElementById('overlord-original-values');
+    
+    switch (action) {
+        case 'restore':
+            hint.textContent = 'Restores the previous dbHost values that existed before pullDB claimed this record.';
+            hint.style.borderLeftColor = 'var(--blue-400)';
+            hint.style.background = 'var(--blue-50)';
+            originalValues.classList.toggle('js-hidden', !overlordState.rowExistedBefore);
+            break;
+        case 'clear':
+            hint.textContent = 'Sets dbHost and dbHostRead to empty strings, disabling routing without deleting the record.';
+            hint.style.borderLeftColor = 'var(--yellow-400)';
+            hint.style.background = 'var(--yellow-50)';
+            originalValues.classList.add('js-hidden');
+            break;
+        case 'delete':
+            hint.textContent = 'Permanently deletes this row from overlord.companies. Use with caution.';
+            hint.style.borderLeftColor = 'var(--red-400)';
+            hint.style.background = 'var(--red-50)';
+            originalValues.classList.add('js-hidden');
+            break;
+    }
+}
+
+/**
+ * Handle form submission
+ */
+async function submitOverlordForm(event) {
+    event.preventDefault();
+    
+    const form = document.getElementById('overlord-form');
+    const submitBtn = document.getElementById('overlord-submit-btn');
+    const submitText = document.getElementById('overlord-submit-text');
+    
+    // Disable form during submission
+    submitBtn.disabled = true;
+    submitText.textContent = 'Saving...';
+    
+    try {
+        const formData = new FormData(form);
+        const payload = {
+            job_id: formData.get('job_id'),
+            database: formData.get('database'),
+            subdomain: formData.get('subdomain'),
+            name: formData.get('name'),
+            dbHost: formData.get('dbHost'),
+            dbHostRead: formData.get('dbHostRead'),
+            release_action: formData.get('release_action'),
+        };
+        
+        const response = await fetch(`/api/v1/overlord/${payload.job_id}/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to save changes');
+        }
+        
+        // Success - show toast and close modal
+        showToast('Overlord routing updated successfully', 'success');
+        closeOverlordModal();
+        
+    } catch (error) {
+        console.error('Failed to save overlord changes:', error);
+        showToast(error.message || 'Failed to save changes', 'error');
+    } finally {
+        submitBtn.disabled = false;
+        submitText.textContent = 'Save Changes';
+    }
+}
+
+/**
+ * Show error in modal
+ */
+function showOverlordError(message) {
+    const banner = document.getElementById('overlord-status-banner');
+    const messageEl = document.getElementById('overlord-status-message');
+    banner.classList.remove('js-hidden', 'alert-info', 'alert-success');
+    banner.classList.add('alert-danger');
+    messageEl.textContent = message;
+}
+
+// Attach event listener for release action change
+document.addEventListener('DOMContentLoaded', function() {
+    const releaseSelect = document.getElementById('overlord-release-action');
+    if (releaseSelect) {
+        releaseSelect.addEventListener('change', updateReleaseHint);
+    }
+});
+</script>

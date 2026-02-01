@@ -711,6 +711,47 @@ def delete_secret_if_new(
         return False
 
 
+def delete_secret_if_exists(
+    secret_path: str,
+    aws_profile: str | None = None,
+    aws_region: str | None = None,
+    force_delete: bool = False,
+) -> bool:
+    """Delete a secret if it exists.
+
+    Args:
+        secret_path: The secret path to delete.
+        aws_profile: AWS profile name.
+        aws_region: AWS region.
+        force_delete: If True, delete immediately without recovery window.
+
+    Returns:
+        True if deleted or didn't exist, False on error.
+    """
+    try:
+        resolver = CredentialResolver(aws_profile=aws_profile, aws_region=aws_region)
+        client = resolver._get_secrets_manager_client()
+
+        if force_delete:
+            client.delete_secret(
+                SecretId=secret_path,
+                ForceDeleteWithoutRecovery=True,
+            )
+        else:
+            client.delete_secret(
+                SecretId=secret_path,
+                RecoveryWindowInDays=7,
+            )
+        logger.info(f"Deleted secret: {secret_path}")
+        return True
+    except client.exceptions.ResourceNotFoundException:
+        logger.debug(f"Secret {secret_path} does not exist")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to delete secret {secret_path}: {e}")
+        return False
+
+
 def generate_credential_ref(host_alias: str) -> str:
     """Generate the credential_ref URI for a host alias.
 

@@ -6,7 +6,6 @@
  * - Tabbed category navigation with URL state
  * - Global search with tab badge counts and auto-switch
  * - Inline edit/save/reset for each setting
- * - Dangerous setting confirmation modal
  * - Directory creation modal
  * - Export functionality
  */
@@ -18,7 +17,6 @@
     // ==========================================================================
 
     let currentTab = 'job_limits';
-    let pendingSave = null;
     let pendingCreateDir = null;
 
     // ==========================================================================
@@ -140,7 +138,6 @@
         // Handle input, select, or textarea
         const valueEl = form.querySelector('[name="value"]');
         const value = valueEl ? valueEl.value : '';
-        const isDangerous = row.dataset.dangerous === 'true';
         const validationMsg = row.querySelector('.validation-message');
         
         // Validate first
@@ -164,14 +161,6 @@
         } catch (e) {
             validationMsg.textContent = 'Validation failed';
             validationMsg.className = 'validation-message error';
-            return false;
-        }
-        
-        // If dangerous, show confirmation
-        if (isDangerous) {
-            pendingSave = { key, form, value };
-            document.getElementById('confirm-detail').textContent = `Setting: ${key}\nNew value: ${value}`;
-            showModal('confirm-modal');
             return false;
         }
         
@@ -223,15 +212,6 @@
         const row = document.querySelector(`.setting-row[data-key="${key}"]`);
         if (!row) return;
         
-        const isDangerous = row.dataset.dangerous === 'true';
-        
-        if (isDangerous) {
-            pendingSave = { key, isReset: true };
-            document.getElementById('confirm-detail').textContent = `Setting: ${key}\nAction: Reset to default`;
-            showModal('confirm-modal');
-            return;
-        }
-        
         const confirmed = await showConfirm(`Reset "${key}" to its default value?`, {
             title: 'Reset Setting',
             okText: 'Reset',
@@ -271,25 +251,6 @@
     function hideModal(id) {
         document.getElementById(id)?.classList.add('hidden');
     }
-
-    window.closeConfirmModal = function() {
-        hideModal('confirm-modal');
-        pendingSave = null;
-    };
-
-    window.confirmProceed = async function() {
-        if (!pendingSave) return;
-        
-        hideModal('confirm-modal');
-        
-        if (pendingSave.isReset) {
-            await performReset(pendingSave.key);
-        } else {
-            await performSave(pendingSave.key, pendingSave.form);
-        }
-        
-        pendingSave = null;
-    };
 
     window.showCreateDirModal = function(key, path) {
         pendingCreateDir = { key, path };
@@ -481,7 +442,6 @@
 
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
-            closeConfirmModal();
             closeCreateDirModal();
             // Cancel any active edits
             document.querySelectorAll('.setting-edit:not(.js-hidden)').forEach(edit => {

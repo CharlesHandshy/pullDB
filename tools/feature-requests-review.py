@@ -796,6 +796,135 @@ def cmd_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+def update_feature_request_status(
+    conn: pymysql.Connection, request_id: str, new_status: str
+) -> bool:
+    """Update a feature request's status.
+    
+    Args:
+        conn: Database connection
+        request_id: Full or partial request ID
+        new_status: New status value (open, in_progress, complete, declined)
+    
+    Returns:
+        True if updated, False if not found
+    """
+    # Resolve partial ID to full ID via get_request
+    request = get_request(conn, request_id)
+    if not request:
+        return False
+    
+    full_id = request.request_id
+    
+    with conn.cursor() as cursor:
+        # Set completed_at if marking complete
+        if new_status == "complete":
+            query = """
+                UPDATE feature_requests 
+                SET status = %s, completed_at = NOW(), updated_at = NOW()
+                WHERE request_id = %s
+            """
+        else:
+            query = """
+                UPDATE feature_requests 
+                SET status = %s, completed_at = NULL, updated_at = NOW()
+                WHERE request_id = %s
+            """
+        cursor.execute(query, (new_status, full_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    """Update a feature request's status."""
+    conn = get_connection()
+    
+    # Get current state (also validates ID)
+    request = get_request(conn, args.request_id)
+    if not request:
+        print(f"Error: Feature request not found: {args.request_id}", file=sys.stderr)
+        return 1
+    
+    old_status = request.status.value
+    new_status = args.status
+    
+    if old_status == new_status:
+        print(f"Status already '{new_status}' - no change needed.")
+        return 0
+    
+    # Perform update
+    success = update_feature_request_status(conn, request.request_id, new_status)
+    
+    if success:
+        print(f"✅ Updated feature request {args.request_id[:8]}")
+        print(f"   Status: {old_status} → {new_status}")
+        return 0
+    else:
+        print(f"Error: Failed to update feature request", file=sys.stderr)
+        return 1
+
+
+def add_note(conn: pymysql.Connection, request_id: str, note_text: str) -> bool:
+    """Add a note to a feature request.
+    
+    Args:
+        conn: Database connection
+        request_id: Full request ID
+        note_text: Note content
+    
+    Returns:
+        True if added successfully
+    """
+    import uuid
+    
+    note_id = str(uuid.uuid4())
+    # Use a system user ID for AI/dev tool notes
+    system_user_id = "00000000-0000-0000-0000-000000000000"
+    
+    with conn.cursor() as cursor:
+        # Check if system user exists, create if not
+        cursor.execute(
+            "SELECT user_id FROM auth_users WHERE user_id = %s",
+            (system_user_id,)
+        )
+        if not cursor.fetchone():
+            cursor.execute(
+                """INSERT INTO auth_users (user_id, username, user_code, role, created_at)
+                   VALUES (%s, 'system', 'SYSTEM', 'service', NOW())
+                   ON DUPLICATE KEY UPDATE username = username""",
+                (system_user_id,)
+            )
+        
+        cursor.execute(
+            """INSERT INTO feature_request_notes 
+               (note_id, request_id, user_id, note_text, created_at)
+               VALUES (%s, %s, %s, %s, NOW())""",
+            (note_id, request_id, system_user_id, note_text)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def cmd_note(args: argparse.Namespace) -> int:
+    """Add a note to a feature request."""
+    conn = get_connection()
+    
+    # Get request (validates ID)
+    request = get_request(conn, args.request_id)
+    if not request:
+        print(f"Error: Feature request not found: {args.request_id}", file=sys.stderr)
+        return 1
+    
+    success = add_note(conn, request.request_id, args.text)
+    
+    if success:
+        print(f"✅ Added note to feature request {args.request_id[:8]}")
+        return 0
+    else:
+        print(f"Error: Failed to add note", file=sys.stderr)
+        return 1
+
+
 # =============================================================================
 # Main Entry Point
 # =============================================================================
@@ -882,6 +1011,37 @@ Environment Variables:
         help="Output JSON for programmatic use",
     )
     stats_parser.set_defaults(func=cmd_stats)
+
+    # Update command
+    update_parser = subparsers.add_parser(
+        "update", help="Update a feature request's status"
+    )
+    update_parser.add_argument(
+        "request_id",
+        help="Request ID (full UUID or first 8+ characters)",
+    )
+    update_parser.add_argument(
+        "--status",
+        choices=["open", "in_progress", "complete", "declined"],
+        required=True,
+        help="New status to set",
+    )
+    update_parser.set_defaults(func=cmd_update)
+
+    # Note command
+    note_parser = subparsers.add_parser(
+        "note", help="Add a note to a feature request"
+    )
+    note_parser.add_argument(
+        "request_id",
+        help="Request ID (full UUID or first 8+ characters)",
+    )
+    note_parser.add_argument(
+        "--text",
+        required=True,
+        help="Note text to add",
+    )
+    note_parser.set_defaults(func=cmd_note)
 
     args = parser.parse_args()
     result: int = args.func(args)

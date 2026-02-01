@@ -129,6 +129,7 @@ async def jobs_page(
     max_retention_days = 180
     jobs_refresh_interval = 5
     retention_options: list[tuple[str, str]] = []
+    overlord_enabled = False
     
     settings_repo = getattr(state, "settings_repo", None)
     if settings_repo:
@@ -140,6 +141,10 @@ async def jobs_page(
             jobs_refresh_interval = settings_repo.get_jobs_refresh_interval()
         if hasattr(settings_repo, "get_retention_options"):
             retention_options = settings_repo.get_retention_options(include_now=False)
+        if hasattr(settings_repo, "get_setting"):
+            # get_setting returns str | None, convert to bool
+            overlord_value = settings_repo.get_setting("overlord_enabled")
+            overlord_enabled = overlord_value in ("true", "True", "1", True)
 
     return templates.TemplateResponse(
         "features/jobs/jobs.html",
@@ -169,6 +174,8 @@ async def jobs_page(
             "max_retention_days": max_retention_days,
             "jobs_refresh_interval": jobs_refresh_interval,
             "retention_options": retention_options,
+            # Overlord feature flag
+            "overlord_enabled": overlord_enabled,
             # Flash messages
             "warning": restore_warning,
         },
@@ -1428,6 +1435,18 @@ async def force_complete_job_deletion(
         # Any error checking - still allow admin to force
         skip_reason = f"check_error: {e}"
 
+    # Auto-release overlord claim before force-completing deletion
+    # Feature: 54166071 - Overlord cleanup on job deletion
+    overlord_manager = getattr(state, "overlord_manager", None)
+    if overlord_manager and overlord_manager.is_enabled:
+        try:
+            from pulldb.worker.cleanup import cleanup_overlord_on_job_delete
+            cleanup_overlord_on_job_delete(job_id, overlord_manager)
+            logger.info(f"Auto-released overlord for force-completed job {job_id[:12]}")
+        except Exception as e:
+            # Log warning but don't block deletion - overlord issues shouldn't prevent cleanup
+            logger.warning(f"Failed to auto-release overlord for job {job_id[:12]}: {e}")
+
     # Perform force-complete
     reason = (
         f"Force-completed by admin {user.username}"
@@ -1554,6 +1573,18 @@ async def delete_job_database(
 
     # Get job owner's user_code for validation
     job_owner_user_code = job_owner.user_code if job_owner else None
+
+    # Auto-release overlord claim before deleting the job
+    # Feature: 54166071 - Overlord cleanup on job deletion
+    overlord_manager = getattr(state, "overlord_manager", None)
+    if overlord_manager and overlord_manager.is_enabled:
+        try:
+            from pulldb.worker.cleanup import cleanup_overlord_on_job_delete
+            cleanup_overlord_on_job_delete(job_id, overlord_manager)
+            logger.info(f"Auto-released overlord for deleted job {job_id[:12]}")
+        except Exception as e:
+            # Log warning but don't block deletion - overlord issues shouldn't prevent cleanup
+            logger.warning(f"Failed to auto-release overlord for job {job_id[:12]}: {e}")
 
     # SUPERSEDED jobs: Skip database deletion entirely
     # When a job is superseded, its staging DB was already cleaned up by the

@@ -159,6 +159,11 @@
         </div>
     </div>
 </div>
+
+<!-- Overlord Companies Modal -->
+{% if overlord_enabled %}
+{% include "partials/overlord_modal.html" %}
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -512,8 +517,14 @@
             const lockIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 0 0-5.25 5.25v3a3 3 0 0 0-3 3v6.75a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3v-6.75a3 3 0 0 0-3-3v-3c0-2.9-2.35-5.25-5.25-5.25Zm3.75 8.25v-3a3.75 3.75 0 1 0-7.5 0v3h7.5Z" clip-rule="evenodd"/></svg>';
             const unlockIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M18 1.5c2.9 0 5.25 2.35 5.25 5.25v3.75a.75.75 0 0 1-1.5 0V6.75a3.75 3.75 0 1 0-7.5 0v3a3 3 0 0 1 3 3v6.75a3 3 0 0 1-3 3H3.75a3 3 0 0 1-3-3v-6.75a3 3 0 0 1 3-3h9v-3c0-2.9 2.35-5.25 5.25-5.25Z"/></svg>';
             const checkIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clip-rule="evenodd"/></svg>';
+            const buildingIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M4.5 2.25a.75.75 0 0 0 0 1.5v16.5h-.75a.75.75 0 0 0 0 1.5h16.5a.75.75 0 0 0 0-1.5h-.75V3.75a.75.75 0 0 0 0-1.5h-15ZM9 6a.75.75 0 0 0 0 1.5h1.5a.75.75 0 0 0 0-1.5H9Zm-.75 3.75A.75.75 0 0 1 9 9h1.5a.75.75 0 0 1 0 1.5H9a.75.75 0 0 1-.75-.75ZM9 12a.75.75 0 0 0 0 1.5h1.5a.75.75 0 0 0 0-1.5H9Zm3.75-5.25A.75.75 0 0 1 13.5 6H15a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75ZM13.5 9a.75.75 0 0 0 0 1.5H15a.75.75 0 0 0 0-1.5h-1.5Zm-.75 3.75a.75.75 0 0 1 .75-.75H15a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75ZM9 19.5v-2.25a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 .75.75v2.25a.75.75 0 0 1-.75.75h-4.5A.75.75 0 0 1 9 19.5Z" clip-rule="evenodd"/></svg>';
             
             let html = '<div class="cell-actions-retention">';
+            
+            // Overlord button (if feature enabled)
+            {% if overlord_enabled %}
+            html += `<button class="action-btn action-btn-primary overlord-btn" data-job-id="${row.id}" data-target="${row.target}" title="Manage overlord.companies">${buildingIcon}</button>`;
+            {% endif %}
             
             // Lock toggle button - shows the ACTION that will happen when clicked
             // Red unlock icon = will unlock (risky - may expire/be removed)
@@ -558,7 +569,7 @@
             { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '110px', nowrap: true, render: Renderers.date },
             { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, maxWidth: '140px', render: Renderers.host },
             { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, maxWidth: '160px' },
-            { key: 'retention', label: 'Expires', sortable: false, width: '85px', render: Renderers.retention },
+            { key: 'retention', label: 'Expires', sortable: false, width: '100px', render: Renderers.retention },
             { type: 'actions', label: 'Actions', width: '80px', render: Renderers.activeActions }
         ],
         history: [
@@ -1433,6 +1444,26 @@
                 resumeAutoRefresh();
             }
         });
+        
+        // Overlord button handler (opens modal)
+        {% if overlord_enabled %}
+        document.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.overlord-btn');
+            if (btn) {
+                e.preventDefault();
+                e.stopPropagation();
+                pauseAutoRefresh();
+                const jobId = btn.dataset.jobId;
+                // Call the modal's open function (defined in overlord_modal.html)
+                if (typeof openOverlordModal === 'function') {
+                    openOverlordModal(jobId);
+                } else {
+                    showToast('Overlord modal not available', 'error');
+                }
+                resumeAutoRefresh();
+            }
+        });
+        {% endif %}
         
         // Remove button handler (with confirmation)
         document.addEventListener('click', async (e) => {

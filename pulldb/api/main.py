@@ -25,7 +25,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from pulldb.api.auth import AdminUser, AuthUser, ManagerUser, OptionalUser, validate_job_submission_user
+from pulldb.api.auth import AdminUser, AuthUser, ManagerUser, OptionalUser, validate_job_submission_user, get_authenticated_user
 from pulldb.api.logic import enqueue_job, validate_job_request
 from pulldb.api.schemas import (
     JobEventResponse,
@@ -142,7 +142,6 @@ if is_simulation_mode():
     from pulldb.simulation.api import router as simulation_router
     app.include_router(simulation_router)
 
-
 # Forward reference for type checking
 if TYPE_CHECKING:
     from pulldb.auth import AuthRepository
@@ -216,15 +215,40 @@ def _initialize_real_state() -> APIState:
     except ImportError:
         logger.debug("Auth modules not available, auth_repo/audit_repo will be None")
 
+    # Create settings repo (needed for overlord manager init)
+    settings_repo = SettingsRepository(pool)
+    job_repo = JobRepository(pool)
+    
+    # Initialize overlord manager if configured
+    overlord_manager = None
+    try:
+        from pulldb.infra.overlord import OverlordConnection
+        from pulldb.worker.overlord_manager import OverlordManager
+        
+        overlord_conn = OverlordConnection.from_settings(settings_repo, credential_resolver)
+        if overlord_conn and audit_repo:
+            overlord_manager = OverlordManager(
+                pool=pool,
+                overlord_connection=overlord_conn,
+                job_repo=job_repo,
+                audit_repo=audit_repo,
+            )
+            logger.info("Overlord manager initialized successfully")
+        elif overlord_conn:
+            logger.warning("Overlord connection available but audit_repo missing - manager disabled")
+    except Exception as e:
+        logger.warning(f"Failed to initialize overlord manager: {e}")
+
     return APIState(
         config=config,
         pool=pool,
         user_repo=UserRepository(pool),
-        job_repo=JobRepository(pool),
-        settings_repo=SettingsRepository(pool),
+        job_repo=job_repo,
+        settings_repo=settings_repo,
         host_repo=HostRepository(pool, credential_resolver),
         auth_repo=auth_repo,
         audit_repo=audit_repo,
+        overlord_manager=overlord_manager,
     )
 
 
@@ -241,6 +265,16 @@ def get_api_state() -> APIState:
         ) from exc
     app.state.api_state = state
     return state
+
+
+# Mount overlord API router (after get_api_state is defined)
+from pulldb.api.overlord import create_overlord_router
+
+overlord_router = create_overlord_router(
+    get_api_state=get_api_state,
+    require_auth=get_authenticated_user,
+)
+app.include_router(overlord_router)
 
 
 
@@ -4459,7 +4493,12 @@ def main_web(argv: list[str] | None = None) -> int:
     # Copy state initialization from main app if available
     @web_app.on_event("startup")
     async def startup_event() -> None:
-        web_app.state.api = _initialize_state()
+        state = _initialize_state()
+        # Store in both places:
+        # 1. web_app.state.api - for local access
+        # 2. app.state.api_state - for get_api_state() function which uses global app
+        web_app.state.api = state
+        app.state.api_state = state
     
     host = os.getenv("PULLDB_WEB_HOST", "0.0.0.0")
     port_str = os.getenv("PULLDB_WEB_PORT", "8000")

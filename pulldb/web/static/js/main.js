@@ -152,8 +152,10 @@ function dismissToast(toast) {
  * Show a toast notification
  * @param {string} message - The message to display
  * @param {string} type - Toast type: 'success', 'info', 'warning', 'error'
+ * @param {Object} options - Optional configuration
+ * @param {boolean} options.sticky - If true, toast won't auto-dismiss (requires click to close)
  */
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', options = {}) {
     const container = document.getElementById('toast-container');
     if (!container) return;
     
@@ -174,13 +176,15 @@ function showToast(message, type = 'info') {
     
     container.appendChild(toast);
     
-    // Auto-dismiss based on type
-    const duration = TOAST_DURATIONS[type] || TOAST_DURATIONS.info;
-    setTimeout(() => {
-        if (toast.parentNode) {
-            dismissToast(toast);
-        }
-    }, duration);
+    // Auto-dismiss based on type (unless sticky)
+    if (!options.sticky) {
+        const duration = TOAST_DURATIONS[type] || TOAST_DURATIONS.info;
+        setTimeout(() => {
+            if (toast.parentNode) {
+                dismissToast(toast);
+            }
+        }, duration);
+    }
 }
 
 /**

@@ -3114,3 +3114,58 @@ def _drop_job_database(
         logger.exception(error_msg)
         result.errors.append(error_msg)
         result.databases_skipped += 1
+
+
+# =============================================================================
+# Overlord Cleanup Helper
+# =============================================================================
+
+
+def cleanup_overlord_on_job_delete(
+    job_id: str,
+    overlord_manager: Any | None = None,
+) -> bool:
+    """Clean up overlord tracking when a job is deleted.
+    
+    This function should be called BEFORE marking a job as deleted.
+    It releases any overlord.companies control and applies the default action.
+    
+    Feature: 54166071 - Button to update overlord.companies
+    
+    Args:
+        job_id: Job UUID being deleted
+        overlord_manager: Optional OverlordManager instance
+        
+    Returns:
+        True if cleanup was performed (or no cleanup needed), False on error
+    """
+    if not overlord_manager:
+        return True  # No overlord manager, nothing to clean up
+    
+    if not overlord_manager.is_enabled:
+        return True  # Overlord disabled, nothing to clean up
+    
+    try:
+        result = overlord_manager.cleanup_on_job_delete(job_id)
+        if result:
+            logger.info(
+                "Overlord cleanup for job %s: action=%s, success=%s, message=%s",
+                job_id,
+                result.action_taken.value,
+                result.success,
+                result.message,
+            )
+        else:
+            logger.debug(
+                "No overlord tracking found for job %s, no cleanup needed",
+                job_id,
+            )
+        return True
+    except Exception as e:
+        # Log but don't fail the job deletion
+        logger.exception(
+            "Failed to cleanup overlord for job %s: %s (continuing with deletion)",
+            job_id,
+            e,
+        )
+        return False

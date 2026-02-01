@@ -98,6 +98,7 @@ Complete API documentation: [docs/api/README.md](api/README.md)
 - **Package Contents Summary** (Updated - v0.3.0)
 - **Default Accounts & Provisioning** (v0.2.0)
 - **CLI HMAC Authentication** (Phase 6) - includes multi-host API key management
+- **Security Rules & Patterns** (v1.0.8) - SQL injection prevention, cross-DB safety, ownership verification
 - **Host Provisioning Service** (Phase 6)
 - **Secret Rotation** (Phase 6)
 - **Database Retention** (Phase 6)
@@ -231,6 +232,177 @@ if not can_cancel_job(current_user, job.owner_user_id, job_owner_manager_id):
 if not can_delete_job_database(current_user, job.owner_user_id, job_owner_manager_id):
     raise PermissionError("Cannot delete this job's databases")
 ```
+
+---
+
+## Security Rules & Patterns (v1.0.8)
+
+Generalized security rules derived from audit findings. These rules apply to ALL pullDB code.
+
+### Rule 1: SQL Column Name Validation
+
+**Problem:** Dynamic SQL built from dictionary keys can allow SQL injection even when values are parameterized.
+
+**Rule:** ALWAYS validate column names against an allowlist before building SQL.
+
+```python
+# ❌ DANGEROUS - column names from dict keys
+columns = list(data.keys())
+column_names = ", ".join([f"`{c}`" for c in columns])
+cursor.execute(f"INSERT INTO {table} ({column_names}) VALUES ...")
+
+# ✅ SAFE - validate against allowlist first
+ALLOWED_COLUMNS = {"database", "dbHost", "dbHostRead", "company", "subdomain"}
+
+def _validate_columns(columns: list[str], allowed: set[str]) -> None:
+    invalid = set(columns) - allowed
+    if invalid:
+        raise ValueError(f"Invalid column names: {invalid}")
+
+_validate_columns(data.keys(), ALLOWED_COLUMNS)
+# Now safe to build SQL
+```
+
+**Applies to:** Any code that builds SQL from user-provided or dict-derived column names.
+
+### Rule 2: Table Name Validation
+
+**Problem:** Table names passed as parameters can be exploited in SQL injection.
+
+**Rule:** ALWAYS validate table names against an allowlist.
+
+```python
+# ❌ DANGEROUS - table name from parameter
+def __init__(self, table: str = "companies"):
+    self._table = table  # Used in f"SELECT * FROM {self._table}"
+
+# ✅ SAFE - validate against allowlist
+VALID_TABLES = {"companies"}
+
+def __init__(self, table: str = "companies"):
+    if table not in VALID_TABLES:
+        raise ValueError(f"Invalid table: {table}")
+    self._table = table
+```
+
+### Rule 3: Cross-Database Operation Safety
+
+**Problem:** Operations spanning multiple databases (e.g., coordination DB + external DB) cannot be atomic. Partial failures leave inconsistent state.
+
+**Rule:** Use a state machine with compensation on failure.
+
+```python
+# ❌ DANGEROUS - non-atomic cross-database update
+def sync(self):
+    external_db.update(data)      # Step 1: External update
+    tracking_db.mark_synced()     # Step 2: Local update (what if this fails?)
+
+# ✅ SAFE - state machine with compensation
+def sync(self):
+    tracking_db.mark_syncing()    # Record intent
+    try:
+        external_db.update(data)
+        tracking_db.mark_synced()
+    except Exception:
+        tracking_db.mark_sync_failed()  # Compensation
+        raise
+```
+
+### Rule 4: External Database Boundaries
+
+**Problem:** pullDB manages external databases it doesn't own. Accidental modification of unowned data is catastrophic.
+
+**Rule:** NEVER modify external data without verifying ownership first.
+
+```python
+# Ownership verification MUST happen before ANY external modification:
+# 1. Job exists
+# 2. Job target matches the database being modified  
+# 3. Job status is "deployed" (still active)
+# 4. Tracking record shows we claimed this database
+
+def verify_ownership(database_name: str, job_id: str) -> bool:
+    job = job_repo.get_job_by_id(job_id)
+    if not job:
+        raise OwnershipError("Job not found")
+    if job.target != database_name:
+        raise OwnershipError(f"Job target mismatch")
+    if job.status.value != "deployed":
+        raise OwnershipError(f"Job not deployed")
+    return True
+```
+
+### Rule 5: API Job Status Verification
+
+**Problem:** API endpoints that operate on jobs may not verify the job is still in a valid state.
+
+**Rule:** ALWAYS verify job status before performing operations that depend on job state.
+
+```python
+# ❌ INCOMPLETE - only checks job exists
+job = job_repo.get_job_by_id(job_id)
+if not job:
+    raise HTTPException(404, "Job not found")
+# Proceeds with operation on potentially deleted/archived job
+
+# ✅ COMPLETE - verifies job is in valid state
+job = job_repo.get_job_by_id(job_id)
+if not job:
+    raise HTTPException(404, "Job not found")
+if job.status.value not in ("deployed", "expiring"):
+    raise HTTPException(400, f"Job is {job.status.value}, not deployed")
+```
+
+### Rule 6: Error Type Differentiation
+
+**Problem:** Generic error messages prevent users from self-diagnosing issues.
+
+**Rule:** Return specific error types and messages for different failure modes.
+
+```python
+# ❌ POOR - generic error for all failures
+except Exception as e:
+    return {"error": "Failed to load data"}
+
+# ✅ GOOD - specific errors for specific cases
+except ConnectionError as e:
+    raise HTTPException(503, "Database connection failed. Try again later.")
+except PermissionError as e:
+    raise HTTPException(403, "Access denied to external database.")
+except RecordNotFoundError:
+    return {"status": "not_found", "can_create": True}  # Not an error!
+```
+
+### Rule 7: Orphan Record Cleanup
+
+**Problem:** When parent records are deleted, child/tracking records can become orphaned.
+
+**Rule:** Implement cleanup hooks or periodic cleanup jobs.
+
+```python
+# When deleting a job, also clean up associated records:
+def delete_job(job_id: str):
+    # 1. Release any overlord claims
+    overlord_manager.release(job.target, job_id, ReleaseAction.RESTORE)
+    
+    # 2. Clean up tracking records
+    tracking_repo.delete_for_job(job_id)
+    
+    # 3. Delete job
+    job_repo.delete(job_id)
+```
+
+### Quick Reference Table
+
+| Rule | Applies When | Key Check |
+|------|--------------|-----------|
+| Column validation | Building INSERT/UPDATE SQL | `columns ⊆ ALLOWED_COLUMNS` |
+| Table validation | Parameterized table name | `table ∈ VALID_TABLES` |
+| Cross-DB safety | Multi-database operation | Use state machine + compensation |
+| Ownership check | External DB modification | Verify job owns the resource |
+| Job status check | API operations on jobs | `status in valid_states` |
+| Error differentiation | All API error handling | Specific types, actionable messages |
+| Orphan cleanup | Parent record deletion | Clean up child records |
 
 ---
 

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         UserRepository,
     )
     from pulldb.infra.mysql import MySQLPool
+    from pulldb.worker.overlord_manager import OverlordManager
 
 
 class APIState(NamedTuple):
@@ -33,6 +34,7 @@ class APIState(NamedTuple):
         host_repo: Repository for database host operations.
         auth_repo: Optional auth repository (Phase 4).
         audit_repo: Optional audit logging repository.
+        overlord_manager: Optional overlord manager for overlord.companies integration.
     """
 
     config: Config
@@ -43,3 +45,4 @@ class APIState(NamedTuple):
     host_repo: "HostRepository"
     auth_repo: "AuthRepository | None" = None
     audit_repo: "AuditRepository | None" = None
+    overlord_manager: "OverlordManager | None" = None

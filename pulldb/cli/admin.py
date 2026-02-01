@@ -71,6 +71,7 @@ from pulldb.cli.admin_commands import (
     hosts_group,
     jobs_group,
     keys_group,
+    overlord_group,
     run_retention_cleanup_cmd,
     users_group,
 )
@@ -187,6 +188,7 @@ cli.add_command(hosts_group)
 cli.add_command(users_group)
 cli.add_command(keys_group)
 cli.add_command(disallow_group)
+cli.add_command(overlord_group)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

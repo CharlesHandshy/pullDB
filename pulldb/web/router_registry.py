@@ -22,6 +22,10 @@ from pulldb.web.features.mockup.routes import router as mockup_router
 from pulldb.web.features.requests.routes import router as requests_router
 from pulldb.web.features.restore.routes import router as restore_router
 
+# Import overlord API router factory and dependencies
+from pulldb.api.overlord import create_overlord_router
+from pulldb.web.dependencies import get_api_state, require_login
+
 # Main router that aggregates all feature routers
 main_router = APIRouter()
 
@@ -35,6 +39,14 @@ main_router.include_router(audit_router)
 main_router.include_router(manager_router)
 main_router.include_router(requests_router)
 main_router.include_router(mockup_router)
+
+# Include overlord API router (for overlord modal AJAX calls)
+# Uses web service's require_login which returns User, compatible with overlord's require_auth
+overlord_router = create_overlord_router(
+    get_api_state=get_api_state,
+    require_auth=require_login,
+)
+main_router.include_router(overlord_router)
 
 # Export for use in main application
 __all__ = ["main_router"]

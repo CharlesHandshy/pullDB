@@ -1449,3 +1449,366 @@ def run_retention_cleanup_cmd(
             click.echo(f"  Errors: {len(result.errors)}")
             for error in result.errors:
                 click.echo(f"    - {error}")
+
+
+# =============================================================================
+# Overlord Command Group
+# =============================================================================
+
+
+@click.group(name="overlord", help="Manage overlord database integration")
+def overlord_group() -> None:
+    """Overlord integration command group.
+    
+    Commands for setting up and managing pullDB's access to an external
+    overlord database for updating company routing records.
+    """
+    pass
+
+
+@overlord_group.command("provision")
+@click.option(
+    "--host",
+    "overlord_host",
+    required=True,
+    help="Overlord MySQL server hostname",
+)
+@click.option(
+    "--port",
+    "overlord_port",
+    type=int,
+    default=3306,
+    show_default=True,
+    help="Overlord MySQL port",
+)
+@click.option(
+    "--database",
+    "overlord_database",
+    default="overlord",
+    show_default=True,
+    help="Overlord database name",
+)
+@click.option(
+    "--table",
+    "overlord_table",
+    default="companies",
+    show_default=True,
+    help="Overlord table name",
+)
+@click.option(
+    "--admin-user",
+    required=True,
+    help="Admin username with GRANT privilege (not stored)",
+)
+@click.option(
+    "--admin-password",
+    default=None,
+    help="Admin password (prompts if not provided, not stored)",
+)
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output in JSON format",
+)
+def overlord_provision(
+    overlord_host: str,
+    overlord_port: int,
+    overlord_database: str,
+    overlord_table: str,
+    admin_user: str,
+    admin_password: str | None,
+    json_out: bool,
+) -> None:
+    """Provision pullDB access to overlord database.
+    
+    This command sets up secure access to an external overlord database:
+    
+    \b
+    1. Test admin MySQL connection
+    2. Create pulldb_overlord user with minimal privileges (SELECT, UPDATE)
+    3. Store credentials in AWS Secrets Manager
+    4. Update pullDB settings with credential reference
+    5. Enable overlord integration
+    
+    The admin credentials are ONLY used to create the service user.
+    They are NEVER stored. Users never see the service user password.
+    
+    Example:
+    
+    \b
+        pulldb-admin overlord provision \\
+            --host overlord.example.com \\
+            --admin-user root
+    """
+    from pulldb.domain.services.overlord_provisioning import (
+        OverlordProvisioningService,
+    )
+    from pulldb.infra.factory import (
+        get_settings_repository,
+        get_user_repository,
+        get_audit_repository,
+    )
+
+    # Prompt for password if not provided
+    if admin_password is None:
+        admin_password = click.prompt(
+            "MySQL admin password (not stored)",
+            hide_input=True,
+        )
+    assert admin_password is not None
+
+    # Get actor user_id (CLI runs as admin)
+    user_repo = get_user_repository()
+    admin_user_record = user_repo.get_user_by_username("admin")
+    if admin_user_record is None:
+        raise click.ClickException(
+            "Admin user not found. Ensure database is properly initialized."
+        )
+
+    settings_repo = get_settings_repository()
+    audit_repo = get_audit_repository()
+
+    service = OverlordProvisioningService(
+        settings_repo=settings_repo,
+        audit_repo=audit_repo,
+        actor_user_id=admin_user_record.user_id,
+    )
+
+    if not json_out:
+        click.echo(f"Provisioning overlord access to {overlord_host}:{overlord_port}...")
+        click.echo()
+
+    result = service.provision(
+        overlord_host=overlord_host,
+        overlord_port=overlord_port,
+        overlord_database=overlord_database,
+        overlord_table=overlord_table,
+        admin_username=admin_user,
+        admin_password=admin_password,
+    )
+
+    if json_out:
+        output: dict[str, Any] = {
+            "success": result.success,
+            "message": result.message,
+            "rollback_performed": result.rollback_performed,
+        }
+        if result.steps:
+            output["steps"] = [
+                {
+                    "name": step.name,
+                    "success": step.success,
+                    "message": step.message,
+                    "details": step.details,
+                }
+                for step in result.steps
+            ]
+        if result.error:
+            output["error"] = result.error
+        if result.suggestions:
+            output["suggestions"] = result.suggestions
+        click.echo(json.dumps(output, indent=2))
+    else:
+        # Step-by-step output
+        if result.steps:
+            for step in result.steps:
+                status = "✓" if step.success else "✗"
+                click.echo(f"  {status} {step.name}: {step.message}")
+                if step.details and not step.success:
+                    click.echo(f"      {step.details}")
+
+        click.echo()
+        if result.success:
+            click.echo("✓ Overlord access provisioned successfully")
+            click.echo("  Feature is now enabled.")
+        else:
+            click.echo(f"✗ Provisioning failed: {result.message}")
+            if result.suggestions:
+                click.echo("  Suggestions:")
+                for suggestion in result.suggestions:
+                    click.echo(f"    - {suggestion}")
+            if result.rollback_performed:
+                click.echo("  (Rollback performed - newly created resources cleaned up)")
+
+    if not result.success:
+        raise SystemExit(1)
+
+
+@overlord_group.command("test")
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output in JSON format",
+)
+def overlord_test(json_out: bool) -> None:
+    """Test connection to overlord using stored credentials.
+    
+    Tests connectivity using the configured credential_ref from settings.
+    """
+    from pulldb.domain.services.overlord_provisioning import (
+        OverlordProvisioningService,
+    )
+    from pulldb.infra.factory import (
+        get_settings_repository,
+        get_user_repository,
+    )
+
+    user_repo = get_user_repository()
+    admin_user_record = user_repo.get_user_by_username("admin")
+    if admin_user_record is None:
+        raise click.ClickException("Admin user not found.")
+
+    settings_repo = get_settings_repository()
+    service = OverlordProvisioningService(
+        settings_repo=settings_repo,
+        audit_repo=None,
+        actor_user_id=admin_user_record.user_id,
+    )
+
+    result = service.test_connection()
+
+    if json_out:
+        click.echo(json.dumps({
+            "success": result.success,
+            "message": result.message,
+            "error": result.error,
+            "suggestions": result.suggestions,
+        }))
+    else:
+        if result.success:
+            click.echo(f"✓ {result.message}")
+        else:
+            click.echo(f"✗ {result.message}")
+            if result.error:
+                click.echo(f"  Error: {result.error}")
+            if result.suggestions:
+                click.echo("  Suggestions:")
+                for suggestion in result.suggestions:
+                    click.echo(f"    - {suggestion}")
+
+    if not result.success:
+        raise SystemExit(1)
+
+
+@overlord_group.command("deprovision")
+@click.option(
+    "--admin-user",
+    required=True,
+    help="Admin username with DROP USER privilege",
+)
+@click.option(
+    "--admin-password",
+    default=None,
+    help="Admin password (prompts if not provided)",
+)
+@click.option(
+    "--keep-user",
+    is_flag=True,
+    help="Don't drop the MySQL user (keep for audit/recovery)",
+)
+@click.option(
+    "--keep-secret",
+    is_flag=True,
+    help="Don't delete the AWS secret (keep for audit/recovery)",
+)
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output in JSON format",
+)
+@click.confirmation_option(prompt="Remove overlord access? This will disable the integration.")
+def overlord_deprovision(
+    admin_user: str,
+    admin_password: str | None,
+    keep_user: bool,
+    keep_secret: bool,
+    json_out: bool,
+) -> None:
+    """Remove pullDB access to overlord database.
+    
+    This command removes the overlord integration:
+    
+    \b
+    1. Drop the pulldb_overlord MySQL user (unless --keep-user)
+    2. Delete AWS secret (unless --keep-secret)
+    3. Clear overlord settings
+    4. Disable overlord feature
+    """
+    from pulldb.domain.services.overlord_provisioning import (
+        OverlordProvisioningService,
+    )
+    from pulldb.infra.factory import (
+        get_settings_repository,
+        get_user_repository,
+        get_audit_repository,
+    )
+
+    # Prompt for password if not provided and we need to drop the user
+    if admin_password is None and not keep_user:
+        admin_password = click.prompt(
+            "MySQL admin password",
+            hide_input=True,
+        )
+    
+    # Use empty string if keeping user (won't be used)
+    if admin_password is None:
+        admin_password = ""
+
+    user_repo = get_user_repository()
+    admin_user_record = user_repo.get_user_by_username("admin")
+    if admin_user_record is None:
+        raise click.ClickException("Admin user not found.")
+
+    settings_repo = get_settings_repository()
+    audit_repo = get_audit_repository()
+
+    service = OverlordProvisioningService(
+        settings_repo=settings_repo,
+        audit_repo=audit_repo,
+        actor_user_id=admin_user_record.user_id,
+    )
+
+    if not json_out:
+        click.echo("Removing overlord access...")
+        click.echo()
+
+    result = service.deprovision(
+        admin_username=admin_user,
+        admin_password=admin_password,
+        delete_user=not keep_user,
+        delete_secret=not keep_secret,
+    )
+
+    if json_out:
+        output: dict[str, Any] = {
+            "success": result.success,
+            "message": result.message,
+        }
+        if result.steps:
+            output["steps"] = [
+                {
+                    "name": step.name,
+                    "success": step.success,
+                    "message": step.message,
+                    "details": step.details,
+                }
+                for step in result.steps
+            ]
+        click.echo(json.dumps(output, indent=2))
+    else:
+        if result.steps:
+            for step in result.steps:
+                status = "✓" if step.success else "✗"
+                click.echo(f"  {status} {step.name}: {step.message}")
+
+        click.echo()
+        if result.success:
+            click.echo("✓ Overlord access removed")
+        else:
+            click.echo(f"✗ Deprovisioning failed: {result.message}")
+
+    if not result.success:
+        raise SystemExit(1)

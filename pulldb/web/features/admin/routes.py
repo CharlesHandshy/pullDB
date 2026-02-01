@@ -2860,7 +2860,6 @@ def _build_setting_dict(
         "description": meta.description if meta else "",
         "setting_type": meta.setting_type.value if meta else "string",
         "category": meta.category.value if meta else "Paths & Directories",
-        "dangerous": meta.dangerous if meta else False,
         "source": source,
         "env_var": meta.env_var if meta else f"PULLDB_{key.upper()}",
     }
@@ -3029,6 +3028,16 @@ async def list_settings(
     # Check for settings drift (DB vs ENV)
     drift_items = get_settings_drift(db_settings)
 
+    # Get overlord state for the setup panel
+    overlord_host = db_settings.get("overlord_dbhost", "")
+    overlord_database = db_settings.get("overlord_database", "overlord")
+    overlord_table = db_settings.get("overlord_table", "companies")
+    overlord_enabled_str = db_settings.get("overlord_enabled", "false")
+    overlord_enabled = overlord_enabled_str.lower() in ("true", "1", "yes")
+    overlord_credential_ref = db_settings.get("overlord_credential_ref", "")
+    # Overlord is considered configured if we have a host AND credential ref
+    overlord_configured = bool(overlord_host and overlord_credential_ref)
+
     return templates.TemplateResponse(
         "features/admin/settings.html",
         {
@@ -3039,6 +3048,12 @@ async def list_settings(
             "settings": settings_list,  # Flat list for search
             "audit_logs": audit_logs,
             "drift_items": drift_items,  # Settings out of sync
+            # Overlord state for setup panel
+            "overlord_configured": overlord_configured,
+            "overlord_enabled": overlord_enabled,
+            "overlord_host": overlord_host,
+            "overlord_database": overlord_database,
+            "overlord_table": overlord_table,
             "user": user,
             "breadcrumbs": get_breadcrumbs("admin_settings"),
         },
@@ -4819,6 +4834,18 @@ async def force_complete_deletion(
             "message": f"Job not stuck in deletion (status: {job.status})"
         }
     
+    # Auto-release overlord claim before force-completing deletion
+    # Feature: 54166071 - Overlord cleanup on job deletion
+    overlord_manager = getattr(state, "overlord_manager", None)
+    if overlord_manager and overlord_manager.is_enabled:
+        try:
+            from pulldb.worker.cleanup import cleanup_overlord_on_job_delete
+            cleanup_overlord_on_job_delete(job_id, overlord_manager)
+            logger.info(f"Auto-released overlord for force-deleted job {job_id[:12]}")
+        except Exception as e:
+            # Log warning but don't block deletion - overlord issues shouldn't prevent cleanup
+            logger.warning(f"Failed to auto-release overlord for job {job_id[:12]}: {e}")
+    
     # Mark as deleted with admin override
     state.job_repo.mark_job_deleted(
         job_id,
@@ -6078,4 +6105,547 @@ async def get_job_history_records(
     except Exception as e:
         logger.warning("Failed to get job history records: %s", e)
         return {"success": False, "message": str(e)}
+
+
+# =============================================================================
+# Overlord Provisioning API
+# =============================================================================
+
+
+@router.post("/overlord/provision")
+async def provision_overlord(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Provision pullDB access to overlord database.
+    
+    This endpoint uses the OverlordProvisioningService to:
+    1. Test admin MySQL connection
+    2. Create pulldb_overlord user with minimal privileges
+    3. Store credentials in AWS Secrets Manager
+    4. Update pullDB settings with credential reference
+    5. Enable overlord integration
+    
+    The admin credentials are ONLY used to create the service user.
+    They are NEVER stored.
+    
+    Returns JSON with step-by-step results for UI display.
+    """
+    from pulldb.domain.services.overlord_provisioning import (
+        OverlordProvisioningService,
+    )
+    from pulldb.infra.factory import is_simulation_mode, get_audit_repository
+    
+    # Parse form data
+    form_data = await request.form()
+    
+    def get_form_str(key: str, default: str = "") -> str:
+        val = form_data.get(key, default)
+        return str(val).strip() if val else default
+    
+    def get_form_int(key: str, default: int) -> int:
+        val = form_data.get(key, str(default))
+        return int(str(val)) if val else default
+    
+    overlord_host = get_form_str("overlord_host")
+    overlord_port = get_form_int("overlord_port", 3306)
+    overlord_database = get_form_str("overlord_database", "overlord")
+    overlord_table = get_form_str("overlord_table", "companies")
+    admin_username = get_form_str("admin_username")
+    admin_password = get_form_str("admin_password")
+    
+    # Handle simulation mode
+    if is_simulation_mode():
+        steps: list[dict[str, Any]] = [
+            {"name": "Test Connection", "success": True, 
+             "message": "Admin connection successful (simulated)", "details": None},
+            {"name": "Check Secret", "success": True,
+             "message": "No existing credentials (simulated)",
+             "details": "Will create: /pulldb/mysql/overlord"},
+            {"name": "MySQL User", "success": True,
+             "message": "User pulldb_overlord created (simulated)",
+             "details": f"Privileges: SELECT, UPDATE on {overlord_database}.{overlord_table}"},
+            {"name": "AWS Secret", "success": True,
+             "message": "Credentials created (simulated)",
+             "details": "Path: /pulldb/mysql/overlord"},
+            {"name": "Update Settings", "success": True,
+             "message": "Overlord settings configured and enabled (simulated)",
+             "details": "Credential ref: aws-secretsmanager:/pulldb/mysql/overlord"},
+        ]
+        
+        # Update simulated settings
+        if hasattr(state, "settings_repo") and state.settings_repo:
+            state.settings_repo.set_setting("overlord_dbhost", overlord_host)
+            state.settings_repo.set_setting("overlord_database", overlord_database)
+            state.settings_repo.set_setting("overlord_table", overlord_table)
+            state.settings_repo.set_setting("overlord_credential_ref", 
+                                            "aws-secretsmanager:/pulldb/mysql/overlord")
+            state.settings_repo.set_setting("overlord_enabled", "true")
+        
+        return {
+            "success": True,
+            "message": "Overlord access provisioned successfully (simulation mode)",
+            "steps": steps,
+            "simulation_mode": True,
+        }
+    
+    # Real mode - use OverlordProvisioningService
+    audit_repo = get_audit_repository()
+    service = OverlordProvisioningService(
+        settings_repo=state.settings_repo,
+        audit_repo=audit_repo,
+        actor_user_id=admin.user_id,
+    )
+    
+    result = service.provision(
+        overlord_host=overlord_host,
+        overlord_port=overlord_port,
+        overlord_database=overlord_database,
+        overlord_table=overlord_table,
+        admin_username=admin_username,
+        admin_password=admin_password,
+    )
+    
+    # If provision succeeded, refresh credentials in running services
+    if result.success:
+        try:
+            overlord_manager = getattr(state, "overlord_manager", None)
+            if overlord_manager:
+                # Re-initialize the overlord connection with new credentials
+                from pulldb.infra.overlord import OverlordConnection
+                from pulldb.infra.secrets import CredentialResolver
+                
+                credential_resolver = CredentialResolver()
+                new_conn = OverlordConnection.from_settings(
+                    state.settings_repo, credential_resolver
+                )
+                if new_conn:
+                    overlord_manager._overlord_conn = new_conn
+                    overlord_manager._overlord_repo = None  # Will be recreated on next use
+                    from pulldb.infra.overlord import OverlordRepository
+                    overlord_manager._overlord_repo = OverlordRepository(new_conn, overlord_table)
+                    logger.info("Refreshed overlord connection after provisioning")
+        except Exception as refresh_error:
+            logger.warning(f"Failed to refresh overlord connection (service restart may be needed): {refresh_error}")
+    
+    # Convert to API response format
+    steps_out: list[dict[str, Any]] = []
+    if result.steps:
+        for step in result.steps:
+            steps_out.append({
+                "name": step.name,
+                "success": step.success,
+                "message": step.message,
+                "details": step.details,
+            })
+    
+    return {
+        "success": result.success,
+        "message": result.message,
+        "steps": steps_out,
+        "rollback_performed": result.rollback_performed,
+        "error": result.error,
+        "suggestions": result.suggestions,
+    }
+
+
+@router.post("/overlord/test")
+async def test_overlord_connection(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Test connection to overlord using stored credentials."""
+    from pulldb.domain.services.overlord_provisioning import (
+        OverlordProvisioningService,
+    )
+    from pulldb.infra.factory import is_simulation_mode
+    
+    if is_simulation_mode():
+        return {
+            "success": True,
+            "message": "Connected to overlord (simulation mode)",
+        }
+    
+    service = OverlordProvisioningService(
+        settings_repo=state.settings_repo,
+        audit_repo=None,
+        actor_user_id=admin.user_id,
+    )
+    
+    result = service.test_connection()
+    
+    return {
+        "success": result.success,
+        "message": result.message,
+        "error": result.error,
+        "suggestions": result.suggestions,
+    }
+
+
+@router.post("/overlord/check-host-change")
+async def check_overlord_host_change(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Check if the new host is different from the current configuration.
+    
+    Used by the UI to determine if old host cleanup is required before
+    provisioning a new host.
+    
+    Returns:
+        {
+            "is_changing": bool,
+            "current_host": str | None,
+            "new_host": str,
+        }
+    """
+    from pulldb.domain.services.overlord_provisioning import (
+        OverlordProvisioningService,
+    )
+    from pulldb.infra.factory import is_simulation_mode
+    
+    form_data = await request.form()
+    new_host = str(form_data.get("new_host", "")).strip()
+    
+    if is_simulation_mode():
+        # In simulation, check simulated settings
+        current_host = state.settings_repo.get_setting("overlord_dbhost")
+        current_enabled = state.settings_repo.get_setting("overlord_enabled")
+        is_changing = (
+            current_host and 
+            current_enabled == "true" and 
+            current_host.lower() != new_host.lower()
+        )
+        return {
+            "is_changing": bool(is_changing),
+            "current_host": current_host,
+            "new_host": new_host,
+        }
+    
+    service = OverlordProvisioningService(
+        settings_repo=state.settings_repo,
+        audit_repo=None,
+        actor_user_id=admin.user_id,
+    )
+    
+    return {
+        "is_changing": service.is_host_changing(new_host),
+        "current_host": service.get_current_host(),
+        "new_host": new_host,
+    }
+
+
+@router.post("/overlord/cleanup-old-host")
+async def cleanup_old_overlord_host(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Clean up the old overlord host before migrating to a new one.
+    
+    This endpoint:
+    1. Connects to the OLD host using provided admin credentials
+    2. Drops the pulldb_overlord user from the old MySQL server
+    3. Deletes the AWS Secrets Manager secret
+    4. Clears the overlord settings
+    
+    After this succeeds, the UI should call /overlord/provision to set up
+    the new host.
+    
+    Returns JSON with step-by-step results for UI display.
+    """
+    from pulldb.domain.services.overlord_provisioning import (
+        OverlordProvisioningService,
+    )
+    from pulldb.infra.factory import is_simulation_mode, get_audit_repository
+    
+    form_data = await request.form()
+    old_admin_username = str(form_data.get("old_admin_username", "")).strip()
+    old_admin_password = str(form_data.get("old_admin_password", ""))
+    
+    if not old_admin_username or not old_admin_password:
+        return {
+            "success": False,
+            "message": "Admin credentials for the old host are required",
+            "steps": [],
+        }
+    
+    if is_simulation_mode():
+        current_host = state.settings_repo.get_setting("overlord_dbhost")
+        steps = [
+            {"name": "Check Configuration", "success": True,
+             "message": f"Found existing host: {current_host} (simulated)"},
+            {"name": "Test Old Host Connection", "success": True,
+             "message": "Admin connection to old host successful (simulated)"},
+            {"name": "Drop MySQL User", "success": True,
+             "message": f"User pulldb_overlord dropped from {current_host} (simulated)"},
+            {"name": "Delete AWS Secret", "success": True,
+             "message": "Secret /pulldb/mysql/overlord deleted (simulated)"},
+            {"name": "Clear Settings", "success": True,
+             "message": "Old overlord settings cleared (simulated)"},
+        ]
+        
+        # Clear simulated settings
+        state.settings_repo.set_setting("overlord_enabled", "false")
+        state.settings_repo.set_setting("overlord_dbhost", "")
+        state.settings_repo.set_setting("overlord_credential_ref", "")
+        
+        return {
+            "success": True,
+            "message": f"Old host {current_host} cleaned up successfully (simulation mode)",
+            "steps": steps,
+            "simulation_mode": True,
+        }
+    
+    # Real mode
+    audit_repo = get_audit_repository()
+    service = OverlordProvisioningService(
+        settings_repo=state.settings_repo,
+        audit_repo=audit_repo,
+        actor_user_id=admin.user_id,
+    )
+    
+    result = service.cleanup_old_host(
+        old_admin_username=old_admin_username,
+        old_admin_password=old_admin_password,
+    )
+    
+    # Convert steps
+    steps_out = []
+    if result.steps:
+        for step in result.steps:
+            steps_out.append({
+                "name": step.name,
+                "success": step.success,
+                "message": step.message,
+                "details": step.details,
+            })
+    
+    return {
+        "success": result.success,
+        "message": result.message,
+        "steps": steps_out,
+        "error": result.error,
+        "suggestions": result.suggestions,
+    }
+
+
+@router.post("/overlord/rotate")
+async def rotate_overlord_secret(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Rotate the pulldb_overlord service user password.
+    
+    This endpoint:
+    1. Generates a new secure password
+    2. Updates the MySQL user password (self-alter)
+    3. Verifies the new password works
+    4. Updates AWS Secrets Manager
+    5. Final round-trip verification
+    
+    No admin credentials required - the service user alters its own password.
+    
+    Returns JSON with step-by-step results for UI display.
+    """
+    from pulldb.domain.services.overlord_provisioning import (
+        OverlordProvisioningService,
+    )
+    from pulldb.infra.factory import is_simulation_mode, get_audit_repository
+    
+    if is_simulation_mode():
+        return {
+            "success": True,
+            "message": "Credentials rotated (simulation mode)",
+            "steps": [
+                {"name": "Check Configuration", "success": True, "message": "Config valid (simulated)"},
+                {"name": "Resolve Credentials", "success": True, "message": "Credentials resolved (simulated)"},
+                {"name": "Generate Password", "success": True, "message": "New password generated (simulated)"},
+                {"name": "Update MySQL Password", "success": True, "message": "MySQL updated (simulated)"},
+                {"name": "Update AWS Secret", "success": True, "message": "AWS updated (simulated)"},
+                {"name": "Final Verification", "success": True, "message": "Verified (simulated)"},
+            ],
+        }
+    
+    # Get audit repo if available
+    audit_repo = None
+    try:
+        audit_repo = get_audit_repository()
+    except Exception:
+        logger.debug("Audit repository not available for overlord rotation")
+    
+    service = OverlordProvisioningService(
+        settings_repo=state.settings_repo,
+        audit_repo=audit_repo,
+        actor_user_id=admin.user_id,
+    )
+    
+    result = service.rotate_credentials()
+    
+    # If rotation succeeded, refresh the cached credentials in the API service
+    if result.success:
+        try:
+            overlord_manager = getattr(state, "overlord_manager", None)
+            if overlord_manager and overlord_manager.is_enabled:
+                overlord_manager.refresh_credentials()
+                logger.info("Refreshed overlord credentials in API service after rotation")
+        except Exception as refresh_error:
+            # Log but don't fail - credentials are rotated, just need service restart
+            logger.warning(f"Failed to refresh cached credentials (service restart may be needed): {refresh_error}")
+    
+    # Convert steps to dict format for JSON
+    steps_out = []
+    if result.steps:
+        for step in result.steps:
+            steps_out.append({
+                "name": step.name,
+                "success": step.success,
+                "message": step.message,
+                "details": step.details,
+            })
+    
+    return {
+        "success": result.success,
+        "message": result.message,
+        "steps": steps_out,
+        "rollback_performed": result.rollback_performed,
+        "error": result.error,
+        "suggestions": result.suggestions,
+    }
+
+
+@router.post("/overlord/refresh-credentials")
+async def refresh_overlord_credentials(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Refresh overlord credentials from AWS Secrets Manager.
+    
+    Call this endpoint after credentials have been rotated (externally or via
+    /overlord/rotate) to update the cached credentials without restarting the
+    API service.
+    
+    Returns JSON with success status.
+    """
+    from pulldb.infra.factory import is_simulation_mode
+    from pulldb.infra.overlord import OverlordConnectionError
+    
+    if is_simulation_mode():
+        return {
+            "success": True,
+            "message": "Credentials refreshed (simulation mode)",
+        }
+    
+    overlord_manager = getattr(state, "overlord_manager", None)
+    if not overlord_manager:
+        return {
+            "success": False,
+            "message": "Overlord integration is not initialized",
+        }
+    
+    if not overlord_manager.is_enabled:
+        return {
+            "success": False,
+            "message": "Overlord integration is not enabled",
+        }
+    
+    try:
+        overlord_manager.refresh_credentials()
+        return {
+            "success": True,
+            "message": "Credentials refreshed from AWS Secrets Manager",
+        }
+    except OverlordConnectionError as e:
+        logger.error(f"Failed to refresh overlord credentials: {e}")
+        return {
+            "success": False,
+            "message": str(e),
+        }
+
+
+@router.post("/overlord/deprovision")
+async def deprovision_overlord(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Remove pullDB access to overlord database."""
+    from pulldb.domain.services.overlord_provisioning import (
+        OverlordProvisioningService,
+    )
+    from pulldb.infra.factory import is_simulation_mode, get_audit_repository
+    
+    # Parse form data
+    form_data = await request.form()
+    
+    def get_form_str(key: str, default: str = "") -> str:
+        val = form_data.get(key, default)
+        return str(val).strip() if val else default
+    
+    def get_form_bool(key: str, default: bool = False) -> bool:
+        val = form_data.get(key, str(default).lower())
+        return str(val).lower() in ("true", "1", "yes", "on")
+    
+    admin_username = get_form_str("admin_username")
+    admin_password = get_form_str("admin_password")
+    keep_user = get_form_bool("keep_user", False)
+    keep_secret = get_form_bool("keep_secret", False)
+    
+    if is_simulation_mode():
+        steps: list[dict[str, Any]] = []
+        if not keep_user:
+            steps.append({"name": "Drop User", "success": True,
+                         "message": "User pulldb_overlord dropped (simulated)", "details": None})
+        if not keep_secret:
+            steps.append({"name": "Delete Secret", "success": True,
+                         "message": "AWS secret deleted (simulated)", "details": None})
+        steps.append({"name": "Clear Settings", "success": True,
+                     "message": "Overlord settings cleared (simulated)", "details": None})
+        
+        # Clear simulated settings
+        if hasattr(state, "settings_repo") and state.settings_repo:
+            state.settings_repo.set_setting("overlord_enabled", "false")
+            state.settings_repo.set_setting("overlord_credential_ref", "")
+        
+        return {
+            "success": True,
+            "message": "Overlord access removed (simulation mode)",
+            "steps": steps,
+            "simulation_mode": True,
+        }
+    
+    audit_repo = get_audit_repository()
+    service = OverlordProvisioningService(
+        settings_repo=state.settings_repo,
+        audit_repo=audit_repo,
+        actor_user_id=admin.user_id,
+    )
+    
+    result = service.deprovision(
+        admin_username=admin_username,
+        admin_password=admin_password,
+        delete_user=not keep_user,
+        delete_secret=not keep_secret,
+    )
+    
+    steps_out: list[dict[str, Any]] = []
+    if result.steps:
+        for step in result.steps:
+            steps_out.append({
+                "name": step.name,
+                "success": step.success,
+                "message": step.message,
+                "details": step.details,
+            })
+    
+    return {
+        "success": result.success,
+        "message": result.message,
+        "steps": steps_out,
+    }
 

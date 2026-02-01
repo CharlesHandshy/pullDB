@@ -204,26 +204,103 @@
                 {% elif category == "Myloader Configuration" %}
                 {# Special UI for Myloader settings with grouped controls #}
                 {% include "features/admin/partials/_myloader.html" %}
+                {% elif category == "Job Limits" %}
+                {# Job Limits with special Overlord setup panel #}
+                {% include "features/admin/partials/_overlord_setup.html" %}
+                <div class="settings-list">
+                    {% for setting in cat_settings %}
+                    {# Skip overlord settings - they're managed via the setup panel #}
+                    {% if not setting.setting_key.startswith('overlord_') %}
+                    <div class="setting-row" 
+                         data-key="{{ setting.setting_key }}" 
+                         data-type="{{ setting.setting_type }}">
+                        <div class="setting-info">
+                            <div class="setting-key-row">
+                                <code class="setting-key">{{ setting.setting_key }}</code>
+                            </div>
+                            <div class="setting-description">{{ setting.description }}</div>
+                            <div class="setting-meta">
+                                <span class="env-var" title="Environment variable">{{ setting.env_var }}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="setting-value-col">
+                            <!-- View Mode -->
+                            <div class="setting-view">
+                                <div class="value-display">
+                                    <code class="setting-value {% if setting.setting_type in ('directory', 'path', 'executable') %}path-value{% endif %}">{{ setting.setting_value or '(not set)' }}</code>
+                                    <span class="source-badge {{ setting.source }}" title="Source: {{ setting.source }}">
+                                        {% if setting.source == 'database' %}🗄️ DB{% elif setting.source == 'environment' %}🌐 ENV{% else %}⚙️ DEF{% endif %}
+                                    </span>
+                                </div>
+                                {% if setting.default and setting.setting_value != setting.default %}
+                                <div class="default-hint">
+                                    <span>Default:</span>
+                                    <code>{{ setting.default }}</code>
+                                </div>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Edit Mode (hidden by default) -->
+                            <div class="setting-edit js-hidden">
+                                <form class="edit-form" onsubmit="return saveSetting(event, '{{ setting.setting_key }}')">
+                                    {% if setting.setting_type == 'integer' %}
+                                    <input type="number" 
+                                           name="value" 
+                                           class="edit-input" 
+                                           value="{{ setting.setting_value }}"
+                                           {% if setting.setting_key.endswith('_per_user') or setting.setting_key.endswith('_global') or setting.setting_key.endswith('_days') %}min="0"{% else %}min="1"{% endif %}>
+                                    {% else %}
+                                    <input type="text" 
+                                           name="value" 
+                                           class="edit-input" 
+                                           value="{{ setting.setting_value }}"
+                                           placeholder="{{ setting.default or '' }}">
+                                    {% endif %}
+                                    <div class="edit-actions">
+                                        <button type="button" class="btn btn-secondary btn-xs" onclick="cancelEdit('{{ setting.setting_key }}')">Cancel</button>
+                                        <button type="submit" class="btn btn-primary btn-xs">Save</button>
+                                    </div>
+                                    <div class="validation-message"></div>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div class="setting-actions">
+                            <button type="button" 
+                                    class="action-btn action-btn-primary edit-btn" 
+                                    onclick="startEdit('{{ setting.setting_key }}')"
+                                    title="Edit setting">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                                </svg>
+                            </button>
+                            {% if setting.source == 'database' %}
+                            <button type="button" 
+                                    class="action-btn action-btn-muted reset-btn" 
+                                    onclick="resetSetting('{{ setting.setting_key }}')"
+                                    title="Reset to default">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="1 4 1 10 7 10"/>
+                                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                                </svg>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}{# end if not overlord #}
+                    {% endfor %}
+                </div>
                 {% else %}
+                {# All other categories use standard settings list #}
                 <div class="settings-list">
                     {% for setting in cat_settings %}
                     <div class="setting-row" 
                          data-key="{{ setting.setting_key }}" 
-                         data-type="{{ setting.setting_type }}"
-                         data-dangerous="{{ 'true' if setting.dangerous else 'false' }}">
+                         data-type="{{ setting.setting_type }}">
                         <div class="setting-info">
                             <div class="setting-key-row">
                                 <code class="setting-key">{{ setting.setting_key }}</code>
-                                {% if setting.dangerous %}
-                                <span class="danger-badge" title="Changing this setting could break the system">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                                        <line x1="12" y1="9" x2="12" y2="13"/>
-                                        <line x1="12" y1="17" x2="12.01" y2="17"/>
-                                    </svg>
-                                    Dangerous
-                                </span>
-                                {% endif %}
                             </div>
                             <div class="setting-description">{{ setting.description }}</div>
                             <div class="setting-meta">
@@ -306,36 +383,6 @@
 {% endblock %}
 
 {% block modals %}
-<!-- Confirmation Modal for Dangerous Settings -->
-<div id="confirm-modal" class="modal-overlay hidden">
-    <div class="modal-content">
-        <div class="modal-header modal-header-danger">
-            <h3 class="modal-title">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
-                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                    <line x1="12" y1="9" x2="12" y2="13"/>
-                    <line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
-                Confirm Dangerous Change
-            </h3>
-            <button type="button" class="modal-close" onclick="closeConfirmModal()" aria-label="Close">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" x2="6" y1="6" y2="18"/>
-                    <line x1="6" x2="18" y1="6" y2="18"/>
-                </svg>
-            </button>
-        </div>
-        <div class="modal-body">
-            <p>You are about to change a <strong>dangerous setting</strong>. Incorrect values could break the system.</p>
-            <pre class="modal-detail" id="confirm-detail"></pre>
-        </div>
-        <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
-            <button type="button" class="btn btn-danger" onclick="confirmProceed()">Proceed</button>
-        </div>
-    </div>
-</div>
-
 <!-- Create Directory Modal -->
 <div id="create-dir-modal" class="modal-overlay hidden">
     <div class="modal-content">
