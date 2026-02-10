@@ -3214,10 +3214,10 @@ async def update_setting(
     # "Sync All" step.  Failures here are non-fatal — the DB is the
     # authoritative source; .env will catch up on next explicit sync.
     env_synced = False
-    if not (meta and meta.db_only):
+    if meta and not meta.db_only:
         env_path = _find_env_file()
         if env_path:
-            env_var = meta.env_var if meta else f"PULLDB_{key.upper()}"
+            env_var = meta.env_var
             try:
                 env_synced = _write_env_setting(env_path, env_var, value)
             except Exception:

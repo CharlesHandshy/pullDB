@@ -697,7 +697,7 @@ class OverlordTrackingRepository:
         """
         snapshot_json = json.dumps(previous_snapshot) if previous_snapshot else None
         
-        with self.pool.connection() as conn:
+        with self.pool.transaction() as conn:
             cursor = conn.cursor()
             
             # Lock any existing row to prevent concurrent claim races (G1)
@@ -710,9 +710,10 @@ class OverlordTrackingRepository:
             
             if existing:
                 existing_job_id, existing_status = existing
-                # Reject if actively claimed by a different job
+                # Reject if actively claimed by a different job.
+                # Raising here triggers transaction rollback, which
+                # releases the FOR UPDATE lock automatically.
                 if existing_status != "released" and existing_job_id != job_id:
-                    conn.commit()  # Release the FOR UPDATE lock
                     cursor.close()
                     raise OverlordAlreadyClaimedError(
                         f"Database '{database_name}' is already claimed "
@@ -749,7 +750,7 @@ class OverlordTrackingRepository:
                 )
             
             record_id = cursor.lastrowid or 0
-            conn.commit()
+            # transaction() auto-commits on successful exit
             cursor.close()
             
             logger.info(f"Created overlord tracking: {database_name} -> job {job_id}")
