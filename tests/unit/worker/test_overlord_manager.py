@@ -334,6 +334,7 @@ class TestRelease:
         mock_tracking.previous_dbhost = "original-host.example.com"
         mock_tracking.previous_dbhost_read = "original-host-read.example.com"
         mock_tracking.current_dbhost = "staging-host.example.com"
+        mock_tracking.current_subdomain = None
         # Full snapshot includes all fields that should be restored
         mock_tracking.previous_snapshot = {
             "dbHost": "original-host.example.com",
@@ -368,6 +369,7 @@ class TestRelease:
         mock_tracking.row_existed_before = False
         mock_tracking.previous_dbhost = None
         mock_tracking.current_dbhost = "staging-host.example.com"
+        mock_tracking.current_subdomain = None
         manager._tracking_repo.get.return_value = mock_tracking
         
         # Mock overlord row exists (for state verification)
@@ -391,6 +393,7 @@ class TestRelease:
         mock_tracking.status = OverlordTrackingStatus.SYNCED
         mock_tracking.row_existed_before = True
         mock_tracking.current_dbhost = "staging-host.example.com"
+        mock_tracking.current_subdomain = None
         manager._tracking_repo.get.return_value = mock_tracking
         
         # Mock overlord row exists (for state verification)
@@ -417,6 +420,7 @@ class TestRelease:
         mock_tracking.status = OverlordTrackingStatus.SYNCED
         mock_tracking.row_existed_before = False
         mock_tracking.current_dbhost = "staging-host.example.com"
+        mock_tracking.current_subdomain = None
         manager._tracking_repo.get.return_value = mock_tracking
         
         # Mock overlord row matches expected host
@@ -440,6 +444,7 @@ class TestRelease:
         mock_tracking.status = OverlordTrackingStatus.SYNCED
         mock_tracking.row_existed_before = False
         mock_tracking.current_dbhost = "staging-host.example.com"
+        mock_tracking.current_subdomain = None
         manager._tracking_repo.get.return_value = mock_tracking
         
         # Mock overlord row has DIFFERENT host (external modification)
@@ -474,6 +479,7 @@ class TestRelease:
         mock_tracking.previous_dbhost = "original.example.com"
         mock_tracking.previous_dbhost_read = "original-read.example.com"
         mock_tracking.current_dbhost = "staging.example.com"
+        mock_tracking.current_subdomain = None
         mock_tracking.previous_snapshot = {
             "dbHost": "original.example.com",
             "dbHostRead": "original-read.example.com",
@@ -502,6 +508,7 @@ class TestRelease:
         mock_tracking.status = OverlordTrackingStatus.SYNCED
         mock_tracking.row_existed_before = True
         mock_tracking.current_dbhost = "staging.example.com"
+        mock_tracking.current_subdomain = None
         manager._tracking_repo.get.return_value = mock_tracking
         
         # Row was deleted externally
@@ -524,6 +531,7 @@ class TestRelease:
         mock_tracking.status = OverlordTrackingStatus.SYNCED
         mock_tracking.row_existed_before = False  # We created it
         mock_tracking.current_dbhost = "staging.example.com"
+        mock_tracking.current_subdomain = None
         manager._tracking_repo.get.return_value = mock_tracking
         
         # Row was already deleted externally
@@ -548,6 +556,7 @@ class TestRelease:
         mock_tracking.previous_dbhost = "original.example.com"
         mock_tracking.previous_dbhost_read = "original-read.example.com"
         mock_tracking.current_dbhost = "staging.example.com"  # We set this
+        mock_tracking.current_subdomain = None
         mock_tracking.previous_snapshot = {
             "dbHost": "original.example.com",
             "dbHostRead": "original-read.example.com",
@@ -583,6 +592,7 @@ class TestRelease:
         mock_tracking.previous_dbhost = "original.example.com"
         mock_tracking.previous_dbhost_read = "original-read.example.com"
         mock_tracking.current_dbhost = "staging.example.com"
+        mock_tracking.current_subdomain = None
         mock_tracking.previous_snapshot = {
             "dbHost": "original.example.com",
             "dbHostRead": "original-read.example.com",
@@ -621,6 +631,7 @@ class TestCleanupOnJobDelete:
         mock_tracking.status = OverlordTrackingStatus.SYNCED
         mock_tracking.row_existed_before = False  # We created it
         mock_tracking.current_dbhost = "staging.example.com"
+        mock_tracking.current_subdomain = None
         manager._tracking_repo.get_by_job_id.return_value = mock_tracking
         manager._tracking_repo.get.return_value = mock_tracking
         
@@ -645,6 +656,7 @@ class TestCleanupOnJobDelete:
         mock_tracking.previous_dbhost = "original.example.com"
         mock_tracking.previous_dbhost_read = "original-read.example.com"
         mock_tracking.current_dbhost = "staging.example.com"
+        mock_tracking.current_subdomain = None
         mock_tracking.previous_snapshot = {
             "dbHost": "original.example.com",
             "dbHostRead": "original-read.example.com",
