@@ -3123,6 +3123,9 @@ async def sync_all_settings_to_env(
         try:
             if _write_env_setting(env_path, env_var, value):
                 synced.append(key)
+                # Update in-memory environment so drift detection
+                # reflects the new value without a process restart.
+                _os.environ[env_var] = value
             else:
                 errors.append(f"{key}: write failed")
         except Exception as e:
@@ -3220,6 +3223,10 @@ async def update_setting(
             env_var = meta.env_var
             try:
                 env_synced = _write_env_setting(env_path, env_var, value)
+                if env_synced:
+                    # Update in-memory environment so drift detection
+                    # reflects the new value without a process restart.
+                    _os.environ[env_var] = value
             except Exception:
                 logger.debug(
                     "Non-fatal: failed to sync '%s' to .env", key, exc_info=True,
@@ -3457,6 +3464,9 @@ async def sync_single_setting(
 
         try:
             if _write_env_setting(env_path, env_var, db_value):
+                # Update in-memory environment so drift detection
+                # reflects the new value without a process restart.
+                _os.environ[env_var] = db_value
                 # Audit
                 if hasattr(state, "audit_repo") and state.audit_repo:
                     try:
