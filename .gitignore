@@ -133,3 +133,6 @@ pulldb/web/static/css/generated/
 # NOTE: Do NOT ignore business SQL scripts in customers_after_sql/ or qa_template_after_sql/
 .backup-config/
 .venv-test/
+
+# Client distribution build artifacts
+dist-client/
