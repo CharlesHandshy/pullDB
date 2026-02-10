@@ -522,8 +522,13 @@
             let html = '<div class="cell-actions-retention">';
             
             // Overlord button (if feature enabled)
+            // Blue = not configured, Green = configured
             {% if overlord_enabled %}
-            html += `<button class="action-btn action-btn-primary overlord-btn" data-job-id="${row.id}" data-target="${row.target}" title="Manage overlord.companies">${buildingIcon}</button>`;
+            if (row.has_overlord_tracking) {
+                html += `<button class="action-btn action-btn-success overlord-btn" data-job-id="${row.id}" data-target="${row.target}" title="Overlord configured - click to manage">${buildingIcon}</button>`;
+            } else {
+                html += `<button class="action-btn action-btn-primary overlord-btn" data-job-id="${row.id}" data-target="${row.target}" title="Configure overlord.companies">${buildingIcon}</button>`;
+            }
             {% endif %}
             
             // Lock toggle button - shows the ACTION that will happen when clicked
@@ -535,8 +540,11 @@
                 html += `<button class="action-btn action-btn-enable lock-toggle-btn" data-job-id="${row.id}" data-locked="false" title="Click to lock (protects from cleanup)">${lockIcon}</button>`;
             }
             
-            // Complete button (only when not locked)
-            if (!row.is_locked) {
+            // Complete button - show action when unlocked, disabled indicator when locked
+            if (row.is_locked) {
+                // Show disabled lock indicator to maintain column alignment
+                html += `<span class="action-btn action-btn-disabled" title="Unlock to enable completion">${lockIcon}</span>`;
+            } else {
                 html += `<button class="action-btn action-btn-enable complete-btn" data-job-id="${row.id}" title="Mark complete (move to History)">${checkIcon}</button>`;
             }
             
@@ -570,7 +578,7 @@
             { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, maxWidth: '140px', render: Renderers.host },
             { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, maxWidth: '160px' },
             { key: 'retention', label: 'Expires', sortable: false, width: '100px', render: Renderers.retention },
-            { type: 'actions', label: 'Actions', width: '80px', render: Renderers.activeActions }
+            { type: 'actions', label: 'Actions', width: '110px', render: Renderers.activeActions }
         ],
         history: [
             { key: 'id', label: 'Job ID', sortable: true, filterable: true, filterType: 'text', filterPlaceholder: 'b875* or *ef3c', width: '125px', render: Renderers.jobIdHistory },

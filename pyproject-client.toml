@@ -44,7 +44,7 @@ pulldb = "pulldb.cli.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["pulldb.cli"]
+include = ["pulldb", "pulldb.cli"]
 namespaces = false
 
 # No static files, templates, binaries, or web content needed for client

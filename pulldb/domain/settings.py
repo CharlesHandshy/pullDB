@@ -47,6 +47,9 @@ class SettingMeta:
         setting_type: Type for input rendering and validation
         category: UI grouping category
         validators: List of validator function names to apply
+        db_only: If True, setting is stored only in database (not synced to .env).
+            Use for settings configured via UI workflows (e.g., overlord integration)
+            that should not appear in .env drift detection.
     """
 
     key: str
@@ -56,6 +59,7 @@ class SettingMeta:
     setting_type: SettingType = SettingType.STRING
     category: SettingCategory = SettingCategory.PATHS
     validators: list[str] = field(default_factory=list)
+    db_only: bool = False
 
 
 # =============================================================================
@@ -461,6 +465,7 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         description="Enable overlord.companies integration for deployed jobs",
         setting_type=SettingType.BOOLEAN,
         category=SettingCategory.JOB_LIMITS,
+        db_only=True,  # Configured via web UI provisioning, not .env
     ),
     "overlord_dbhost": SettingMeta(
         key="overlord_dbhost",
@@ -469,6 +474,7 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         description="Overlord database hostname (e.g., overlord-cluster.rds.amazonaws.com)",
         setting_type=SettingType.STRING,
         category=SettingCategory.JOB_LIMITS,
+        db_only=True,  # Configured via web UI provisioning, not .env
     ),
     "overlord_database": SettingMeta(
         key="overlord_database",
@@ -477,6 +483,7 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         description="Overlord database name",
         setting_type=SettingType.STRING,
         category=SettingCategory.JOB_LIMITS,
+        db_only=True,  # Configured via web UI provisioning, not .env
     ),
     "overlord_table": SettingMeta(
         key="overlord_table",
@@ -485,6 +492,7 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         description="Overlord table name for company records",
         setting_type=SettingType.STRING,
         category=SettingCategory.JOB_LIMITS,
+        db_only=True,  # Configured via web UI provisioning, not .env
     ),
     "overlord_credential_ref": SettingMeta(
         key="overlord_credential_ref",
@@ -493,6 +501,7 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         description="AWS Secrets Manager path for overlord credentials (aws-secretsmanager:/path)",
         setting_type=SettingType.STRING,
         category=SettingCategory.JOB_LIMITS,
+        db_only=True,  # Configured via web UI provisioning, not .env
     ),
 }
 

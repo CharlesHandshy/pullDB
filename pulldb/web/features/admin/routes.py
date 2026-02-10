@@ -2813,6 +2813,11 @@ from pulldb.domain.validation import (
     validate_setting_value,
     try_create_directory,
 )
+from pulldb.infra.env_file import (
+    find_env_file as _find_env_file,
+    write_env_setting as _write_env_setting,
+    read_env_value as _read_env_value,
+)
 
 
 def _get_setting_source(
@@ -2870,6 +2875,9 @@ def get_settings_drift(db_settings: dict[str, str]) -> list[dict]:
 
     Compares database values against current environment variables.
     Only checks settings defined in SETTING_REGISTRY with a database value.
+    
+    Settings marked with db_only=True are excluded from drift detection
+    as they are configured via UI workflows (not .env).
 
     Args:
         db_settings: Dict of setting_key -> value from database
@@ -2880,6 +2888,10 @@ def get_settings_drift(db_settings: dict[str, str]) -> list[dict]:
     """
     differences = []
     for key, meta in SETTING_REGISTRY.items():
+        # Skip db_only settings - they're configured via UI, not .env
+        if meta.db_only:
+            continue
+            
         db_value = db_settings.get(key)
         if db_value is None:
             # No database value, nothing to drift from
@@ -3071,50 +3083,10 @@ async def sync_all_settings_to_env(
 
     Copies settings from database to the server's .env file.
     This resolves drift by making ENV match the authoritative DB values.
+
+    db_only settings (e.g. overlord_*) are automatically skipped — they
+    live exclusively in the database and must never be written to .env.
     """
-    from pathlib import Path
-    import re
-
-    # .env file location - SECURITY: Only use the canonical production path
-    # for server-side writes. User home and dev workspace paths are excluded
-    # to prevent privilege escalation via writable directories.
-    #
-    # For development, create /opt/pulldb.service/.env or set PULLDB_ENV_FILE.
-    import os
-    
-    env_file_override = os.environ.get("PULLDB_ENV_FILE")
-    if env_file_override:
-        env_file_paths = [Path(env_file_override)]
-    else:
-        env_file_paths = [Path("/opt/pulldb.service/.env")]
-
-    def find_env_file() -> Path | None:
-        for path in env_file_paths:
-            if path.exists():
-                return path
-        return None
-
-    def write_env_setting(env_path: Path, env_var: str, value: str) -> bool:
-        if not env_path.exists():
-            return False
-        lines: list[str] = []
-        found = False
-        pattern = re.compile(rf"^{re.escape(env_var)}\s*=")
-        with open(env_path) as f:
-            for line in f:
-                if pattern.match(line.strip()):
-                    lines.append(f"{env_var}={value}\n")
-                    found = True
-                else:
-                    lines.append(line)
-        if not found:
-            if lines and not lines[-1].endswith("\n"):
-                lines.append("\n")
-            lines.append(f"{env_var}={value}\n")
-        with open(env_path, "w") as f:
-            f.writelines(lines)
-        return True
-
     # Get database settings
     if not hasattr(state, "settings_repo") or not state.settings_repo:
         return {"success": False, "error": "Settings repository not available"}
@@ -3128,24 +3100,29 @@ async def sync_all_settings_to_env(
     if not db_settings:
         return {"success": False, "error": "No settings in database to sync"}
 
-    # Find .env file
-    env_path = find_env_file()
+    # Find .env file (shared infra — includes dev fallback)
+    env_path = _find_env_file()
     if not env_path:
         return {"success": False, "error": "No .env file found on server"}
 
-    # Sync each setting
-    updated = 0
-    errors = []
+    # Sync each setting — skip db_only keys
+    synced: list[str] = []
+    skipped: list[str] = []
+    errors: list[str] = []
+
     for key, value in db_settings.items():
         meta = get_setting_meta(key)
-        if meta:
-            env_var = meta.env_var
-        else:
-            env_var = f"PULLDB_{key.upper()}"
+
+        # Skip db_only settings — they must never be written to .env
+        if meta and meta.db_only:
+            skipped.append(key)
+            continue
+
+        env_var = meta.env_var if meta else f"PULLDB_{key.upper()}"
 
         try:
-            if write_env_setting(env_path, env_var, value):
-                updated += 1
+            if _write_env_setting(env_path, env_var, value):
+                synced.append(key)
             else:
                 errors.append(f"{key}: write failed")
         except Exception as e:
@@ -3157,30 +3134,37 @@ async def sync_all_settings_to_env(
             state.audit_repo.log_action(
                 actor_user_id=user.user_id,
                 action="settings_synced_to_env",
-                detail=f"Synced {updated} settings from DB to .env",
+                detail=f"Synced {len(synced)} settings from DB to .env",
                 context={
                     "env_path": str(env_path),
-                    "settings_updated": updated,
+                    "synced": synced,
+                    "skipped_db_only": skipped,
                     "errors": errors if errors else None,
                 },
             )
         except Exception:
             logger.debug("Failed to log audit for settings sync", exc_info=True)
 
-    if errors:
-        return {
-            "success": False,
-            "error": f"Synced {updated} settings, but {len(errors)} failed",
-            "details": errors,
-            "updated": updated,
-        }
-
-    return {
-        "success": True,
-        "message": f"Synced {updated} settings to {env_path}",
-        "updated": updated,
-        "note": "Restart services to apply .env changes",
+    result: dict = {
+        "updated": len(synced),
+        "synced": synced,
+        "skipped": skipped,
     }
+
+    if errors:
+        result.update({
+            "success": False,
+            "error": f"Synced {len(synced)} settings, but {len(errors)} failed",
+            "failed": errors,
+        })
+    else:
+        result.update({
+            "success": True,
+            "message": f"Synced {len(synced)} settings to {env_path}",
+            "note": "Restart services to apply .env changes",
+        })
+
+    return result
 
 
 @router.post("/settings/{key}")
@@ -3225,6 +3209,22 @@ async def update_setting(
     except Exception as e:
         return {"success": False, "error": f"Failed to save: {e}"}
 
+    # Dual-write to .env for non-db_only settings so the environment
+    # stays in sync with the database without requiring a separate
+    # "Sync All" step.  Failures here are non-fatal — the DB is the
+    # authoritative source; .env will catch up on next explicit sync.
+    env_synced = False
+    if not (meta and meta.db_only):
+        env_path = _find_env_file()
+        if env_path:
+            env_var = meta.env_var if meta else f"PULLDB_{key.upper()}"
+            try:
+                env_synced = _write_env_setting(env_path, env_var, value)
+            except Exception:
+                logger.debug(
+                    "Non-fatal: failed to sync '%s' to .env", key, exc_info=True,
+                )
+
     # Audit log
     if hasattr(state, "audit_repo") and state.audit_repo:
         try:
@@ -3236,6 +3236,7 @@ async def update_setting(
                     "key": key,
                     "old_value": old_value,
                     "new_value": value,
+                    "env_synced": env_synced,
                 },
             )
         except Exception:
@@ -3250,6 +3251,7 @@ async def update_setting(
         "success": True,
         "setting": setting_dict,
         "message": f"Setting '{key}' updated successfully",
+        "env_synced": env_synced,
     }
 
 
@@ -3422,69 +3424,19 @@ async def sync_single_setting(
         key: Setting key to sync
         direction: "db_to_env" (copy DB value to .env) or "env_to_db" (copy ENV to DB)
     """
-    from pathlib import Path
-    import re
-    import os
-
     meta = get_setting_meta(key)
     if not meta:
         return {"success": False, "error": f"Unknown setting: {key}"}
 
+    # db_only settings must never be written to .env
+    if meta.db_only and direction == "db_to_env":
+        return {
+            "success": False,
+            "error": f"Setting '{key}' is database-only and cannot be synced to .env",
+        }
+
     env_var = meta.env_var
-
-    # .env file handling - SECURITY: Only canonical production path
-    env_file_override = os.environ.get("PULLDB_ENV_FILE")
-    if env_file_override:
-        env_file_paths = [Path(env_file_override)]
-    else:
-        env_file_paths = [Path("/opt/pulldb.service/.env")]
-
-    def find_env_file() -> Path | None:
-        for path in env_file_paths:
-            if path.exists():
-                return path
-        return None
-
-    def read_env_value(env_path: Path, env_var: str) -> str | None:
-        if not env_path.exists():
-            return None
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("#") or not line:
-                    continue
-                if "=" in line:
-                    k, _, v = line.partition("=")
-                    k = k.strip()
-                    v = v.strip()
-                    if (v.startswith("'") and v.endswith("'")) or (v.startswith('"') and v.endswith('"')):
-                        v = v[1:-1]
-                    if k == env_var:
-                        return v
-        return None
-
-    def write_env_setting(env_path: Path, env_var: str, value: str) -> bool:
-        if not env_path.exists():
-            return False
-        lines: list[str] = []
-        found = False
-        pattern = re.compile(rf"^{re.escape(env_var)}\s*=")
-        with open(env_path) as f:
-            for line in f:
-                if pattern.match(line.strip()):
-                    lines.append(f"{env_var}={value}\n")
-                    found = True
-                else:
-                    lines.append(line)
-        if not found:
-            if lines and not lines[-1].endswith("\n"):
-                lines.append("\n")
-            lines.append(f"{env_var}={value}\n")
-        with open(env_path, "w") as f:
-            f.writelines(lines)
-        return True
-
-    env_path = find_env_file()
+    env_path = _find_env_file()
 
     if direction == "db_to_env":
         # Copy DB value → .env file
@@ -3504,7 +3456,7 @@ async def sync_single_setting(
             return {"success": False, "error": "No .env file found on server"}
 
         try:
-            if write_env_setting(env_path, env_var, db_value):
+            if _write_env_setting(env_path, env_var, db_value):
                 # Audit
                 if hasattr(state, "audit_repo") and state.audit_repo:
                     try:
@@ -3527,7 +3479,7 @@ async def sync_single_setting(
         if env_value is None:
             # Try reading from .env file directly
             if env_path:
-                env_value = read_env_value(env_path, env_var)
+                env_value = _read_env_value(env_path, env_var)
             if env_value is None:
                 return {"success": False, "error": f"Environment variable {env_var} not set"}
 
@@ -6349,8 +6301,9 @@ async def cleanup_old_overlord_host(
     This endpoint:
     1. Connects to the OLD host using provided admin credentials
     2. Drops the pulldb_overlord user from the old MySQL server
-    3. Deletes the AWS Secrets Manager secret
-    4. Clears the overlord settings
+    3. Clears the overlord settings
+    
+    The AWS secret is NOT deleted - it will be reused/overwritten by the new provision.
     
     After this succeeds, the UI should call /overlord/provision to set up
     the new host.
@@ -6382,8 +6335,6 @@ async def cleanup_old_overlord_host(
              "message": "Admin connection to old host successful (simulated)"},
             {"name": "Drop MySQL User", "success": True,
              "message": f"User pulldb_overlord dropped from {current_host} (simulated)"},
-            {"name": "Delete AWS Secret", "success": True,
-             "message": "Secret /pulldb/mysql/overlord deleted (simulated)"},
             {"name": "Clear Settings", "success": True,
              "message": "Old overlord settings cleared (simulated)"},
         ]

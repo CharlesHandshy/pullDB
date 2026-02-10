@@ -974,8 +974,10 @@ class OverlordProvisioningService:
         
         This method:
         1. Drops the pulldb_overlord user from the OLD MySQL server
-        2. Deletes the AWS Secrets Manager secret
-        3. Clears the overlord settings (host, credential_ref, etc.)
+        2. Clears the overlord settings (host, credential_ref, etc.)
+        
+        The AWS secret is NOT deleted - it will be reused/overwritten when
+        provisioning the new host.
         
         IMPORTANT: This does NOT provision the new host. Call provision()
         separately after cleanup succeeds.
@@ -987,7 +989,6 @@ class OverlordProvisioningService:
         Returns:
             OverlordProvisioningResult with step-by-step details.
         """
-        from pulldb.infra.secrets import delete_secret_if_exists
 
         steps: list[ProvisioningStep] = []
 
@@ -1071,15 +1072,7 @@ class OverlordProvisioningService:
                 ],
             )
 
-        # Step 3: Delete AWS Secrets Manager secret
-        try:
-            delete_secret_if_exists(OVERLORD_SECRET_PATH)
-            add_step("Delete AWS Secret", True, f"Secret {OVERLORD_SECRET_PATH} deleted")
-        except Exception as e:
-            add_step("Delete AWS Secret", False, "Failed to delete AWS secret", str(e))
-            # Continue anyway - the secret will be overwritten on new provision
-
-        # Step 4: Clear settings
+        # Step 3: Clear settings (keep AWS secret - will be reused/overwritten)
         self.settings_repo.set_setting("overlord_enabled", "false")
         self.settings_repo.set_setting("overlord_dbhost", "")
         self.settings_repo.set_setting("overlord_database", "")
@@ -1096,7 +1089,6 @@ class OverlordProvisioningService:
                 context={
                     "old_host": old_host,
                     "user_dropped": True,
-                    "secret_deleted": True,
                 },
             )
 

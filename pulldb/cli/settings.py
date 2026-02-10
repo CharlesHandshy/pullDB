@@ -30,91 +30,18 @@ from pulldb.domain.settings import (
     get_known_settings_compat,
 )
 
-
-# .env file locations (in priority order)
-ENV_FILE_PATHS = [
-    Path("/opt/pulldb.service/.env"),  # Installed system
-    Path(__file__).parent.parent.parent / ".env",  # Repo root (dev)
-]
+# Shared env-file operations (single implementation for CLI + web)
+from pulldb.infra.env_file import (
+    find_env_file as _find_env_file,
+    read_env_file as _read_env_file,
+    write_env_setting as _write_env_setting,
+)
 
 
 # Known settings with their environment variable names and defaults
 # Format: (env_var, default_value, description)
 # Now imported from domain/settings.py for single source of truth
 KNOWN_SETTINGS: dict[str, tuple[str, str | None, str]] = get_known_settings_compat()
-
-
-def _find_env_file() -> Path | None:
-    """Find the .env file to use for read/write operations."""
-    for path in ENV_FILE_PATHS:
-        if path.exists():
-            return path
-    return None
-
-
-def _read_env_file(env_path: Path) -> dict[str, str]:
-    """Read settings from .env file.
-
-    Returns:
-        Dict mapping env var names to their values.
-    """
-    settings: dict[str, str] = {}
-    if not env_path.exists():
-        return settings
-
-    with open(env_path) as f:
-        for line in f:
-            line = line.strip()
-            # Skip comments and empty lines
-            if not line or line.startswith("#"):
-                continue
-            # Handle KEY=value format
-            if "=" in line:
-                key, _, value = line.partition("=")
-                key = key.strip()
-                value = value.strip()
-                # Remove surrounding quotes if present
-                if (value.startswith("'") and value.endswith("'")) or (
-                    value.startswith('"') and value.endswith('"')
-                ):
-                    value = value[1:-1]
-                settings[key] = value
-    return settings
-
-
-def _write_env_setting(env_path: Path, env_var: str, value: str) -> bool:
-    """Write or update a single setting in the .env file.
-
-    Returns:
-        True if setting was added/updated, False on error.
-    """
-    if not env_path.exists():
-        click.echo(f"Warning: .env file not found at {env_path}", err=True)
-        return False
-
-    lines: list[str] = []
-    found = False
-    pattern = re.compile(rf"^{re.escape(env_var)}\s*=")
-
-    with open(env_path) as f:
-        for line in f:
-            if pattern.match(line.strip()):
-                # Replace existing line
-                lines.append(f"{env_var}={value}\n")
-                found = True
-            else:
-                lines.append(line)
-
-    if not found:
-        # Add new setting at end of file
-        if lines and not lines[-1].endswith("\n"):
-            lines.append("\n")
-        lines.append(f"{env_var}={value}\n")
-
-    with open(env_path, "w") as f:
-        f.writelines(lines)
-
-    return True
 
 
 def _get_env_value_for_key(key: str, env_settings: dict[str, str]) -> str | None:
@@ -439,6 +366,9 @@ def diff_settings() -> None:
 
     Compares settings stored in the database versus those in the .env file.
     Useful for auditing configuration drift.
+    
+    Settings marked as db_only (e.g., overlord settings) are excluded
+    since they are configured via UI workflows, not .env.
     """
     from pulldb.infra.factory import get_settings_repository
 
@@ -459,15 +389,21 @@ def diff_settings() -> None:
     click.echo(f"Comparing database vs .env file ({env_path})")
     click.echo("")
 
-    # Track all keys from both sources
+    # Track all keys from both sources, excluding db_only settings
     all_keys: set[str] = set()
+    db_only_keys: set[str] = set()
 
-    # Add known settings keys
-    for key in KNOWN_SETTINGS:
-        all_keys.add(key)
+    # Identify db_only settings to exclude
+    for key, meta in SETTING_REGISTRY.items():
+        if meta.db_only:
+            db_only_keys.add(key)
+        else:
+            all_keys.add(key)
 
-    # Add database keys
-    all_keys.update(db_settings.keys())
+    # Add database keys (except db_only)
+    for key in db_settings:
+        if key not in db_only_keys:
+            all_keys.add(key)
 
     # Map env var names to setting keys for comparison
     env_var_to_key: dict[str, str] = {}
@@ -556,6 +492,9 @@ def pull_settings(dry_run: bool) -> None:
 
     Copies all settings from the database into the .env file.
     Existing .env values will be overwritten with database values.
+    
+    Settings marked as db_only (e.g., overlord settings) are excluded
+    since they are configured via UI workflows and should not be in .env.
     """
     from pulldb.infra.factory import get_settings_repository
 
@@ -575,13 +514,24 @@ def pull_settings(dry_run: bool) -> None:
     if not env_path:
         raise click.ClickException("No .env file found")
 
+    # Filter out db_only settings
+    db_only_keys = {key for key, meta in SETTING_REGISTRY.items() if meta.db_only}
+    settings_to_sync = {k: v for k, v in db_settings.items() if k not in db_only_keys}
+    
+    if not settings_to_sync:
+        click.echo("No settings in database to sync (db_only settings excluded).")
+        return
+
     click.echo(f"Syncing database → .env ({env_path})")
+    if db_only_keys & set(db_settings.keys()):
+        skipped = db_only_keys & set(db_settings.keys())
+        click.echo(f"  (Skipping {len(skipped)} db_only setting(s): {', '.join(sorted(skipped))})")
     if dry_run:
         click.echo("(DRY RUN - no changes will be made)\n")
     click.echo("")
 
     updated = 0
-    for key, value in sorted(db_settings.items()):
+    for key, value in sorted(settings_to_sync.items()):
         # Get env var name
         if key in KNOWN_SETTINGS:
             env_var, _, _ = KNOWN_SETTINGS[key]
@@ -600,7 +550,7 @@ def pull_settings(dry_run: bool) -> None:
 
     click.echo("")
     if dry_run:
-        click.echo(f"Would update {len(db_settings)} setting(s).")
+        click.echo(f"Would update {len(settings_to_sync)} setting(s).")
     else:
         click.echo(f"Updated {updated} setting(s).")
         click.echo("\nNote: Restart services to apply .env changes.")

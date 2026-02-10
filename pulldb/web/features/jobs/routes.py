@@ -1743,6 +1743,16 @@ async def api_jobs_paginated(
         else:
             jobs = list(getattr(state.job_repo, "active_jobs", []))
     
+    # Build set of job IDs that have overlord tracking (batch lookup)
+    overlord_tracking_job_ids: set[str] = set()
+    if view == "active" and hasattr(state, "overlord_manager") and state.overlord_manager:
+        try:
+            # Get all active overlord tracking records and extract their job IDs
+            active_tracking = state.overlord_manager._tracking_repo.list_active()
+            overlord_tracking_job_ids = {t.job_id for t in active_tracking}
+        except Exception:
+            pass  # Overlord not configured or error - leave empty
+    
     # Convert to dicts for filtering/sorting
     all_rows = []
     for j in jobs:
@@ -1815,6 +1825,8 @@ async def api_jobs_paginated(
             "is_locked": getattr(j, "locked_at", None) is not None,
             "db_dropped_at": (drop := getattr(j, "db_dropped_at", None)) and drop.isoformat(),
             "superseded_at": (sup := getattr(j, "superseded_at", None)) and sup.isoformat(),
+            # Overlord tracking status
+            "has_overlord_tracking": j.id in overlord_tracking_job_ids,
         })
     
     total_count = len(all_rows)
@@ -2352,6 +2364,22 @@ async def user_complete_job(
             content={"detail": "Permission denied"},
             status_code=403,
         )
+
+    # Auto-release overlord claim BEFORE marking job complete
+    overlord_manager = getattr(state, "overlord_manager", None)
+    if overlord_manager and overlord_manager.is_enabled:
+        try:
+            from pulldb.worker.cleanup import cleanup_overlord_on_job_delete
+
+            await run_in_threadpool(
+                cleanup_overlord_on_job_delete,
+                job_id,
+                overlord_manager,
+            )
+            logger.info(f"Auto-released overlord for completed job {job_id[:12]}")
+        except Exception as e:
+            # Log warning but don't block completion - overlord issues shouldn't block user
+            logger.warning(f"Failed to auto-release overlord for job {job_id[:12]}: {e}")
 
     try:
         await run_in_threadpool(

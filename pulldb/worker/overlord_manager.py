@@ -80,17 +80,26 @@ class ExternalStateCheck:
     dbhost_changed: bool
     """Whether dbHost differs from what we set"""
     
+    subdomain_changed: bool
+    """Whether subdomain differs from what we set"""
+    
     current_dbhost: str | None
     """Current dbHost value in overlord (None if row deleted)"""
     
     expected_dbhost: str | None
     """dbHost value we expected (from tracking.current_dbhost)"""
     
+    current_subdomain: str | None
+    """Current subdomain value in overlord (None if row deleted)"""
+    
+    expected_subdomain: str | None
+    """Subdomain value we expected (from tracking.current_subdomain)"""
+    
     @property
     def is_safe_to_proceed(self) -> bool:
         """Check if it's safe to proceed with release."""
-        # Safe if row exists and dbHost unchanged
-        return self.row_exists and not self.dbhost_changed
+        # Safe if row exists and neither dbHost nor subdomain changed
+        return self.row_exists and not self.dbhost_changed and not self.subdomain_changed
 
 
 # =============================================================================
@@ -319,6 +328,24 @@ class OverlordManager:
         """
         return self._tracking_repo.get_by_job_id(job_id)
     
+    def check_subdomain_duplicates(
+        self,
+        subdomain: str,
+        exclude_database: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Check for other companies using the same subdomain.
+        
+        Args:
+            subdomain: Subdomain value to check.
+            exclude_database: Database name of the current record to exclude from results.
+            
+        Returns:
+            List of duplicate records with companyID, database, subdomain, dbHost.
+        """
+        if not self.is_enabled or not self._overlord_repo:
+            return []
+        return self._overlord_repo.find_by_subdomain(subdomain, exclude_database)
+    
     def verify_external_state(
         self,
         database_name: str,
@@ -330,6 +357,7 @@ class OverlordManager:
         based on our tracking record. Detects:
         - Row deleted externally
         - dbHost changed externally
+        - subdomain changed externally
         
         Args:
             database_name: Database name to check
@@ -345,29 +373,49 @@ class OverlordManager:
             return ExternalStateCheck(
                 row_exists=False,
                 dbhost_changed=False,
+                subdomain_changed=False,
                 current_dbhost=None,
                 expected_dbhost=tracking.current_dbhost,
+                current_subdomain=None,
+                expected_subdomain=tracking.current_subdomain,
             )
         
         # dbHost changed?
         expected = tracking.current_dbhost
         actual = current.db_host
-        changed = (
+        host_changed = (
             expected is not None
             and actual != expected
         )
         
-        if changed:
+        if host_changed:
             logger.warning(
                 f"External modification detected for {database_name}: "
                 f"expected dbHost='{expected}', found='{actual}'"
             )
         
+        # subdomain changed?
+        expected_sub = tracking.current_subdomain
+        actual_sub = current.subdomain
+        sub_changed = (
+            expected_sub is not None
+            and actual_sub != expected_sub
+        )
+        
+        if sub_changed:
+            logger.warning(
+                f"External subdomain modification detected for {database_name}: "
+                f"expected subdomain='{expected_sub}', found='{actual_sub}'"
+            )
+        
         return ExternalStateCheck(
             row_exists=True,
-            dbhost_changed=changed,
+            dbhost_changed=host_changed,
+            subdomain_changed=sub_changed,
             current_dbhost=actual,
             expected_dbhost=expected,
+            current_subdomain=actual_sub,
+            expected_subdomain=expected_sub,
         )
     
     # -------------------------------------------------------------------------
@@ -430,6 +478,7 @@ class OverlordManager:
             current_dbhost=data.get("dbHost", ""),
             current_dbhost_read=data.get("dbHostRead"),
             company_id=company_id,
+            current_subdomain=data.get("subdomain"),
         )
         
         # Audit log
@@ -539,6 +588,14 @@ class OverlordManager:
                     f"found='{external_state.current_dbhost}'"
                 )
         
+        if external_state.subdomain_changed:
+            external_change_detected = True
+            logger.warning(
+                f"Proceeding with {action.value} despite external subdomain change for "
+                f"{database_name}: expected='{external_state.expected_subdomain}', "
+                f"found='{external_state.current_subdomain}'"
+            )
+        
         result: ReleaseResult
         
         if action == ReleaseAction.RESTORE:
@@ -575,7 +632,12 @@ class OverlordManager:
         return result
     
     def _release_restore(self, database_name: str, tracking: OverlordTracking) -> ReleaseResult:
-        """Restore original dbHost values."""
+        """Restore ALL original values from previous_snapshot.
+        
+        Uses the full JSON snapshot to restore all fields that may have been
+        modified (dbHost, dbHostRead, subdomain, name, etc.), not just the
+        host fields.
+        """
         if not tracking.row_existed_before:
             return ReleaseResult(
                 success=False,
@@ -583,17 +645,52 @@ class OverlordManager:
                 message="Cannot restore - row was created by pullDB (no previous values)"
             )
         
-        if not tracking.previous_dbhost:
-            return ReleaseResult(
-                success=False,
-                action_taken=ReleaseAction.RESTORE,
-                message="Cannot restore - no previous dbHost value stored"
+        # Build restore data from previous_snapshot (full restore) or fall back to individual fields
+        if tracking.previous_snapshot:
+            # Full restore from JSON snapshot - restore all modifiable fields
+            restore_data: dict[str, Any] = {}
+            
+            # Routing fields (the critical ones)
+            if "dbHost" in tracking.previous_snapshot:
+                restore_data["dbHost"] = tracking.previous_snapshot["dbHost"] or ""
+            if "dbHostRead" in tracking.previous_snapshot:
+                restore_data["dbHostRead"] = tracking.previous_snapshot["dbHostRead"] or ""
+            if "subdomain" in tracking.previous_snapshot:
+                restore_data["subdomain"] = tracking.previous_snapshot["subdomain"] or ""
+            
+            # Company info fields
+            if "name" in tracking.previous_snapshot:
+                restore_data["name"] = tracking.previous_snapshot["name"] or ""
+            
+            if not restore_data:
+                return ReleaseResult(
+                    success=False,
+                    action_taken=ReleaseAction.RESTORE,
+                    message="Cannot restore - previous_snapshot contains no restorable fields"
+                )
+            
+            logger.info(
+                f"Restoring {len(restore_data)} fields for {database_name} from snapshot: "
+                f"{list(restore_data.keys())}"
+            )
+        else:
+            # Fallback to individual tracking fields (legacy behavior)
+            if not tracking.previous_dbhost:
+                return ReleaseResult(
+                    success=False,
+                    action_taken=ReleaseAction.RESTORE,
+                    message="Cannot restore - no previous values stored"
+                )
+            
+            restore_data = {
+                "dbHost": tracking.previous_dbhost,
+                "dbHostRead": tracking.previous_dbhost_read or "",
+            }
+            logger.info(
+                f"Restoring {database_name} from tracking fields (no snapshot available)"
             )
         
-        updated = self._overlord_repo.update(database_name, {
-            "dbHost": tracking.previous_dbhost,
-            "dbHostRead": tracking.previous_dbhost_read or "",
-        })
+        updated = self._overlord_repo.update(database_name, restore_data)
         
         if not updated:
             # Row disappeared between our check and update (race condition)
@@ -607,12 +704,17 @@ class OverlordManager:
                 external_change_detected=True,
             )
         
+        # Build descriptive message
+        restored_fields = list(restore_data.keys())
+        restored_dbhost = restore_data.get("dbHost", tracking.previous_dbhost)
+        restored_dbhost_read = restore_data.get("dbHostRead", tracking.previous_dbhost_read)
+        
         return ReleaseResult(
             success=True,
             action_taken=ReleaseAction.RESTORE,
-            message=f"Restored dbHost to '{tracking.previous_dbhost}'",
-            restored_dbhost=tracking.previous_dbhost,
-            restored_dbhost_read=tracking.previous_dbhost_read,
+            message=f"Restored {len(restored_fields)} fields: {', '.join(restored_fields)}",
+            restored_dbhost=restored_dbhost,
+            restored_dbhost_read=restored_dbhost_read,
         )
     
     def _release_clear(self, database_name: str, tracking: OverlordTracking) -> ReleaseResult:
@@ -642,6 +744,15 @@ class OverlordManager:
     
     def _release_delete(self, database_name: str, tracking: OverlordTracking) -> ReleaseResult:
         """Delete the overlord row completely."""
+        # Safety guard: refuse to delete a pre-existing row we never synced.
+        # If current_dbhost is None we never wrote to overlord, so deleting
+        # a row we didn't create or modify is unsafe. (G3)
+        if tracking.current_dbhost is None and tracking.row_existed_before:
+            raise OverlordSafetyError(
+                f"Cannot delete '{database_name}': row existed before pullDB "
+                f"claimed it and was never synced. Use 'restore' or 'clear' instead."
+            )
+
         # Safety check: verify current dbHost matches what we set
         if tracking.current_dbhost:
             current = self._overlord_repo.get_by_database(database_name)

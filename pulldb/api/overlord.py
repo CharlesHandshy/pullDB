@@ -13,9 +13,14 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from pulldb.infra.overlord import OverlordConnectionError
+from pulldb.infra.overlord import (
+    OverlordAlreadyClaimedError,
+    OverlordConnectionError,
+    OverlordOwnershipError,
+    OverlordSafetyError,
+)
 
 if TYPE_CHECKING:
     from pulldb.api.auth import AuthUser
@@ -41,7 +46,12 @@ class OverlordSyncRequest(BaseModel):
     
     job_id: str
     database: str
-    subdomain: str
+    subdomain: str = Field(
+        ...,
+        max_length=30,
+        pattern=r'^[a-z0-9]([a-z0-9-]{0,28}[a-z0-9])?$',
+        description="DNS-safe subdomain for routing (lowercase alphanumeric and hyphens, 1-30 chars)",
+    )
     name: str | None = None
     dbHost: str
     dbHostRead: str | None = None
@@ -55,6 +65,15 @@ class OverlordReleaseRequest(BaseModel):
     action: str = "restore"  # restore, clear, delete
 
 
+class SubdomainDuplicateEntry(BaseModel):
+    """A company record that shares the same subdomain."""
+    
+    company_id: int
+    database: str
+    subdomain: str
+    dbHost: str
+
+
 class OverlordStateResponse(BaseModel):
     """Response with current overlord state for a job."""
     
@@ -62,6 +81,7 @@ class OverlordStateResponse(BaseModel):
     tracking: dict[str, Any] | None
     company: dict[str, Any] | None
     enabled: bool
+    subdomain_duplicates: list[SubdomainDuplicateEntry] | None = None
 
 
 class OverlordSyncResponse(BaseModel):
@@ -163,6 +183,26 @@ def create_overlord_router(
                     detail=f"Error retrieving overlord data: {error_str}"
                 ) from e
         
+        # Check for subdomain duplicates if company has a subdomain
+        subdomain_duplicates = None
+        if company and company.subdomain:
+            try:
+                dupes = overlord_manager.check_subdomain_duplicates(
+                    company.subdomain, exclude_database=job.target
+                )
+                if dupes:
+                    subdomain_duplicates = [
+                        SubdomainDuplicateEntry(
+                            company_id=d["companyID"],
+                            database=d["database"],
+                            subdomain=d["subdomain"],
+                            dbHost=_shorten_host(d.get("dbHost", "")),
+                        )
+                        for d in dupes
+                    ]
+            except Exception:
+                logger.debug("Subdomain duplicate check failed (non-critical)", exc_info=True)
+        
         return OverlordStateResponse(
             job={
                 "id": job.id,
@@ -173,6 +213,7 @@ def create_overlord_router(
             tracking=_tracking_to_dict(tracking) if tracking else None,
             company=_company_to_dict(company) if company else None,
             enabled=True,
+            subdomain_duplicates=subdomain_duplicates,
         )
     
     @router.post("/{job_id}/claim", response_model=OverlordSyncResponse)
@@ -223,9 +264,20 @@ def create_overlord_router(
                 tracking=_tracking_to_dict(tracking),
             )
             
+        except (OverlordOwnershipError, OverlordAlreadyClaimedError) as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except OverlordConnectionError as e:
+            logger.error(f"Overlord connection failed during claim for job {job_id}: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail="Unable to connect to overlord database. Please try again later.",
+            ) from e
         except Exception as e:
             logger.exception(f"Failed to claim overlord for job {job_id}")
-            raise HTTPException(status_code=400, detail=str(e)) from e
+            raise HTTPException(
+                status_code=500,
+                detail="An internal error occurred. Check server logs for details.",
+            ) from e
     
     @router.post("/{job_id}/sync", response_model=OverlordSyncResponse)
     async def sync_overlord(
@@ -300,9 +352,20 @@ def create_overlord_router(
                 tracking=_tracking_to_dict(tracking),
             )
             
+        except (OverlordOwnershipError, OverlordAlreadyClaimedError, OverlordSafetyError) as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except OverlordConnectionError as e:
+            logger.error(f"Overlord connection failed during sync for job {job_id}: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail="Unable to connect to overlord database. Please try again later.",
+            ) from e
         except Exception as e:
             logger.exception(f"Failed to sync overlord for job {job_id}")
-            raise HTTPException(status_code=400, detail=str(e)) from e
+            raise HTTPException(
+                status_code=500,
+                detail="An internal error occurred. Check server logs for details.",
+            ) from e
     
     @router.post("/{job_id}/release", response_model=OverlordReleaseResponse)
     async def release_overlord(
@@ -367,9 +430,55 @@ def create_overlord_router(
                 message=result.message,
             )
             
+        except (OverlordOwnershipError, OverlordSafetyError) as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except OverlordConnectionError as e:
+            logger.error(f"Overlord connection failed during release for job {job_id}: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail="Unable to connect to overlord database. Please try again later.",
+            ) from e
         except Exception as e:
             logger.exception(f"Failed to release overlord for job {job_id}")
-            raise HTTPException(status_code=400, detail=str(e)) from e
+            raise HTTPException(
+                status_code=500,
+                detail="An internal error occurred. Check server logs for details.",
+            ) from e
+    
+    @router.get("/subdomain-check/{subdomain}")
+    async def check_subdomain(
+        subdomain: str,
+        exclude_database: str | None = None,
+        state: Any = Depends(get_api_state),
+        user: Any = Depends(require_auth),
+    ) -> dict[str, Any]:
+        """Check for existing companies using the given subdomain.
+        
+        Returns a list of duplicate records for the UI to display.
+        Query param ?exclude_database= omits the current record.
+        """
+        overlord_manager = getattr(state, "overlord_manager", None)
+        if not overlord_manager or not overlord_manager.is_enabled:
+            return {"duplicates": []}
+        
+        try:
+            dupes = overlord_manager.check_subdomain_duplicates(
+                subdomain, exclude_database=exclude_database
+            )
+            return {
+                "duplicates": [
+                    {
+                        "company_id": d["companyID"],
+                        "database": d["database"],
+                        "subdomain": d["subdomain"],
+                        "dbHost": _shorten_host(d.get("dbHost", "")),
+                    }
+                    for d in dupes
+                ],
+            }
+        except Exception as e:
+            logger.warning(f"Subdomain check failed: {e}")
+            return {"duplicates": [], "error": "Check failed"}
     
     return router
 
@@ -394,10 +503,28 @@ def _can_manage_overlord(user: Any, job: Any) -> bool:
             return True
     
     # Owner can manage their own jobs
-    if hasattr(job, "owner_user_code") and hasattr(user, "username"):
-        return job.owner_user_code == user.username
+    # Compare user_code to user_code (not username to user_code)
+    if hasattr(job, "owner_user_code") and hasattr(user, "user_code"):
+        return job.owner_user_code == user.user_code
     
     return False
+
+
+def _shorten_host(host: str, max_len: int = 35) -> str:
+    """Shorten a dbHost value for display in duplicate tables.
+    
+    Truncates long hostnames with ellipsis while keeping the meaningful prefix.
+    
+    Args:
+        host: Full dbHost string.
+        max_len: Maximum display length.
+        
+    Returns:
+        Shortened host string.
+    """
+    if not host or len(host) <= max_len:
+        return host or ""
+    return host[: max_len - 1] + "\u2026"
 
 
 def _tracking_to_dict(tracking: Any) -> dict[str, Any]:
@@ -414,6 +541,7 @@ def _tracking_to_dict(tracking: Any) -> dict[str, Any]:
         "previous_dbhost": tracking.previous_dbhost,
         "previous_dbhost_read": tracking.previous_dbhost_read,
         "current_dbhost": tracking.current_dbhost,
+        "current_subdomain": tracking.current_subdomain,
         "company_id": tracking.company_id,
         "created_at": tracking.created_at.isoformat() if tracking.created_at else None,
         "updated_at": tracking.updated_at.isoformat() if tracking.updated_at else None,

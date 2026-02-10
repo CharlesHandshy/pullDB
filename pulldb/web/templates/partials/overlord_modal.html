@@ -54,8 +54,34 @@
                         <div class="form-group">
                             <label for="overlord-subdomain" class="form-label required">Subdomain</label>
                             <input type="text" id="overlord-subdomain" name="subdomain" class="form-input"
-                                   placeholder="company-name" required>
-                            <span class="form-hint">The subdomain used for routing (e.g., acme for acme.yourapp.com)</span>
+                                   placeholder="company-name" required
+                                   maxlength="30"
+                                   pattern="[a-z0-9]([a-z0-9\-]{0,28}[a-z0-9])?"
+                                   title="Lowercase letters, numbers, and hyphens only (1-30 chars). Must start and end with alphanumeric.">
+                            <span class="form-hint">DNS-safe subdomain for routing (e.g., acme for acme.yourapp.com). Lowercase, numbers, hyphens only.</span>
+                            <!-- Subdomain duplicate warning table -->
+                            <div id="subdomain-duplicates-container" class="subdomain-duplicates js-hidden">
+                                <div class="subdomain-duplicates-header">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                        <line x1="12" y1="9" x2="12" y2="13"/>
+                                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                    </svg>
+                                    <strong>Subdomain already in use</strong> — The following records share this subdomain:
+                                </div>
+                                <table class="subdomain-duplicates-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Company ID</th>
+                                            <th>Database</th>
+                                            <th>Subdomain</th>
+                                            <th>dbHost</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="subdomain-duplicates-body">
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -265,6 +291,58 @@
     text-transform: none;
     letter-spacing: normal;
 }
+
+/* Subdomain duplicate warning table */
+.subdomain-duplicates {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    background: var(--yellow-50);
+    border: 1px solid var(--yellow-300);
+    border-radius: var(--radius-md);
+}
+
+.subdomain-duplicates-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--yellow-800);
+    margin-bottom: var(--space-2);
+}
+
+.subdomain-duplicates-header svg {
+    color: var(--yellow-600);
+    flex-shrink: 0;
+}
+
+.subdomain-duplicates-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+}
+
+.subdomain-duplicates-table th {
+    text-align: left;
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--yellow-300);
+    color: var(--yellow-900);
+    font-weight: var(--font-semibold);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.subdomain-duplicates-table td {
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--yellow-200);
+    color: var(--yellow-900);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+}
+
+.subdomain-duplicates-table tr:last-child td {
+    border-bottom: none;
+}
 </style>
 
 <script>
@@ -364,6 +442,7 @@ function resetOverlordForm() {
     document.getElementById('overlord-subdomain').value = '';
     document.getElementById('overlord-status-banner').classList.add('js-hidden');
     document.getElementById('overlord-original-values').classList.add('js-hidden');
+    document.getElementById('subdomain-duplicates-container').classList.add('js-hidden');
     
     overlordState = {
         jobId: null,
@@ -405,8 +484,9 @@ function populateOverlordForm(data) {
         banner.classList.add('alert-info');
         message.innerHTML = '<strong>Create New Record</strong> — No existing overlord.companies entry found. Fill in the details below to create one.';
         
-        // Default subdomain to target name
-        document.getElementById('overlord-subdomain').value = job.target;
+        // Default subdomain to target name (convert underscores to hyphens for DNS safety)
+        document.getElementById('overlord-subdomain').value = job.target
+            .replace(/_/g, '-').toLowerCase();
         
         // Default company name empty
         document.getElementById('overlord-name').value = '';
@@ -451,6 +531,17 @@ function populateOverlordForm(data) {
         }
         
         updateReleaseHint();
+    }
+    
+    // Show subdomain duplicates from initial load (if any)
+    if (data.subdomain_duplicates && data.subdomain_duplicates.length > 0) {
+        renderSubdomainDuplicates(data.subdomain_duplicates);
+    }
+    
+    // Trigger a live check for the current subdomain value
+    const currentSubdomain = document.getElementById('overlord-subdomain').value;
+    if (currentSubdomain) {
+        checkSubdomainDuplicates(currentSubdomain);
     }
 }
 
@@ -518,6 +609,13 @@ async function submitOverlordForm(event) {
         
         if (!response.ok) {
             const error = await response.json();
+            // Handle Pydantic 422 validation errors (e.g., subdomain format)
+            if (response.status === 422 && error.detail) {
+                const messages = Array.isArray(error.detail)
+                    ? error.detail.map(e => e.msg || e.message || JSON.stringify(e)).join('; ')
+                    : error.detail;
+                throw new Error(messages);
+            }
             throw new Error(error.detail || 'Failed to save changes');
         }
         
@@ -551,5 +649,86 @@ document.addEventListener('DOMContentLoaded', function() {
     if (releaseSelect) {
         releaseSelect.addEventListener('change', updateReleaseHint);
     }
+    
+    // Subdomain input: auto-lowercase + debounced duplicate check
+    const subdomainInput = document.getElementById('overlord-subdomain');
+    if (subdomainInput) {
+        let subdomainCheckTimer = null;
+        
+        subdomainInput.addEventListener('input', function(e) {
+            // Auto-lowercase and strip invalid characters
+            const cleaned = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+            if (cleaned !== e.target.value) {
+                e.target.value = cleaned;
+            }
+            
+            // Debounced duplicate check (400ms)
+            clearTimeout(subdomainCheckTimer);
+            const val = e.target.value.trim();
+            if (val.length >= 1) {
+                subdomainCheckTimer = setTimeout(() => checkSubdomainDuplicates(val), 400);
+            } else {
+                document.getElementById('subdomain-duplicates-container').classList.add('js-hidden');
+            }
+        });
+    }
 });
+
+/**
+ * Check for subdomain duplicates via API (live, debounced)
+ * @param {string} subdomain - The subdomain value to check
+ */
+async function checkSubdomainDuplicates(subdomain) {
+    if (!subdomain || !overlordState.database) return;
+    
+    try {
+        const params = new URLSearchParams({ exclude_database: overlordState.database });
+        const response = await fetch(
+            `/api/v1/overlord/subdomain-check/${encodeURIComponent(subdomain)}?${params}`
+        );
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        if (data.duplicates && data.duplicates.length > 0) {
+            renderSubdomainDuplicates(data.duplicates);
+        } else {
+            document.getElementById('subdomain-duplicates-container').classList.add('js-hidden');
+        }
+    } catch (err) {
+        console.debug('Subdomain check failed:', err);
+    }
+}
+
+/**
+ * Render duplicate subdomain records into the warning table
+ * @param {Array} duplicates - Array of {company_id, database, subdomain, dbHost}
+ */
+function renderSubdomainDuplicates(duplicates) {
+    const container = document.getElementById('subdomain-duplicates-container');
+    const tbody = document.getElementById('subdomain-duplicates-body');
+    
+    if (!duplicates || duplicates.length === 0) {
+        container.classList.add('js-hidden');
+        return;
+    }
+    
+    // Build table rows
+    tbody.innerHTML = duplicates.map(d => `
+        <tr>
+            <td>${_escapeHtml(String(d.company_id))}</td>
+            <td>${_escapeHtml(d.database)}</td>
+            <td>${_escapeHtml(d.subdomain)}</td>
+            <td>${_escapeHtml(d.dbHost)}</td>
+        </tr>
+    `).join('');
+    
+    container.classList.remove('js-hidden');
+}
+
+/** Escape HTML to prevent XSS in table rendering */
+function _escapeHtml(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str || ''));
+    return div.innerHTML;
+}
 </script>

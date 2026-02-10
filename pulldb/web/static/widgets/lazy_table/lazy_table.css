@@ -448,6 +448,16 @@
 .lazy-table-td-actions {
     text-align: right;
     white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* Ensure action button containers are vertically centered */
+.lazy-table-td-actions .cell-actions-retention {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    vertical-align: middle;
+    height: 100%;
 }
 
 .lazy-table-td-nowrap {
@@ -603,6 +613,18 @@
 .action-btn-warning:hover {
     background: var(--warning-50, #fffbeb);
     color: var(--warning-700, #b45309);
+}
+
+/* Disabled action button - placeholder to maintain column alignment */
+.action-btn-disabled {
+    color: var(--gray-400, #9ca3af);
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.action-btn-disabled:hover {
+    background: transparent;
+    color: var(--gray-400, #9ca3af);
 }
 
 .action-btn svg {

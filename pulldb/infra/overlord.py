@@ -64,6 +64,7 @@ class OverlordTracking:
     previous_snapshot: dict[str, Any] | None
     current_dbhost: str | None
     current_dbhost_read: str | None
+    current_subdomain: str | None
     created_at: datetime | None
     updated_at: datetime | None
     released_at: datetime | None
@@ -304,6 +305,7 @@ class OverlordConnection:
             raise OverlordConnectionError(f"Failed to connect to overlord: {e}") from e
         
         try:
+            self._apply_session_timeouts(conn)
             yield conn
         finally:
             conn.close()
@@ -329,6 +331,7 @@ class OverlordConnection:
             raise OverlordConnectionError(f"Failed to connect to overlord: {e}") from e
         
         try:
+            self._apply_session_timeouts(conn)
             yield conn
             conn.commit()
         except Exception:
@@ -336,6 +339,34 @@ class OverlordConnection:
             raise
         finally:
             conn.close()
+
+    def _apply_session_timeouts(self, conn: Any) -> None:
+        """Set session-level query timeouts on a fresh connection.
+
+        - max_execution_time: Kills SELECT queries exceeding the limit (ms).
+        - net_read_timeout / net_write_timeout: Socket-level guards for DML.
+
+        These protect against hung queries on the external overlord database.
+        """
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SET SESSION max_execution_time = %s",
+                (self.QUERY_TIMEOUT_SECONDS * 1000,),
+            )
+            cursor.execute(
+                "SET SESSION net_read_timeout = %s",
+                (self.QUERY_TIMEOUT_SECONDS,),
+            )
+            cursor.execute(
+                "SET SESSION net_write_timeout = %s",
+                (self.QUERY_TIMEOUT_SECONDS,),
+            )
+            cursor.close()
+        except mysql.connector.Error:
+            # Non-fatal: some MySQL versions may not support max_execution_time.
+            # The connect_timeout still provides baseline protection.
+            logger.debug("Could not set session timeouts on overlord connection")
 
 
 # =============================================================================
@@ -532,6 +563,40 @@ class OverlordRepository:
             if affected > 0:
                 logger.info(f"Deleted overlord company: database={database_name}")
             return affected > 0
+    
+    def find_by_subdomain(
+        self,
+        subdomain: str,
+        exclude_database: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Find companies using a specific subdomain.
+        
+        Used for duplicate detection before sync.
+        
+        Args:
+            subdomain: Subdomain to search for.
+            exclude_database: Database name to exclude from results (the current record).
+            
+        Returns:
+            List of matching rows with companyID, database, subdomain, dbHost.
+        """
+        with self._conn.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            if exclude_database:
+                cursor.execute(
+                    f"SELECT `companyID`, `database`, `subdomain`, `dbHost` "
+                    f"FROM {self._table} WHERE `subdomain` = %s AND `database` != %s",
+                    (subdomain, exclude_database),
+                )
+            else:
+                cursor.execute(
+                    f"SELECT `companyID`, `database`, `subdomain`, `dbHost` "
+                    f"FROM {self._table} WHERE `subdomain` = %s",
+                    (subdomain,),
+                )
+            rows = cursor.fetchall()
+            cursor.close()
+            return [dict(r) for r in rows]
 
 
 # =============================================================================
@@ -626,36 +691,64 @@ class OverlordTrackingRepository:
             
         Returns:
             Tracking record ID
+
+        Raises:
+            OverlordAlreadyClaimedError: If another job holds an active claim
         """
         snapshot_json = json.dumps(previous_snapshot) if previous_snapshot else None
         
         with self.pool.connection() as conn:
             cursor = conn.cursor()
+            
+            # Lock any existing row to prevent concurrent claim races (G1)
             cursor.execute(
-                """INSERT INTO overlord_tracking (
-                    database_name, job_id, job_target, created_by, status,
-                    row_existed_before, previous_dbhost, previous_dbhost_read,
-                    previous_snapshot, company_id
-                ) VALUES (%s, %s, %s, %s, 'claimed', %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                    job_id = VALUES(job_id),
-                    job_target = VALUES(job_target),
-                    created_by = VALUES(created_by),
-                    status = 'claimed',
-                    row_existed_before = VALUES(row_existed_before),
-                    previous_dbhost = VALUES(previous_dbhost),
-                    previous_dbhost_read = VALUES(previous_dbhost_read),
-                    previous_snapshot = VALUES(previous_snapshot),
-                    company_id = VALUES(company_id),
-                    released_at = NULL
-                """,
-                (
-                    database_name, job_id, job_target, created_by,
-                    row_existed_before, previous_dbhost, previous_dbhost_read,
-                    snapshot_json, company_id
-                )
+                "SELECT job_id, status FROM overlord_tracking "
+                "WHERE database_name = %s FOR UPDATE",
+                (database_name,),
             )
-            record_id = cursor.lastrowid
+            existing = cursor.fetchone()
+            
+            if existing:
+                existing_job_id, existing_status = existing
+                # Reject if actively claimed by a different job
+                if existing_status != "released" and existing_job_id != job_id:
+                    conn.commit()  # Release the FOR UPDATE lock
+                    cursor.close()
+                    raise OverlordAlreadyClaimedError(
+                        f"Database '{database_name}' is already claimed "
+                        f"by job {str(existing_job_id)}"
+                    )
+                # Re-claim: update the existing released/same-job row
+                cursor.execute(
+                    """UPDATE overlord_tracking SET
+                        job_id = %s, job_target = %s, created_by = %s,
+                        status = 'claimed',
+                        row_existed_before = %s, previous_dbhost = %s,
+                        previous_dbhost_read = %s, previous_snapshot = %s,
+                        company_id = %s, released_at = NULL
+                    WHERE database_name = %s""",
+                    (
+                        job_id, job_target, created_by,
+                        row_existed_before, previous_dbhost, previous_dbhost_read,
+                        snapshot_json, company_id, database_name,
+                    ),
+                )
+            else:
+                # Fresh insert — no existing record
+                cursor.execute(
+                    """INSERT INTO overlord_tracking (
+                        database_name, job_id, job_target, created_by, status,
+                        row_existed_before, previous_dbhost, previous_dbhost_read,
+                        previous_snapshot, company_id
+                    ) VALUES (%s, %s, %s, %s, 'claimed', %s, %s, %s, %s, %s)""",
+                    (
+                        database_name, job_id, job_target, created_by,
+                        row_existed_before, previous_dbhost, previous_dbhost_read,
+                        snapshot_json, company_id,
+                    ),
+                )
+            
+            record_id = cursor.lastrowid or 0
             conn.commit()
             cursor.close()
             
@@ -668,6 +761,7 @@ class OverlordTrackingRepository:
         current_dbhost: str,
         current_dbhost_read: str | None = None,
         company_id: int | None = None,
+        current_subdomain: str | None = None,
     ) -> bool:
         """Mark tracking as synced with current values.
         
@@ -676,6 +770,7 @@ class OverlordTrackingRepository:
             current_dbhost: dbHost value written to overlord
             current_dbhost_read: dbHostRead value written to overlord
             company_id: Overlord companyID (for new rows)
+            current_subdomain: Subdomain value written to overlord
             
         Returns:
             True if updated, False if not found
@@ -687,9 +782,10 @@ class OverlordTrackingRepository:
                    SET status = 'synced',
                        current_dbhost = %s,
                        current_dbhost_read = %s,
+                       current_subdomain = %s,
                        company_id = COALESCE(%s, company_id)
                    WHERE database_name = %s AND status IN ('claimed', 'synced')""",
-                (current_dbhost, current_dbhost_read, company_id, database_name)
+                (current_dbhost, current_dbhost_read, current_subdomain, company_id, database_name)
             )
             affected = cursor.rowcount
             conn.commit()
@@ -772,6 +868,7 @@ class OverlordTrackingRepository:
             previous_snapshot=snapshot,
             current_dbhost=row.get("current_dbhost"),
             current_dbhost_read=row.get("current_dbhost_read"),
+            current_subdomain=row.get("current_subdomain"),
             created_at=row.get("created_at"),
             updated_at=row.get("updated_at"),
             released_at=row.get("released_at"),
