@@ -2827,21 +2827,27 @@ def _get_setting_source(
 ) -> tuple[str | None, str]:
     """Determine setting's effective value and source.
 
-    Priority: database > environment > default
+    Priority: environment > database > default
+    (Matches runtime Config.from_env_and_mysql() behavior.)
 
     Returns:
-        Tuple of (effective_value, source) where source is 'database', 'environment', or 'default'.
+        Tuple of (effective_value, source) where source is 'database',
+        'environment', 'environment (overrides database)', or 'default'.
     """
-    # Database has highest priority
-    if db_value is not None:
-        return db_value, "database"
-
-    # Check environment
     if meta:
         env_value = _os.getenv(meta.env_var)
         if env_value is not None:
+            # Environment takes precedence over database (matches runtime)
+            if db_value is not None and db_value != env_value:
+                return env_value, "environment (overrides database)"
             return env_value, "environment"
-        # Return default
+
+    # Database second priority
+    if db_value is not None:
+        return db_value, "database"
+
+    # Default fallback
+    if meta:
         return meta.default, "default"
 
     return None, "none"
@@ -6183,10 +6189,7 @@ async def provision_overlord(
                     state.settings_repo, credential_resolver
                 )
                 if new_conn:
-                    overlord_manager._overlord_conn = new_conn
-                    overlord_manager._overlord_repo = None  # Will be recreated on next use
-                    from pulldb.infra.overlord import OverlordRepository
-                    overlord_manager._overlord_repo = OverlordRepository(new_conn, overlord_table)
+                    overlord_manager.replace_connection(new_conn, overlord_table)
                     logger.info("Refreshed overlord connection after provisioning")
         except Exception as refresh_error:
             logger.warning(f"Failed to refresh overlord connection (service restart may be needed): {refresh_error}")
@@ -6494,7 +6497,7 @@ async def refresh_overlord_credentials(
     Returns JSON with success status.
     """
     from pulldb.infra.factory import is_simulation_mode
-    from pulldb.infra.overlord import OverlordConnectionError
+    from pulldb.domain.overlord import OverlordConnectionError
     
     if is_simulation_mode():
         return {
@@ -6609,4 +6612,5 @@ async def deprovision_overlord(
         "message": result.message,
         "steps": steps_out,
     }
+
 

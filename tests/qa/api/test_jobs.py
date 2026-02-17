@@ -14,7 +14,7 @@ Test Count: 32 tests
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -45,9 +45,8 @@ from .conftest import (
 class TestJobSubmission:
     """Tests for job submission endpoint."""
 
-    @patch("pulldb.api.logic._target_database_exists_on_host", return_value=False)
     def test_submit_job_qatemplate(
-        self, mock_db_exists, client: TestClient, mock_api_state, sample_user, job_factory
+        self, client: TestClient, mock_api_state, sample_user, job_factory
     ) -> None:
         """POST /api/jobs with qatemplate creates job."""
         configure_user_repo(mock_api_state, user=sample_user, create_user=sample_user)
@@ -67,9 +66,8 @@ class TestJobSubmission:
         assert_contains(data, "job_id", "target", "staging_name", "status")
         assert data["status"] == "queued"
 
-    @patch("pulldb.api.logic._target_database_exists_on_host", return_value=False)
     def test_submit_job_customer(
-        self, mock_db_exists, client: TestClient, mock_api_state, sample_user, job_factory
+        self, client: TestClient, mock_api_state, sample_user, job_factory
     ) -> None:
         """POST /api/jobs with customer creates job."""
         configure_user_repo(mock_api_state, user=sample_user, create_user=sample_user)
@@ -128,9 +126,8 @@ class TestJobSubmission:
         assert_error(response, 400)
         assert "alphabetic" in response.json()["detail"].lower()
 
-    @patch("pulldb.api.logic._target_database_exists_on_host", return_value=False)
     def test_submit_job_with_options(
-        self, mock_db_exists, client: TestClient, mock_api_state, sample_user, job_factory
+        self, client: TestClient, mock_api_state, sample_user, job_factory
     ) -> None:
         """POST /api/jobs with date and env options."""
         configure_user_repo(mock_api_state, user=sample_user, create_user=sample_user)
@@ -160,9 +157,8 @@ class TestJobSubmission:
 class TestConcurrencyLimits:
     """Tests for job submission concurrency limits."""
 
-    @patch("pulldb.api.logic._target_database_exists_on_host", return_value=False)
     def test_submit_job_global_limit(
-        self, mock_db_exists, client: TestClient, mock_api_state, sample_user
+        self, client: TestClient, mock_api_state, sample_user
     ) -> None:
         """POST /api/jobs at global limit returns 429."""
         configure_user_repo(mock_api_state, user=sample_user, create_user=sample_user)
@@ -176,9 +172,8 @@ class TestConcurrencyLimits:
         assert_error(response, 429)
         assert "capacity" in response.json()["detail"].lower()
 
-    @patch("pulldb.api.logic._target_database_exists_on_host", return_value=False)
     def test_submit_job_per_user_limit(
-        self, mock_db_exists, client: TestClient, mock_api_state, sample_user
+        self, client: TestClient, mock_api_state, sample_user
     ) -> None:
         """POST /api/jobs at per-user limit returns 429."""
         configure_user_repo(mock_api_state, user=sample_user, create_user=sample_user)
@@ -373,3 +368,36 @@ class TestJobCancellation:
 
         response = client.post("/api/jobs/nonexistent-job-id/cancel")
         assert_error(response, 404)
+
+
+# ---------------------------------------------------------------------------
+# Error Subclass Coverage (Phase 7e)
+# ---------------------------------------------------------------------------
+
+
+class TestEnqueueErrorSubclassInheritance:
+    """Verify all error subclasses are proper EnqueueError instances."""
+
+    @pytest.mark.parametrize(
+        "error_cls",
+        [
+            "EnqueueValidationError",
+            "HostUnauthorizedError",
+            "UserDisabledError",
+            "JobNotFoundError",
+            "EnqueueBackupNotFoundError",
+            "DuplicateJobError",
+            "DatabaseProtectionError",
+            "JobLockedError",
+            "RateLimitError",
+            "HostUnavailableError",
+        ],
+    )
+    def test_isinstance_enqueue_error(self, error_cls: str) -> None:
+        """Each subclass is an instance of EnqueueError."""
+        import pulldb.domain.errors as errs
+
+        cls = getattr(errs, error_cls)
+        instance = cls("test detail")
+        assert isinstance(instance, errs.EnqueueError)
+        assert instance.detail == "test detail"

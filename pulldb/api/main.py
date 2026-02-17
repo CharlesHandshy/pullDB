@@ -3976,6 +3976,8 @@ def _search_backups(
     customer: str,
     environment: str,
     date_from: str | None,
+    date_to: str | None,
+    date_mode: str,
     limit: int,
     offset: int = 0,
 ) -> BackupSearchResponse:
@@ -3991,7 +3993,7 @@ def _search_backups(
         date_from = default_date.strftime("%Y%m%d")
 
     service = DiscoveryService()
-    result = service.search_backups(customer, environment, date_from, limit, offset)
+    result = service.search_backups(customer, environment, date_from, limit, offset, date_to=date_to, date_mode=date_mode)
 
     # Convert domain dataclasses to Pydantic models
     backups = [
@@ -4064,6 +4066,8 @@ async def search_backups(
     customer: str = fastapi.Query(..., min_length=1, description="Customer name or pattern (supports * and ? wildcards)"),
     environment: str = fastapi.Query("both", description="S3 environment: staging, prod, or both"),
     date_from: str | None = fastapi.Query(None, description="Filter backups from date (YYYYMMDD). Default: 7 days ago"),
+    date_to: str | None = fastapi.Query(None, description="Filter backups to date (YYYYMMDD). Used with 'between' mode"),
+    date_mode: str = fastapi.Query("on_or_after", description="Date filter mode: on_or_after, on_or_before, on_date, between"),
     limit: int = fastapi.Query(5, ge=1, le=100, description="Max results per page"),
     offset: int = fastapi.Query(0, ge=0, description="Pagination offset"),
 ) -> BackupSearchResponse:
@@ -4076,6 +4080,8 @@ async def search_backups(
         customer: Customer name or wildcard pattern (e.g., "actionpest" or "action*")
         environment: S3 environment to search (staging, prod, or both)
         date_from: Start date filter in YYYYMMDD format (default: 7 days ago)
+        date_to: End date filter in YYYYMMDD format (used with 'between' mode)
+        date_mode: Date filter mode (on_or_after, on_or_before, on_date, between)
         limit: Maximum number of results per page (default 5, max 100)
         offset: Number of results to skip for pagination
 
@@ -4088,7 +4094,14 @@ async def search_backups(
             detail=f"environment must be staging, prod, or both. Got: {environment}",
         )
 
-    return await run_in_threadpool(_search_backups, customer, environment, date_from, limit, offset)
+    valid_modes = ("on_or_after", "on_or_before", "on_date", "between")
+    if date_mode not in valid_modes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"date_mode must be one of {valid_modes}. Got: {date_mode}",
+        )
+
+    return await run_in_threadpool(_search_backups, customer, environment, date_from, date_to, date_mode, limit, offset)
 
 
 # =============================================================================

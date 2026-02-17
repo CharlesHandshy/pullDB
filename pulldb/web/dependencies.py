@@ -466,3 +466,53 @@ AdminUser = Annotated[User, Depends(require_admin)]
 ManagerUser = Annotated[User, Depends(require_manager_or_above)]
 # Note: APIState as string forward-reference doesn't work with Annotated due to
 # FastAPI parsing it as a query param. Use the pattern: state: "APIState" = Depends(...)
+
+
+# ---------------------------------------------------------------------------
+# Request-Scoped Overlord Cache
+# ---------------------------------------------------------------------------
+
+class CachedOverlordData:
+    """Request-scoped cache for overlord ``get_all()`` results.
+
+    Multiple route handlers (list page, paginated API, distinct-values API)
+    each call ``overlord_repo.get_all()`` independently.  Injecting this
+    dependency gives them a single ``get_all()`` call per HTTP request,
+    avoiding redundant database round-trips.
+
+    Usage::
+
+        @router.get("/endpoint")
+        async def my_route(cache: OverlordCache):
+            rows = cache.rows  # fetched once per request
+    """
+
+    def __init__(self, rows: list[dict]) -> None:
+        self._rows = rows
+
+    @property
+    def rows(self) -> list[dict]:
+        """All company rows (fetched once per request)."""
+        return self._rows
+
+
+def _get_overlord_cache(
+    request: Request,
+    state: "APIState" = Depends(get_api_state),
+) -> CachedOverlordData | None:
+    """Build a request-scoped overlord cache if the manager is enabled.
+
+    Returns ``None`` when the overlord manager is disabled.
+    """
+    from pulldb.worker.overlord_manager import OverlordManager
+
+    manager: OverlordManager | None = getattr(state, "overlord_manager", None)
+    if manager is None or not manager.is_enabled:
+        return None
+    repo = manager.overlord_repo
+    if repo is None:
+        return None
+    return CachedOverlordData(repo.get_all())
+
+
+OverlordCache = Annotated[CachedOverlordData | None, Depends(_get_overlord_cache)]

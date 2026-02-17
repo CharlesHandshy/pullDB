@@ -649,3 +649,68 @@ class KeyRevokedError(Exception):
         super().__init__(
             f"API key has been revoked: {key_id}. Contact an administrator if you believe this is an error."
         )
+
+
+class EnqueueError(Exception):
+    """Domain error for job enqueue failures.
+
+    Base class for all enqueue-specific errors. Pages-layer code catches
+    these and maps them to the appropriate HTTP response via _ERROR_STATUS_MAP.
+
+    Attributes:
+        detail: Human-readable error message.
+    """
+
+    def __init__(self, detail: str) -> None:
+        self.detail = detail
+        super().__init__(detail)
+
+
+class EnqueueValidationError(EnqueueError):
+    """Invalid input to enqueue (400)."""
+    ...
+
+
+class UserDisabledError(EnqueueError):
+    """User account is disabled or pending approval (403)."""
+    ...
+
+
+class HostUnauthorizedError(EnqueueError):
+    """User is not authorized to use the requested host (403)."""
+    ...
+
+
+class JobNotFoundError(EnqueueError):
+    """Referenced job or user was not found (404)."""
+    ...
+
+
+class EnqueueBackupNotFoundError(EnqueueError):
+    """No backup found for the requested customer/date (404)."""
+    ...
+
+
+class DuplicateJobError(EnqueueError):
+    """An active job already exists for this target (409)."""
+    ...
+
+
+class DatabaseProtectionError(EnqueueError):
+    """Target database is externally owned or protected (409)."""
+    ...
+
+
+class JobLockedError(EnqueueError):
+    """Target is locked/protected from overwrites (409)."""
+    ...
+
+
+class RateLimitError(EnqueueError):
+    """Host, user, or global capacity limit reached (429)."""
+    ...
+
+
+class HostUnavailableError(EnqueueError):
+    """Cannot reach the target host to verify safety (503)."""
+    ...

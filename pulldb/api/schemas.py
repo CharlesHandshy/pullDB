@@ -9,31 +9,10 @@ from datetime import datetime
 
 import pydantic
 
-
-class JobRequest(pydantic.BaseModel):
-    """Incoming job submission payload."""
-
-    user: str = pydantic.Field(min_length=1)
-    customer: str | None = None
-    qatemplate: bool = False
-    dbhost: str | None = None
-    date: str | None = None  # Specific backup date in YYYY-MM-DD format
-    env: str | None = None  # S3 environment: "staging" or "prod"
-    overwrite: bool = False
-    suffix: str | None = pydantic.Field(
-        default=None,
-        pattern=r"^[a-z]{1,3}$",
-        description="Optional suffix for target database (1-3 lowercase letters)",
-    )
-    backup_path: str | None = pydantic.Field(
-        default=None,
-        description="Full S3 path to specific backup (e.g., s3://bucket/prefix/customer/daily_mydumper_*.tar)",
-    )
-    custom_target: str | None = pydantic.Field(
-        default=None,
-        pattern=r"^[a-z]{1,51}$",
-        description="Custom target database name. 1-51 lowercase letters, user has FULL control.",
-    )
+# JobRequest is now defined in the domain layer (entities) so it can be
+# shared across pages-layer packages (api, web) without lateral imports.
+# Re-exported here for backward compatibility.
+from pulldb.domain.schemas import JobRequest as JobRequest  # noqa: F401 — re-export
 
 
 class JobResponse(pydantic.BaseModel):

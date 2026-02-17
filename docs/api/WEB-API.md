@@ -2,7 +2,7 @@
 
 [← Back to API Index](README.md) | [REST API Reference](REST-API.md)
 
-> **Version**: 1.0.8  
+> **Version**: 1.1.0  
 > **Base URL**: `http://localhost:8000`  
 > **Authentication**: Session Cookie (`session_token`)  
 > **Source**: [pulldb/web/features/](../../pulldb/web/features/)

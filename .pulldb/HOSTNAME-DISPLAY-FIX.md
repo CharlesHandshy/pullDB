@@ -88,4 +88,4 @@ Now users see:
 
 - [scripts/apply_hostname_fix.sh](../scripts/apply_hostname_fix.sh) - Database fix script
 - [pulldb/api/main.py](../pulldb/api/main.py#L847-L896) - Enhanced API endpoint
-- [pulldb/infra/mysql.py](../pulldb/infra/mysql.py#L4349-L4371) - resolve_hostname() function
+- [pulldb/infra/mysql_hosts.py](../pulldb/infra/mysql_hosts.py) - resolve_hostname() function (HostRepository)

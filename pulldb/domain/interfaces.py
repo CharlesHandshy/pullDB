@@ -1335,6 +1335,38 @@ class HostRepository(Protocol):
         """
         ...
 
+    def database_exists(self, hostname: str, db_name: str) -> bool:
+        """Check if a database exists on the specified host.
+
+        Uses ``SHOW DATABASES LIKE`` to determine existence.
+
+        Args:
+            hostname: Database host to check.
+            db_name: Database name to look for.
+
+        Returns:
+            True if the database exists on the host, False otherwise.
+
+        Raises:
+            Exception: If the connection to the host fails.
+        """
+        ...
+
+    def get_pulldb_metadata_owner(
+        self, hostname: str, db_name: str
+    ) -> tuple[bool, str | None, str | None]:
+        """Check if a database has a pullDB metadata table and get the owner.
+
+        Args:
+            hostname: Database host to check.
+            db_name: Database name to inspect.
+
+        Returns:
+            Tuple of ``(has_pulldb_table, owner_user_id, owner_user_code)``.
+            If no pullDB table exists, returns ``(False, None, None)``.
+        """
+        ...
+
 
 class SettingsRepository(Protocol):
     """Protocol for system settings management.
@@ -1460,6 +1492,46 @@ class SettingsRepository(Protocol):
 
         Returns:
             List of (value, label) tuples for dropdown options.
+        """
+        ...
+
+    def get_all_settings_with_metadata(self) -> list[dict[str, str | None]]:
+        """Get all settings with metadata (key, value, description, updated_at).
+
+        Returns:
+            List of setting dictionaries.
+        """
+        ...
+
+    def get_default_retention_days(self) -> int:
+        """Get default retention days for new restores.
+
+        Returns:
+            Number of days. Default: 7.
+        """
+        ...
+
+    def get_max_retention_days(self) -> int:
+        """Get maximum retention days allowed.
+
+        Returns:
+            Number of days. Default: 180.
+        """
+        ...
+
+    def get_job_log_retention_days(self) -> int:
+        """Get days before job logs are eligible for pruning.
+
+        Returns:
+            Number of days. Default: 30. 0 means disabled.
+        """
+        ...
+
+    def get_jobs_refresh_interval(self) -> int:
+        """Get auto-refresh interval for the jobs page.
+
+        Returns:
+            Interval in seconds. Default: 5. 0 means disabled.
         """
         ...
 

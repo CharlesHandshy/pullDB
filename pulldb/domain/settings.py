@@ -94,8 +94,8 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
     "myloader_threads": SettingMeta(
         key="myloader_threads",
         env_var="PULLDB_MYLOADER_THREADS",
-        default="8",
-        description="Number of parallel restore threads (--threads). More threads = faster restore but higher memory usage.",
+        default="4",
+        description="Number of parallel restore threads (--threads). More threads = faster restore but higher memory usage. Reduced from 8 to prevent OOM.",
         setting_type=SettingType.INTEGER,
         category=SettingCategory.MYLOADER,
         validators=["is_positive_integer"],
@@ -194,6 +194,7 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         description="When to create indexes (--optimize-keys). Options: AFTER_IMPORT_PER_TABLE, AFTER_IMPORT_ALL_TABLES, SKIP.",
         setting_type=SettingType.STRING,
         category=SettingCategory.MYLOADER,
+        validators=["is_one_of:AFTER_IMPORT_PER_TABLE,AFTER_IMPORT_ALL_TABLES,SKIP"],
     ),
     "myloader_checksum": SettingMeta(
         key="myloader_checksum",
@@ -202,6 +203,7 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         description="Checksum handling (--checksum). Options: skip, fail, warn.",
         setting_type=SettingType.STRING,
         category=SettingCategory.MYLOADER,
+        validators=["is_one_of:skip,fail,warn"],
     ),
     "myloader_drop_table_mode": SettingMeta(
         key="myloader_drop_table_mode",
@@ -210,6 +212,7 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         description="Action when table exists (--drop-table). Options: FAIL, NONE, DROP, TRUNCATE, DELETE.",
         setting_type=SettingType.STRING,
         category=SettingCategory.MYLOADER,
+        validators=["is_one_of:FAIL,NONE,DROP,TRUNCATE,DELETE"],
     ),
     "myloader_verbose": SettingMeta(
         key="myloader_verbose",
@@ -281,6 +284,7 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         description="Comma-separated MySQL error codes to ignore (--ignore-errors). 1146 = table doesn't exist.",
         setting_type=SettingType.STRING,
         category=SettingCategory.MYLOADER,
+        validators=["is_csv_integers"],
     ),
     # -------------------------------------------------------------------------
     # Paths & Directories
@@ -338,6 +342,15 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         description="AWS profile for Secrets Manager access",
         setting_type=SettingType.STRING,
         category=SettingCategory.S3_BACKUP,
+    ),
+    "s3_backup_locations": SettingMeta(
+        key="s3_backup_locations",
+        env_var="PULLDB_S3_BACKUP_LOCATIONS",
+        default="",
+        description="S3 backup location configurations (JSON array). Managed via environment variable or direct DB edit. See docs/AWS-SETUP.md for format.",
+        setting_type=SettingType.STRING,
+        category=SettingCategory.S3_BACKUP,
+        db_only=True,
     ),
     # -------------------------------------------------------------------------
     # Job Limits

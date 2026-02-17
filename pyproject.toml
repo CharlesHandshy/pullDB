@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pulldb"
-version = "1.0.8"
+version = "1.1.0"
 description = "pullDB - Development database restoration tool using production MySQL backups from S3"
 readme = "README.md"
 license = { text = "MIT" }
@@ -166,3 +166,52 @@ reportMissingImports = "error"
 reportUnusedImport = "warning"
 reportUnusedVariable = "warning"
 reportUnusedExpression = "warning"
+
+# ---------------------------------------------------------------------------
+# HCA Layer Enforcement via import-linter
+# ---------------------------------------------------------------------------
+# Ensures layers import only from same or lower layers.
+# DIP exceptions: infra may import domain protocols/models/errors for
+# implementing domain-defined interfaces (standard Dependency Inversion).
+# Install: pip install import-linter
+# Run: lint-imports
+#
+# Note: pulldb.worker.service (widgets) is part of pulldb.worker — import-linter
+# cannot separate a parent/child into distinct layers. The core layers contract
+# merges widgets+features into "pulldb.worker". A separate forbidden contract
+# enforces that worker.service does not import from pages-layer modules.
+
+[tool.importlinter]
+root_packages = ["pulldb"]
+
+[[tool.importlinter.contracts]]
+name = "HCA Layer Isolation"
+type = "layers"
+layers = [
+    "pulldb.cli",
+    "pulldb.web",
+    "pulldb.worker",
+    "pulldb.domain",
+    "pulldb.infra",
+]
+# Dependency Inversion Pattern (DIP) — infra implements domain protocols
+ignore_imports = [
+    "pulldb.infra.* -> pulldb.domain.interfaces",
+    "pulldb.infra.* -> pulldb.domain.models",
+    "pulldb.infra.* -> pulldb.domain.errors",
+    "pulldb.infra.* -> pulldb.domain.config",
+    "pulldb.infra.* -> pulldb.domain.overlord",
+    "pulldb.infra.* -> pulldb.domain.validation",
+    "pulldb.infra.* -> pulldb.domain.color_schemas",
+    "pulldb.infra.* -> pulldb.domain.services.provisioning",
+    # Transitive DIP: infra.factory → simulation/auth → domain
+    "pulldb.infra.factory -> pulldb.simulation",
+    "pulldb.infra.factory -> pulldb.auth.repository",
+]
+
+# Widget boundary: worker.service must not import from pages-layer
+[[tool.importlinter.contracts]]
+name = "Widget Boundary (worker.service)"
+type = "forbidden"
+source_modules = ["pulldb.worker.service"]
+forbidden_modules = ["pulldb.cli", "pulldb.web", "pulldb.api"]

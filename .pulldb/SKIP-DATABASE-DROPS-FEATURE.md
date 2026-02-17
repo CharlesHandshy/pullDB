@@ -33,10 +33,10 @@ The `skip_database_drops` feature allows users to bypass database operations dur
 - **Lines 1147-1149**: Bulk delete endpoint parses JSON parameter
 - **Line 1237**: Pass to `create_bulk_delete_task()`
 
-### Repository Layer: [pulldb/infra/mysql.py](pulldb/infra/mysql.py)
-- **Lines 5299-5334**: `create_bulk_delete_task()` method
+### Repository Layer: [pulldb/infra/mysql_admin.py](pulldb/infra/mysql_admin.py)
+- `create_bulk_delete_task()` method (AdminTaskRepository)
   - Added `skip_database_drops: bool = False` parameter
-  - Stores in task parameters JSON (lines 5326-5329)
+  - Stores in task parameters JSON
 
 ### Task Execution Layer: [pulldb/worker/admin_tasks.py](pulldb/worker/admin_tasks.py)
 - **Line 668**: Parse from task parameters

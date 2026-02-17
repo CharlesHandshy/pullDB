@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](../START-HERE.md)
 
-> **Version**: 1.0.8  
+> **Version**: 1.1.0  
 > **Last Updated**: 2026-01-21
 
 ---

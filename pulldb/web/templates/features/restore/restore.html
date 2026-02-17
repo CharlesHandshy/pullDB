@@ -87,9 +87,17 @@
                     
                     <!-- Date Range -->
                     <div class="source-field" id="step-date">
-                        <label class="form-label" title="Filter backups by date range">Backups From</label>
+                        <label class="form-label" title="Filter backups by date range">Backups</label>
                         <div class="date-filter-row">
+                            <select id="date-mode" class="form-input date-mode-select" title="Date filter mode" aria-label="Date filter mode">
+                                <option value="on_or_after" selected>On or After</option>
+                                <option value="on_or_before">On or Before</option>
+                                <option value="on_date">On Date</option>
+                                <option value="between">Between</option>
+                            </select>
                             <input type="date" id="date-from" name="date_from" class="form-input date-input" autocomplete="off">
+                            <span class="date-range-separator js-hidden" id="date-range-sep">and</span>
+                            <input type="date" id="date-to" class="form-input date-input js-hidden" autocomplete="off">
                             <button type="button" class="btn btn-secondary btn-sm" id="reset-date-btn" title="Reset to last 7 days">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                                     <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
@@ -160,12 +168,20 @@
                     
                     <!-- Date filter for QA -->
                     <div class="source-field" id="qa-date-filter">
-                        <label class="form-label" title="Filter QA template backups by date">Backups From</label>
+                        <label class="form-label" title="Filter QA template backups by date">Backups</label>
                         <div class="date-filter-row">
+                            <select id="qa-date-mode" class="form-input date-mode-select" title="Date filter mode" aria-label="Date filter mode">
+                                <option value="on_or_after" selected>On or After</option>
+                                <option value="on_or_before">On or Before</option>
+                                <option value="on_date">On Date</option>
+                                <option value="between">Between</option>
+                            </select>
                             <input type="date" 
                                    id="qa-date-from" 
                                    class="form-input date-input"
                                    autocomplete="off">
+                            <span class="date-range-separator js-hidden" id="qa-date-range-sep">and</span>
+                            <input type="date" id="qa-date-to" class="form-input date-input js-hidden" autocomplete="off">
                             <button type="button" class="btn btn-secondary btn-sm" id="qa-reset-date-btn" title="Reset to last 7 days">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                                     <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>

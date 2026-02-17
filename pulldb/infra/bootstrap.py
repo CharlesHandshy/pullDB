@@ -23,6 +23,37 @@ from pulldb.infra.secrets import CredentialResolver
 logger = get_logger("pulldb.infra.bootstrap")
 
 
+def _warn_priority_conflicts(pool: MySQLPool) -> None:
+    """Log warnings when env vars and DB settings have conflicting values.
+
+    At runtime, env vars take precedence over DB values. This logs any conflicts
+    so admins are aware the DB value is being overridden.
+    """
+    from pulldb.domain.settings import SETTING_REGISTRY
+
+    from pulldb.infra.mysql_settings import SettingsRepository
+
+    try:
+        repo = SettingsRepository(pool)
+        db_settings = repo.get_all_settings()
+    except Exception:
+        return  # Don't fail startup over this
+
+    for key, meta in SETTING_REGISTRY.items():
+        if meta.db_only:
+            continue
+        db_value = db_settings.get(key)
+        env_value = os.getenv(meta.env_var)
+        if db_value is not None and env_value is not None and db_value != env_value:
+            logger.warning(
+                "Setting '%s' has env=%s but database=%s. "
+                "Environment value takes precedence at runtime.",
+                key,
+                meta.env_var,
+                db_value,
+            )
+
+
 def bootstrap_service_config(
     *,
     service_mysql_user_env: str,
@@ -111,5 +142,8 @@ def bootstrap_service_config(
     # Preserve AWS profile
     if config.aws_profile:
         full_config.aws_profile = config.aws_profile
+
+    # Phase 6: Warn on env vs DB priority conflicts
+    _warn_priority_conflicts(pool)
 
     return full_config, pool

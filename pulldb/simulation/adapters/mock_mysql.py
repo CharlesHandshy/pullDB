@@ -17,7 +17,11 @@ from typing import Any, ClassVar
 
 from pulldb.domain.errors import LockedUserError
 from pulldb.domain.models import (
+    AdminTask,
+    AdminTaskStatus,
+    AdminTaskType,
     DBHost,
+    DisallowedUser,
     Job,
     JobEvent,
     JobStatus,
@@ -684,6 +688,137 @@ class SimulatedJobRepository:
                 e for e in self.state.job_events if e.job_id not in job_ids
             ]
             return original_count - len(self.state.job_events)
+
+    def update_job_options(self, job_id: str, options: dict) -> None:
+        """Update a job's options_json field.
+
+        Used to add audit trail information (e.g., resubmit_of_job_id).
+
+        Args:
+            job_id: UUID of job to update.
+            options: New options dictionary to store.
+        """
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if not job:
+                raise ValueError(f"Job not found: {job_id}")
+            updated = replace(job, options_json=options)
+            self.state.jobs[job_id] = updated
+
+    def get_job_events_paginated(
+        self,
+        job_id: str,
+        limit: int = 50,
+        cursor: int | None = None,
+        direction: str = "older",
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Fetch paginated events for a job using cursor-based pagination.
+
+        Args:
+            job_id: Job UUID.
+            limit: Max events to return.
+            cursor: Event ID for pagination (None = latest events).
+            direction: "older" (id < cursor) or "newer" (id > cursor).
+
+        Returns:
+            Tuple of (events, total_count).
+        """
+        with self.state.lock:
+            all_events = [e for e in self.state.job_events if e.job_id == job_id]
+            total_count = len(all_events)
+
+            if cursor is None:
+                # No cursor: get newest events
+                filtered = sorted(all_events, key=lambda e: e.id, reverse=True)
+            elif direction == "newer":
+                filtered = sorted(
+                    [e for e in all_events if e.id > cursor],
+                    key=lambda e: e.id,
+                )
+            else:
+                filtered = sorted(
+                    [e for e in all_events if e.id < cursor],
+                    key=lambda e: e.id,
+                    reverse=True,
+                )
+
+            page = filtered[:limit]
+
+            def _format_ts(dt: datetime) -> str:
+                iso = dt.isoformat()
+                return iso.replace("+00:00", "Z") if iso.endswith("+00:00") else iso + "Z"
+
+            def _parse_detail(detail: str | None) -> dict | None:
+                if not detail:
+                    return None
+                if detail.startswith("{"):
+                    try:
+                        return json.loads(detail)
+                    except json.JSONDecodeError:
+                        pass
+                return {"message": detail}
+
+            events = [
+                {
+                    "id": e.id,
+                    "event_type": e.event_type,
+                    "logged_at": _format_ts(e.logged_at),
+                    "detail": _parse_detail(e.detail),
+                }
+                for e in page
+            ]
+            return events, total_count
+
+    def get_job_events_by_offset(
+        self,
+        job_id: str,
+        limit: int = 50,
+        offset: int = 0,
+        order: str = "desc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Fetch events for a job by position offset.
+
+        Args:
+            job_id: Job UUID.
+            limit: Max events to return.
+            offset: Position offset.
+            order: "desc" for newest-first, "asc" for oldest-first.
+
+        Returns:
+            Tuple of (events, total_count).
+        """
+        with self.state.lock:
+            all_events = [e for e in self.state.job_events if e.job_id == job_id]
+            total_count = len(all_events)
+
+            reverse = order.lower() == "desc"
+            sorted_events = sorted(all_events, key=lambda e: e.id, reverse=reverse)
+            page = sorted_events[offset : offset + limit]
+
+            def _format_ts(dt: datetime) -> str:
+                iso = dt.isoformat()
+                return iso.replace("+00:00", "Z") if iso.endswith("+00:00") else iso + "Z"
+
+            def _parse_detail(detail: str | None) -> dict | None:
+                if not detail:
+                    return None
+                if detail.startswith("{"):
+                    try:
+                        return json.loads(detail)
+                    except json.JSONDecodeError:
+                        pass
+                return {"message": detail}
+
+            events = [
+                {
+                    "id": e.id,
+                    "event_type": e.event_type,
+                    "logged_at": _format_ts(e.logged_at),
+                    "detail": _parse_detail(e.detail),
+                }
+                for e in page
+            ]
+            return events, total_count
 
     def prune_job_events_excluding(
         self,
@@ -2171,6 +2306,21 @@ class SimulatedUserRepository:
             if user.user_code in self.state.users_by_code:
                 self.state.users_by_code[user.user_code] = updated
 
+    def get_last_maintenance_ack(self, user_id: str) -> datetime | None:
+        """Get last maintenance acknowledgment date for a user.
+
+        Args:
+            user_id: User UUID.
+
+        Returns:
+            Last ack datetime or None if never acknowledged.
+        """
+        with self.state.lock:
+            user = self.state.users.get(user_id)
+            if not user:
+                return None
+            return user.last_maintenance_ack
+
     def needs_maintenance_ack(self, user_id: str) -> bool:
         """Check if user needs to acknowledge maintenance modal today.
 
@@ -2421,6 +2571,45 @@ class SimulatedHostRepository:
     def list_hosts(self) -> list[DBHost]:
         """Get all hosts (alias for get_all_hosts)."""
         return self.get_all_hosts()
+
+    def database_exists(self, hostname: str, db_name: str) -> bool:
+        """Check if a database exists on a host.
+
+        In simulation mode, checks the staging_databases state.
+
+        Args:
+            hostname: Database host to check.
+            db_name: Database name to look for.
+
+        Returns:
+            True if database exists in simulation state.
+        """
+        with self.state.lock:
+            host_dbs = self.state.staging_databases.get(hostname, set())
+            return db_name in host_dbs
+
+    def get_pulldb_metadata_owner(
+        self, hostname: str, db_name: str
+    ) -> tuple[bool, str | None, str | None]:
+        """Check if a database has pullDB metadata and get the owner.
+
+        In simulation mode, checks jobs for ownership information.
+
+        Args:
+            hostname: Database host to check.
+            db_name: Database name to look for metadata in.
+
+        Returns:
+            Tuple of (has_pulldb_table, owner_user_id, owner_user_code).
+        """
+        with self.state.lock:
+            # Search jobs for a match on staging_name or target on this host
+            for job in self.state.jobs.values():
+                if job.dbhost == hostname and (
+                    job.staging_name == db_name or job.target == db_name
+                ):
+                    return True, job.owner_user_id, job.owner_user_code
+            return False, None, None
 
     def hard_delete_host(self, host_id: str) -> None:
         """Permanently delete a host by ID.
@@ -2692,6 +2881,20 @@ class SimulatedSettingsRepository:
                 options.append((str(days), f"+{months} months"))
         
         return options
+
+    def get_jobs_refresh_interval(self) -> int:
+        """Get jobs page auto-refresh interval in seconds.
+
+        Returns:
+            Interval in seconds (0-60). Default: 5.
+        """
+        value = self.get_setting("jobs_refresh_interval_seconds")
+        if value is None:
+            return 5
+        try:
+            return max(0, min(60, int(value)))
+        except ValueError:
+            return 5
 
 
 class SimulatedAuthRepository:
@@ -3366,3 +3569,724 @@ class SimulatedAuditRepository:
                 filtered = [e for e in filtered if e["action"] == action]
             
             return len(filtered)
+
+
+# =============================================================================
+# Disallowed User Repository (Simulation)
+# =============================================================================
+
+
+class SimulatedDisallowedUserRepository:
+    """In-memory implementation of DisallowedUserRepository.
+
+    Works alongside the hardcoded list in pulldb/domain/validation.py.
+    Simulation entries stored in SimulationState.disallowed_usernames.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the repository with shared simulation state."""
+        self.state = get_simulation_state()
+
+    def get_all(self) -> list[DisallowedUser]:
+        """Get all disallowed usernames from simulation state.
+
+        Returns:
+            List of DisallowedUser entries, sorted by username.
+        """
+        with self.state.lock:
+            entries = []
+            for username, data in sorted(self.state.disallowed_usernames.items()):
+                entries.append(
+                    DisallowedUser(
+                        username=username,
+                        reason=data.get("reason"),
+                        is_hardcoded=bool(data.get("is_hardcoded", False)),
+                        created_at=data.get("created_at"),
+                        created_by=data.get("created_by"),
+                    )
+                )
+            return entries
+
+    def exists(self, username: str) -> bool:
+        """Check if username is in the disallowed list.
+
+        Args:
+            username: Username to check (case-insensitive).
+
+        Returns:
+            True if username is disallowed.
+        """
+        with self.state.lock:
+            return username.lower() in self.state.disallowed_usernames
+
+    def add(
+        self,
+        username: str,
+        reason: str | None = None,
+        created_by: str | None = None,
+    ) -> bool:
+        """Add a username to the disallowed list.
+
+        Args:
+            username: Username to disallow (stored lowercase).
+            reason: Optional reason for disallowing.
+            created_by: User ID who added this entry.
+
+        Returns:
+            True if added, False if already exists.
+        """
+        with self.state.lock:
+            key = username.lower()
+            if key in self.state.disallowed_usernames:
+                return False
+            self.state.disallowed_usernames[key] = {
+                "reason": reason,
+                "is_hardcoded": False,
+                "created_at": datetime.now(UTC),
+                "created_by": created_by,
+            }
+            return True
+
+    def remove(self, username: str) -> tuple[bool, str]:
+        """Remove a username from the disallowed list.
+
+        Only non-hardcoded entries can be removed.
+
+        Args:
+            username: Username to remove.
+
+        Returns:
+            Tuple of (success, message).
+        """
+        with self.state.lock:
+            key = username.lower()
+            data = self.state.disallowed_usernames.get(key)
+
+            if not data:
+                return False, f"Username '{username}' is not in the disallowed list"
+
+            if data.get("is_hardcoded"):
+                return False, f"Username '{username}' is a hardcoded entry and cannot be removed"
+
+            del self.state.disallowed_usernames[key]
+            return True, f"Username '{username}' removed from disallowed list"
+
+    def is_disallowed(self, username: str) -> tuple[bool, str | None]:
+        """Check if username is disallowed (hardcoded OR simulation state).
+
+        Args:
+            username: Username to check (case-insensitive).
+
+        Returns:
+            Tuple of (is_disallowed, reason).
+        """
+        from pulldb.domain.validation import (
+            DISALLOWED_USERS_HARDCODED,
+            MIN_USERNAME_LENGTH,
+        )
+
+        username_lower = username.lower()
+
+        if len(username_lower) < MIN_USERNAME_LENGTH:
+            return True, f"Username must be at least {MIN_USERNAME_LENGTH} characters"
+
+        if username_lower in DISALLOWED_USERS_HARDCODED:
+            return True, "Reserved system name"
+
+        with self.state.lock:
+            data = self.state.disallowed_usernames.get(username_lower)
+            if data:
+                return True, data.get("reason") or "Username not allowed"
+
+        return False, None
+
+
+# =============================================================================
+# Admin Task Repository (Simulation)
+# =============================================================================
+
+
+class SimulatedAdminTaskRepository:
+    """In-memory implementation of AdminTaskRepository.
+
+    Manages async admin tasks (bulk deletes, user force-deletes, etc.)
+    in simulation mode using SimulationState.admin_tasks.
+    """
+
+    DEFAULT_STALE_TIMEOUT_MINUTES = 10
+
+    def __init__(self) -> None:
+        """Initialize the repository with shared simulation state."""
+        self.state = get_simulation_state()
+
+    def create_task(
+        self,
+        task_type: AdminTaskType,
+        requested_by: str,
+        target_user_id: str | None = None,
+        parameters: dict | None = None,
+    ) -> str:
+        """Create a new admin task.
+
+        Args:
+            task_type: Type of task to create.
+            requested_by: User ID of admin requesting the task.
+            target_user_id: Target user ID (for user-related tasks).
+            parameters: Task parameters.
+
+        Returns:
+            Task ID.
+
+        Raises:
+            ValueError: If a task of the same type is already running.
+        """
+        with self.state.lock:
+            # Check for running task of same type
+            for task in self.state.admin_tasks:
+                if (
+                    task.task_type == task_type
+                    and task.status == AdminTaskStatus.RUNNING
+                ):
+                    raise ValueError(
+                        f"A {task_type.value} task is already running. "
+                        "Please wait for it to complete."
+                    )
+
+            task_id = str(uuid.uuid4())
+            task = AdminTask(
+                task_id=task_id,
+                task_type=task_type,
+                status=AdminTaskStatus.PENDING,
+                requested_by=requested_by,
+                created_at=datetime.now(UTC),
+                target_user_id=target_user_id,
+                parameters_json=parameters,
+            )
+            self.state.admin_tasks.append(task)
+            return task_id
+
+    def create_bulk_delete_task(
+        self,
+        requested_by: str,
+        job_infos: list[dict],
+        hard_delete: bool = False,
+        skip_database_drops: bool = False,
+    ) -> str:
+        """Create a bulk delete jobs task.
+
+        Args:
+            requested_by: User ID requesting the deletion.
+            job_infos: List of job info dicts.
+            hard_delete: Permanently delete job records.
+            skip_database_drops: Skip database drop operations.
+
+        Returns:
+            Task ID.
+        """
+        parameters = {
+            "job_infos": job_infos,
+            "hard_delete": hard_delete,
+            "skip_database_drops": skip_database_drops,
+            "total_jobs": len(job_infos),
+        }
+        return self.create_task(
+            task_type=AdminTaskType.BULK_DELETE_JOBS,
+            requested_by=requested_by,
+            parameters=parameters,
+        )
+
+    def get_task(self, task_id: str) -> AdminTask | None:
+        """Get an admin task by ID.
+
+        Args:
+            task_id: Task UUID.
+
+        Returns:
+            AdminTask instance or None if not found.
+        """
+        with self.state.lock:
+            for task in self.state.admin_tasks:
+                if task.task_id == task_id:
+                    return task
+            return None
+
+    def claim_next_task(
+        self,
+        worker_id: str | None = None,
+        stale_timeout_minutes: int = DEFAULT_STALE_TIMEOUT_MINUTES,
+    ) -> AdminTask | None:
+        """Claim next pending task or reclaim a stale running task.
+
+        Args:
+            worker_id: Optional worker identifier.
+            stale_timeout_minutes: Minutes before running task is stale.
+
+        Returns:
+            Claimed task (now running) or None.
+        """
+        now = datetime.now(UTC)
+        stale_cutoff = now - timedelta(minutes=stale_timeout_minutes)
+
+        with self.state.lock:
+            # Try pending tasks first (FIFO)
+            for i, task in enumerate(self.state.admin_tasks):
+                if task.status == AdminTaskStatus.PENDING:
+                    claimed = AdminTask(
+                        task_id=task.task_id,
+                        task_type=task.task_type,
+                        status=AdminTaskStatus.RUNNING,
+                        requested_by=task.requested_by,
+                        created_at=task.created_at,
+                        target_user_id=task.target_user_id,
+                        parameters_json=task.parameters_json,
+                        result_json=task.result_json,
+                        started_at=now,
+                        worker_id=worker_id,
+                    )
+                    self.state.admin_tasks[i] = claimed
+                    return claimed
+
+            # Try stale running tasks
+            for i, task in enumerate(self.state.admin_tasks):
+                if (
+                    task.status == AdminTaskStatus.RUNNING
+                    and task.started_at
+                    and task.started_at < stale_cutoff
+                ):
+                    logger.warning(
+                        "Reclaiming stale admin task %s (was claimed by %s)",
+                        task.task_id,
+                        task.worker_id,
+                    )
+                    claimed = AdminTask(
+                        task_id=task.task_id,
+                        task_type=task.task_type,
+                        status=AdminTaskStatus.RUNNING,
+                        requested_by=task.requested_by,
+                        created_at=task.created_at,
+                        target_user_id=task.target_user_id,
+                        parameters_json=task.parameters_json,
+                        result_json=task.result_json,
+                        started_at=now,
+                        worker_id=worker_id,
+                    )
+                    self.state.admin_tasks[i] = claimed
+                    return claimed
+
+            return None
+
+    def complete_task(self, task_id: str, result: dict | None = None) -> None:
+        """Mark a task as complete.
+
+        Args:
+            task_id: Task UUID.
+            result: Result data dict.
+        """
+        now = datetime.now(UTC)
+        with self.state.lock:
+            for i, task in enumerate(self.state.admin_tasks):
+                if task.task_id == task_id:
+                    self.state.admin_tasks[i] = AdminTask(
+                        task_id=task.task_id,
+                        task_type=task.task_type,
+                        status=AdminTaskStatus.COMPLETE,
+                        requested_by=task.requested_by,
+                        created_at=task.created_at,
+                        target_user_id=task.target_user_id,
+                        parameters_json=task.parameters_json,
+                        result_json=result,
+                        started_at=task.started_at,
+                        completed_at=now,
+                        worker_id=task.worker_id,
+                    )
+                    return
+
+    def fail_task(self, task_id: str, error: str, result: dict | None = None) -> None:
+        """Mark a task as failed.
+
+        Args:
+            task_id: Task UUID.
+            error: Error message.
+            result: Partial result data.
+        """
+        now = datetime.now(UTC)
+        with self.state.lock:
+            for i, task in enumerate(self.state.admin_tasks):
+                if task.task_id == task_id:
+                    self.state.admin_tasks[i] = AdminTask(
+                        task_id=task.task_id,
+                        task_type=task.task_type,
+                        status=AdminTaskStatus.FAILED,
+                        requested_by=task.requested_by,
+                        created_at=task.created_at,
+                        target_user_id=task.target_user_id,
+                        parameters_json=task.parameters_json,
+                        result_json=result,
+                        started_at=task.started_at,
+                        completed_at=now,
+                        error_detail=error,
+                        worker_id=task.worker_id,
+                    )
+                    return
+
+    def update_task_result(self, task_id: str, result: dict) -> None:
+        """Update task result while running (progress tracking).
+
+        Args:
+            task_id: Task UUID.
+            result: Result data dict.
+        """
+        with self.state.lock:
+            for i, task in enumerate(self.state.admin_tasks):
+                if task.task_id == task_id:
+                    self.state.admin_tasks[i] = AdminTask(
+                        task_id=task.task_id,
+                        task_type=task.task_type,
+                        status=task.status,
+                        requested_by=task.requested_by,
+                        created_at=task.created_at,
+                        target_user_id=task.target_user_id,
+                        parameters_json=task.parameters_json,
+                        result_json=result,
+                        started_at=task.started_at,
+                        completed_at=task.completed_at,
+                        error_detail=task.error_detail,
+                        worker_id=task.worker_id,
+                    )
+                    return
+
+    def get_tasks_by_status(
+        self,
+        status: AdminTaskStatus,
+        limit: int = 100,
+    ) -> list[AdminTask]:
+        """Get tasks by status.
+
+        Args:
+            status: Task status to filter by.
+            limit: Maximum number of results.
+
+        Returns:
+            List of AdminTask instances, newest first.
+        """
+        with self.state.lock:
+            matching = [t for t in self.state.admin_tasks if t.status == status]
+            matching.sort(key=lambda t: t.created_at, reverse=True)
+            return matching[:limit]
+
+    def get_recent_tasks(self, limit: int = 50) -> list[AdminTask]:
+        """Get recent tasks across all statuses.
+
+        Args:
+            limit: Maximum number of results.
+
+        Returns:
+            List of AdminTask instances, newest first.
+        """
+        with self.state.lock:
+            tasks = list(self.state.admin_tasks)
+            tasks.sort(key=lambda t: t.created_at, reverse=True)
+            return tasks[:limit]
+
+
+# =============================================================================
+# Job History Summary Repository (Simulation)
+# =============================================================================
+
+
+class SimulatedJobHistorySummaryRepository:
+    """In-memory implementation of JobHistorySummaryRepository.
+
+    Stores job history summaries for analytics and reporting
+    using SimulationState.history_summaries.
+    """
+
+    VALID_STATUSES = {"complete", "failed", "canceled", "deleted"}
+
+    VALID_ERROR_CATEGORIES = {
+        "none",
+        "connection",
+        "permission",
+        "disk_space",
+        "timeout",
+        "data_integrity",
+        "configuration",
+        "schema",
+        "unknown",
+    }
+
+    ERROR_CATEGORIES: ClassVar[list[tuple[str, list[str]]]] = [
+        ("connection", ["connection refused", "can't connect", "lost connection", "timeout"]),
+        ("permission", ["access denied", "permission denied", "privilege"]),
+        ("disk_space", ["no space left", "disk full", "quota exceeded"]),
+        ("timeout", ["lock wait timeout", "wait_timeout", "net_read_timeout"]),
+        ("data_integrity", ["duplicate entry", "foreign key", "constraint"]),
+        ("configuration", ["unknown variable", "unknown system variable"]),
+        ("schema", ["table doesn't exist", "unknown column", "unknown table"]),
+    ]
+
+    def __init__(self) -> None:
+        """Initialize the repository with shared simulation state."""
+        self.state = get_simulation_state()
+
+    def insert(
+        self,
+        *,
+        job_id: str,
+        owner_user_id: str,
+        owner_username: str,
+        dbhost: str,
+        target: str,
+        custom_target: str | None = None,
+        submitted_at: datetime | None = None,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
+        final_status: str = "complete",
+        error_category: str | None = None,
+        archive_size_bytes: int | None = None,
+        restore_duration_seconds: float | None = None,
+        download_duration_seconds: float | None = None,
+        total_duration_seconds: float | None = None,
+        worker_id: str | None = None,
+    ) -> bool:
+        """Insert a job history summary record.
+
+        Returns:
+            True if inserted, False if duplicate.
+        """
+        with self.state.lock:
+            # Check for duplicate
+            for record in self.state.history_summaries:
+                if record["job_id"] == job_id:
+                    return False
+
+            now = datetime.now(UTC)
+            record = {
+                "job_id": job_id,
+                "owner_user_id": owner_user_id,
+                "owner_username": owner_username,
+                "dbhost": dbhost,
+                "target": target,
+                "custom_target": custom_target,
+                "submitted_at": submitted_at or now,
+                "started_at": started_at,
+                "completed_at": completed_at or now,
+                "final_status": final_status,
+                "error_category": error_category or self.categorize_error(None),
+                "archive_size_bytes": archive_size_bytes,
+                "restore_duration_seconds": restore_duration_seconds,
+                "download_duration_seconds": download_duration_seconds,
+                "total_duration_seconds": total_duration_seconds,
+                "worker_id": worker_id,
+                "created_at": now,
+            }
+            self.state.history_summaries.append(record)
+            return True
+
+    def delete_by_ids(self, job_ids: list[str]) -> int:
+        """Delete summaries for given job IDs.
+
+        Returns:
+            Number of records deleted.
+        """
+        with self.state.lock:
+            original = len(self.state.history_summaries)
+            id_set = set(job_ids)
+            self.state.history_summaries = [
+                r for r in self.state.history_summaries if r["job_id"] not in id_set
+            ]
+            return original - len(self.state.history_summaries)
+
+    def delete_by_date(
+        self, before: datetime | None = None, after: datetime | None = None, batch_size: int = 10000
+    ) -> int:
+        """Delete summaries matching date criteria.
+
+        Returns:
+            Number of records deleted.
+        """
+        with self.state.lock:
+            original = len(self.state.history_summaries)
+            self.state.history_summaries = [
+                r for r in self.state.history_summaries
+                if not (
+                    (before is None or r["completed_at"] < before)
+                    and (after is None or r["completed_at"] > after)
+                )
+            ]
+            return original - len(self.state.history_summaries)
+
+    def delete_by_user(
+        self,
+        user_id: str | None = None,
+        username: str | None = None,
+        before: datetime | None = None,
+        batch_size: int = 10000,
+    ) -> int:
+        """Delete summaries for a specific user.
+
+        Returns:
+            Number of records deleted.
+        """
+        with self.state.lock:
+            original = len(self.state.history_summaries)
+
+            def matches(r: dict) -> bool:
+                if user_id and r["owner_user_id"] != user_id:
+                    return False
+                if username and r["owner_username"] != username:
+                    return False
+                if before and r["completed_at"] >= before:
+                    return False
+                return True
+
+            self.state.history_summaries = [
+                r for r in self.state.history_summaries if not matches(r)
+            ]
+            return original - len(self.state.history_summaries)
+
+    def delete_by_host(
+        self, dbhost: str, before: datetime | None = None, batch_size: int = 10000
+    ) -> int:
+        """Delete summaries for a specific host.
+
+        Returns:
+            Number of records deleted.
+        """
+        with self.state.lock:
+            original = len(self.state.history_summaries)
+            self.state.history_summaries = [
+                r for r in self.state.history_summaries
+                if not (
+                    r["dbhost"] == dbhost
+                    and (before is None or r["completed_at"] < before)
+                )
+            ]
+            return original - len(self.state.history_summaries)
+
+    def delete_by_status(
+        self, status: str, before: datetime | None = None, batch_size: int = 10000
+    ) -> int:
+        """Delete summaries by final status.
+
+        Returns:
+            Number of records deleted.
+        """
+        with self.state.lock:
+            original = len(self.state.history_summaries)
+            self.state.history_summaries = [
+                r for r in self.state.history_summaries
+                if not (
+                    r["final_status"] == status
+                    and (before is None or r["completed_at"] < before)
+                )
+            ]
+            return original - len(self.state.history_summaries)
+
+    def count_matching(
+        self,
+        *,
+        before: datetime | None = None,
+        after: datetime | None = None,
+        status: str | None = None,
+        username: str | None = None,
+        dbhost: str | None = None,
+    ) -> int:
+        """Count records matching filter criteria."""
+        with self.state.lock:
+            return len(self._filter(
+                before=before, after=after, status=status,
+                username=username, dbhost=dbhost,
+            ))
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get summary statistics.
+
+        Returns:
+            Dict with total_records, status_counts, host_counts, etc.
+        """
+        with self.state.lock:
+            records = self.state.history_summaries
+            status_counts: dict[str, int] = {}
+            host_counts: dict[str, int] = {}
+
+            for r in records:
+                status = r["final_status"]
+                status_counts[status] = status_counts.get(status, 0) + 1
+                host = r["dbhost"]
+                host_counts[host] = host_counts.get(host, 0) + 1
+
+            return {
+                "total_records": len(records),
+                "status_counts": status_counts,
+                "host_counts": host_counts,
+            }
+
+    def get_records(
+        self,
+        *,
+        before: datetime | None = None,
+        after: datetime | None = None,
+        status: str | None = None,
+        username: str | None = None,
+        dbhost: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Get paginated records matching filters.
+
+        Returns:
+            List of record dicts.
+        """
+        with self.state.lock:
+            filtered = self._filter(
+                before=before, after=after, status=status,
+                username=username, dbhost=dbhost,
+            )
+            filtered.sort(key=lambda r: r["completed_at"], reverse=True)
+            return filtered[offset : offset + limit]
+
+    @classmethod
+    def categorize_error(cls, error_detail: str | None) -> str:
+        """Categorize an error message into a standard category.
+
+        Args:
+            error_detail: Error message text.
+
+        Returns:
+            Error category string.
+        """
+        if not error_detail:
+            return "none"
+
+        lower = error_detail.lower()
+        for category, patterns in cls.ERROR_CATEGORIES:
+            for pattern in patterns:
+                if pattern in lower:
+                    return category
+        return "unknown"
+
+    def _filter(
+        self,
+        *,
+        before: datetime | None = None,
+        after: datetime | None = None,
+        status: str | None = None,
+        username: str | None = None,
+        dbhost: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Filter records by criteria. Must hold state.lock."""
+        result = []
+        for r in self.state.history_summaries:
+            if before and r["completed_at"] >= before:
+                continue
+            if after and r["completed_at"] <= after:
+                continue
+            if status and r["final_status"] != status:
+                continue
+            if username and r["owner_username"] != username:
+                continue
+            if dbhost and r["dbhost"] != dbhost:
+                continue
+            result.append(r)
+        return result

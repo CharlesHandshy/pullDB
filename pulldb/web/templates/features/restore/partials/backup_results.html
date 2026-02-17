@@ -35,7 +35,7 @@
 <div class="backup-load-more">
     <button type="button" 
             class="btn btn-secondary btn-sm load-more-btn"
-            hx-get="/web/restore/search-backups?customer={{ customer }}&env={{ env }}&date_from={{ date_from }}&offset={{ offset + limit }}&limit={{ limit }}"
+            hx-get="/web/restore/search-backups?customer={{ customer }}&env={{ env }}&date_from={{ date_from }}{% if date_to %}&date_to={{ date_to }}{% endif %}&date_mode={{ date_mode }}&offset={{ offset + limit }}&limit={{ limit }}"
             hx-target="closest .backup-list-scroll"
             hx-swap="innerHTML"
             hx-indicator=".load-more-btn">

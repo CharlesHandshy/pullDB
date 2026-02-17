@@ -20,18 +20,20 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from pulldb.infra.overlord import (
+from pulldb.domain.overlord import (
     OverlordAlreadyClaimedError,
     OverlordCompany,
-    OverlordConnection,
     OverlordExternalChangeError,
     OverlordOwnershipError,
-    OverlordRepository,
     OverlordRowDeletedError,
     OverlordSafetyError,
     OverlordTracking,
-    OverlordTrackingRepository,
     OverlordTrackingStatus,
+)
+from pulldb.infra.overlord import (
+    OverlordConnection,
+    OverlordRepository,
+    OverlordTrackingRepository,
 )
 
 if TYPE_CHECKING:
@@ -162,7 +164,38 @@ class OverlordManager:
     def is_enabled(self) -> bool:
         """Check if overlord integration is enabled."""
         return self._overlord_conn is not None
-    
+
+    @property
+    def overlord_repo(self) -> OverlordRepository | None:
+        """Public accessor for the overlord repository."""
+        return self._overlord_repo
+
+    @property
+    def tracking_repo(self) -> OverlordTrackingRepository | None:
+        """Public accessor for the tracking repository."""
+        return self._tracking_repo
+
+    @property
+    def overlord_conn(self) -> OverlordConnection | None:
+        """Public accessor for the overlord connection."""
+        return self._overlord_conn
+
+    def replace_connection(
+        self,
+        new_conn: OverlordConnection,
+        table: str = "companies",
+    ) -> None:
+        """Replace the overlord connection and recreate the repository.
+
+        Used after provisioning to hot-swap credentials without a restart.
+
+        Args:
+            new_conn: New OverlordConnection instance
+            table: Overlord table name (default 'companies')
+        """
+        self._overlord_conn = new_conn
+        self._overlord_repo = OverlordRepository(new_conn, table)
+
     def refresh_credentials(self) -> bool:
         """Refresh overlord connection credentials from AWS Secrets Manager.
         
@@ -305,6 +338,22 @@ class OverlordManager:
             company = self._overlord_repo.get_by_database(database_name)
         
         return tracking, company
+
+    def get_full_row(self, database_name: str) -> dict[str, Any] | None:
+        """Get full raw row from overlord.companies as a dict.
+        
+        Returns all columns without domain model filtering.
+        Used by the user modal to expose all editable fields.
+        
+        Args:
+            database_name: Database name
+            
+        Returns:
+            Full row dict or None if not found
+        """
+        if not self._overlord_repo:
+            return None
+        return self._overlord_repo.get_row_snapshot(database_name)
     
     def get_tracking(self, database_name: str) -> OverlordTracking | None:
         """Get tracking record for a database.
@@ -802,3 +851,55 @@ class OverlordManager:
         
         logger.info(f"Cleanup overlord for deleted job {job_id}: {action.value}")
         return self.release(tracking.database_name, job_id, action)
+
+    # -------------------------------------------------------------------------
+    # Orphaned Tracking Cleanup
+    # -------------------------------------------------------------------------
+
+    def cleanup_orphaned_tracking(self) -> int:
+        """Remove tracking records whose database no longer exists in overlord.
+
+        Compares local tracking records against the remote overlord
+        ``companies`` table.  Any tracking record whose ``database_name``
+        has no matching ``database`` column in the remote table is deleted.
+
+        Returns:
+            Number of orphaned tracking records removed.
+        """
+        if not self.is_enabled:
+            return 0
+
+        try:
+            remote_rows = self._overlord_repo.get_all()
+        except Exception:
+            logger.warning(
+                "Cannot fetch remote overlord data for orphan cleanup",
+                exc_info=True,
+            )
+            return 0
+
+        remote_databases = {r.get("database") for r in remote_rows if r.get("database")}
+
+        all_tracking = self._tracking_repo.list_active()
+        orphans = [t for t in all_tracking if t.database_name not in remote_databases]
+
+        removed = 0
+        for t in orphans:
+            try:
+                self._tracking_repo.delete_by_database_name(t.database_name)
+                removed += 1
+                logger.info(
+                    "Removed orphaned tracking record: database=%s, job_id=%s",
+                    t.database_name,
+                    t.job_id,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to remove orphaned tracking: database=%s",
+                    t.database_name,
+                    exc_info=True,
+                )
+
+        if removed:
+            logger.info("Orphaned tracking cleanup: removed %d records", removed)
+        return removed

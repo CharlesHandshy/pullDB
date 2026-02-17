@@ -1,6 +1,12 @@
 CHANGELOG
 =========
 
+v1.1.0 - 2026-02-17
+-------------------
+### Minor Version Release
+
+Feature and improvement release with accumulated changes since v1.0.8.
+
 v1.0.8 - 2026-01-31
 -------------------
 ### VirtualLog Widget & Real-Time UI Updates

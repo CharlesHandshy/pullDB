@@ -6,7 +6,7 @@
 
 ## myloader Invocation Pattern
 
-### Binary Configuration (v1.0.8+)
+### Binary Configuration (v1.1.0+)
 
 **Single Binary Strategy**: pullDB uses only `myloader-0.21.1-1` for all backups.
 

@@ -29,6 +29,14 @@ from typing import Any, cast
 import mysql.connector
 
 from pulldb.domain.errors import StagingError
+from pulldb.domain.naming import (
+    MAX_DATABASE_NAME_LENGTH,
+    STAGING_SUFFIX_LENGTH,
+    JOB_ID_PREFIX_LENGTH,
+    MAX_TARGET_LENGTH,
+    STAGING_PATTERN_TEMPLATE,
+    generate_staging_name,
+)
 from pulldb.infra.logging import get_logger
 from pulldb.infra.mysql_utils import quote_identifier
 from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
@@ -64,19 +72,6 @@ def _has_pulldb_table(conn: Any, db_name: str) -> bool:
     except mysql.connector.Error:
         # If we can't check, assume it's not ours (fail-safe: don't drop)
         return False
-
-
-# MySQL database name length limit (63 chars but we use 64 for legacy compatibility)
-MAX_DATABASE_NAME_LENGTH = 64
-
-# Staging suffix length: underscore + 12 hex chars from job_id
-STAGING_SUFFIX_LENGTH = 13
-
-# Job ID prefix length for staging suffix (hex characters)
-JOB_ID_PREFIX_LENGTH = 12
-
-# Pattern for matching orphaned staging databases: {target}_[0-9a-f]{12}
-STAGING_PATTERN_TEMPLATE = r"^{target}_[0-9a-f]{{12}}$"
 
 
 @dataclass(slots=True, frozen=True)
@@ -118,60 +113,10 @@ class StagingResult:
     orphans_dropped: list[str]
 
 
-def generate_staging_name(target_db: str, job_id: str) -> str:
-    """Generate staging database name from target and job_id.
-
-    Format: {target}_{job_id_first_12_chars}
-    Example: jdoecustomer_550e8400e29b
-
-    Args:
-        target_db: Final target database name (must be <= 51 chars).
-        job_id: Job UUID (will use first 12 hex characters).
-
-    Returns:
-        Staging database name.
-
-    Raises:
-        StagingError: If target_db exceeds maximum length (51 chars) or
-            job_id is too short (< 12 chars).
-    """
-    max_target_length = MAX_DATABASE_NAME_LENGTH - STAGING_SUFFIX_LENGTH
-
-    if len(target_db) > max_target_length:
-        raise StagingError(
-            f"Target database name '{target_db}' is {len(target_db)} chars, "
-            f"exceeds maximum of {max_target_length} chars. "
-            f"Staging name would exceed MySQL's {MAX_DATABASE_NAME_LENGTH} char limit. "
-            f"Choose a shorter customer ID or username."
-        )
-
-    if len(job_id) < JOB_ID_PREFIX_LENGTH:
-        raise StagingError(
-            f"Job ID '{job_id}' is too short ({len(job_id)} chars), "
-            f"need at least {JOB_ID_PREFIX_LENGTH} characters for staging suffix."
-        )
-
-    # Strip hyphens from UUID and take first 12 hex chars
-    job_id_clean = job_id.replace("-", "").lower()
-    job_id_prefix = job_id_clean[:JOB_ID_PREFIX_LENGTH]
-
-    # Validate job_id prefix contains only hex characters
-    if len(job_id_prefix) < JOB_ID_PREFIX_LENGTH:
-        raise StagingError(
-            f"Job ID '{job_id}' has insufficient hex characters after "
-            f"removing hyphens ({len(job_id_prefix)} chars). "
-            f"Expected at least {JOB_ID_PREFIX_LENGTH} hex digits."
-        )
-
-    if not re.match(r"^[0-9a-f]{12}$", job_id_prefix):
-        raise StagingError(
-            f"Job ID prefix '{job_id_prefix}' contains non-hexadecimal characters. "
-            f"Expected 12 hex digits from job_id."
-        )
-
-    staging_name = f"{target_db}_{job_id_prefix}"
-
-    return staging_name
+# generate_staging_name and staging constants are now defined in
+# pulldb.domain.naming and re-exported via the top-level imports above.
+# This keeps backward compatibility for any code doing:
+#     from pulldb.worker.staging import generate_staging_name
 
 
 def _find_orphaned_staging_databases(

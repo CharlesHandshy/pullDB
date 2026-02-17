@@ -6,7 +6,7 @@
 
 ---
 
-## Quick Reference (v1.0.8)
+## Quick Reference (v1.1.0)
 
 | Setting | Value |
 |---------|-------|

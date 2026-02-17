@@ -2,7 +2,7 @@
 
 [← Back to API Index](README.md) | [Web API Reference](WEB-API.md)
 
-> **Version**: 1.0.8  
+> **Version**: 1.1.0  
 > **Base URL**: `http://localhost:8080`  
 > **Authentication**: HMAC Signature or Session Cookie  
 > **Source**: [pulldb/api/main.py](../../pulldb/api/main.py)

@@ -83,6 +83,8 @@ class SearchContext:
     profile: str | None
     env_name: str
     filter_date: datetime | None
+    filter_date_to: datetime | None = None
+    date_mode: str = "on_or_after"
 
 
 class DiscoveryService:
@@ -393,6 +395,9 @@ class DiscoveryService:
         date_from: str | None = None,
         limit: int = 5,
         offset: int = 0,
+        *,
+        date_to: str | None = None,
+        date_mode: str = "on_or_after",
     ) -> BackupSearchResult:
         """Search for backups for a customer.
 
@@ -402,16 +407,42 @@ class DiscoveryService:
             date_from: Optional YYYYMMDD string.
             limit: Max results per page.
             offset: Number of results to skip for pagination.
+            date_to: Optional YYYYMMDD end date (used with 'between' mode).
+            date_mode: Date filter mode ('on_or_after', 'on_or_before', 'on_date', 'between').
 
         Returns:
             BackupSearchResult with backups, total count, and pagination info.
         """
         if is_simulation_mode():
-            return self._search_backups_simulation(customer, environment, limit, offset)
-        return self._search_backups_s3(customer, environment, date_from, limit, offset)
+            # Parse date strings for simulation filtering
+            sim_filter_date: datetime | None = None
+            sim_filter_date_to: datetime | None = None
+            if date_from:
+                with contextlib.suppress(ValueError):
+                    sim_filter_date = datetime.strptime(date_from, "%Y%m%d")
+            if date_to:
+                with contextlib.suppress(ValueError):
+                    sim_filter_date_to = datetime.strptime(date_to, "%Y%m%d").replace(
+                        hour=23, minute=59, second=59
+                    )
+            return self._search_backups_simulation(
+                customer, environment, limit, offset,
+                date_mode=date_mode,
+                filter_date=sim_filter_date,
+                filter_date_to=sim_filter_date_to,
+            )
+        return self._search_backups_s3(customer, environment, date_from, limit, offset, date_to=date_to, date_mode=date_mode)
 
     def _search_backups_simulation(
-        self, customer: str, environment: str, limit: int, offset: int = 0
+        self,
+        customer: str,
+        environment: str,
+        limit: int,
+        offset: int = 0,
+        *,
+        date_mode: str = "on_or_after",
+        filter_date: datetime | None = None,
+        filter_date_to: datetime | None = None,
     ) -> BackupSearchResult:
         all_results = []
         # Generate more mock results for pagination testing
@@ -422,6 +453,24 @@ class DiscoveryService:
             env = "staging" if i % 2 == 0 else "prod"
             if environment not in ("both", env):
                 continue
+
+            # Apply date filtering (mirrors _process_backup_key logic)
+            if filter_date:
+                if date_mode == "on_or_after":
+                    if ts < filter_date:
+                        continue
+                elif date_mode == "on_or_before":
+                    end_of_day = filter_date.replace(hour=23, minute=59, second=59)
+                    if ts > end_of_day:
+                        continue
+                elif date_mode == "on_date":
+                    if ts.date() != filter_date.date():
+                        continue
+                elif date_mode == "between":
+                    if ts < filter_date:
+                        continue
+                    if filter_date_to and ts > filter_date_to:
+                        continue
 
             size_bytes = 1024 * 1024 * 1024 + i * 100 * 1024 * 1024  # ~1GB
             # Generate valid backup key format: {customer}/daily_mydumper_{customer}_{timestamp}
@@ -492,6 +541,9 @@ class DiscoveryService:
         date_from: str | None,
         limit: int,
         offset: int = 0,
+        *,
+        date_to: str | None = None,
+        date_mode: str = "on_or_after",
     ) -> BackupSearchResult:
         all_locations = self._get_backup_locations()
 
@@ -515,6 +567,14 @@ class DiscoveryService:
             with contextlib.suppress(ValueError):
                 filter_date = datetime.strptime(date_from, "%Y%m%d")
 
+        filter_date_to: datetime | None = None
+        if date_to:
+            with contextlib.suppress(ValueError):
+                # Set to end of day so "between" is inclusive of the end date
+                filter_date_to = datetime.strptime(date_to, "%Y%m%d").replace(
+                    hour=23, minute=59, second=59
+                )
+
         s3_profile = (
             os.getenv("PULLDB_S3_AWS_PROFILE") or os.getenv("PULLDB_AWS_PROFILE")
         )
@@ -529,6 +589,8 @@ class DiscoveryService:
                 profile=profile,
                 env_name=env_name,
                 filter_date=filter_date,
+                filter_date_to=filter_date_to,
+                date_mode=date_mode,
             )
             self._search_in_bucket(ctx, customer, all_backups)
 
@@ -648,8 +710,26 @@ class DiscoveryService:
         except ValueError:
             return
 
-        if ctx.filter_date and ts < ctx.filter_date:
-            return
+        # Apply date filter based on mode
+        if ctx.filter_date:
+            mode = ctx.date_mode
+            if mode == "on_or_after":
+                if ts < ctx.filter_date:
+                    return
+            elif mode == "on_or_before":
+                # Include backups up to end of the filter day
+                end_of_day = ctx.filter_date.replace(hour=23, minute=59, second=59)
+                if ts > end_of_day:
+                    return
+            elif mode == "on_date":
+                # Only include backups on the exact calendar date
+                if ts.date() != ctx.filter_date.date():
+                    return
+            elif mode == "between":
+                if ts < ctx.filter_date:
+                    return
+                if ctx.filter_date_to and ts > ctx.filter_date_to:
+                    return
 
         results.append(
             BackupInfo(

@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
-from pathlib import Path
 
 import click
 
@@ -59,19 +57,26 @@ def _get_setting_source(
 ) -> tuple[str | None, str]:
     """Determine setting value and its source.
 
-    Returns:
-        Tuple of (value, source) where source is 'database', 'environment', or 'default'
-    """
-    # Check database first (highest priority)
-    if key in db_settings:
-        return db_settings[key], "database"
+    Priority: environment > database > default
+    (Matches runtime Config.from_env_and_mysql() behavior.)
 
-    # Check environment
+    Returns:
+        Tuple of (value, source) where source is 'database', 'environment',
+        'environment (overrides database)', or 'default'
+    """
+    # Check environment first (highest priority — matches runtime)
     setting_info = KNOWN_SETTINGS.get(key, (f"PULLDB_{key.upper()}", None, ""))
     env_var, default_value, _ = setting_info
     env_value = os.getenv(env_var)
+
     if env_value is not None:
+        if key in db_settings and db_settings[key] != env_value:
+            return env_value, "environment (overrides database)"
         return env_value, "environment"
+
+    # Check database second
+    if key in db_settings:
+        return db_settings[key], "database"
 
     # Return default
     return default_value, "default"

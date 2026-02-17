@@ -7,16 +7,16 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 **Related:** [Deployment](hca/widgets/deployment.md) · [policies/](hca/plugins/policies/) · [terraform/](hca/plugins/terraform/)
 
 Last updated: 2026-01-31
-Current version: v1.0.8
+Current version: v1.1.0
 Phases complete: 0-6
 
 ---
 
-## Package Contents Summary (v1.0.8)
+## Package Contents Summary (v1.1.0)
 
 | Component | Path in Package | Size |
 |-----------|-----------------|------|
-| Python wheel | `/opt/pulldb.service/dist/pulldb-1.0.8-py3-none-any.whl` | ~16MB |
+| Python wheel | `/opt/pulldb.service/dist/pulldb-1.1.0-py3-none-any.whl` | ~16MB |
 | myloader binary | `/opt/pulldb.service/bin/myloader-0.21.1-1` | 7.7MB |
 | Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 17 SQL files |
 | Systemd units | `/opt/pulldb.service/systemd/` | 6 files |
@@ -43,7 +43,7 @@ Phases complete: 0-6
 
 ---
 
-## API Reference (v1.0.8)
+## API Reference (v1.1.0)
 
 Complete API documentation: [docs/api/README.md](api/README.md)
 
@@ -94,11 +94,11 @@ Complete API documentation: [docs/api/README.md](api/README.md)
 
 ## Index (categories)
 - **Architecture Diagrams** - [docs/diagrams/pulldb-flowchart.md](diagrams/pulldb-flowchart.md) (Mermaid)
-- **API Reference** (v1.0.8)
+- **API Reference** (v1.1.0)
 - **Package Contents Summary** (Updated - v0.3.0)
 - **Default Accounts & Provisioning** (v0.2.0)
 - **CLI HMAC Authentication** (Phase 6) - includes multi-host API key management
-- **Security Rules & Patterns** (v1.0.8) - SQL injection prevention, cross-DB safety, ownership verification
+- **Security Rules & Patterns** (v1.1.0) - SQL injection prevention, cross-DB safety, ownership verification
 - **Host Provisioning Service** (Phase 6)
 - **Secret Rotation** (Phase 6)
 - **Database Retention** (Phase 6)
@@ -217,7 +217,7 @@ Role-Based Access Control with four roles: `USER`, `MANAGER`, `ADMIN`, `SERVICE`
 |------|-------|---------|
 | `pulldb/domain/permissions.py` | entities | `can_cancel_job()`, `can_delete_job_database()`, `can_view_job()`, `UserRole` enum |
 | `pulldb/domain/models.py` | entities | `User.role`, `User.manager_id` fields |
-| `pulldb/infra/mysql.py` | shared | `UserRepository.get_managed_users()` |
+| `pulldb/infra/mysql_users.py` | shared | `UserRepository` (via facade `mysql.py`) |
 
 ### Usage Pattern
 
@@ -235,7 +235,7 @@ if not can_delete_job_database(current_user, job.owner_user_id, job_owner_manage
 
 ---
 
-## Security Rules & Patterns (v1.0.8)
+## Security Rules & Patterns (v1.1.0)
 
 Generalized security rules derived from audit findings. These rules apply to ALL pullDB code.
 
@@ -477,7 +477,7 @@ if not protection.can_drop:
 |------|-------|---------|
 | `pulldb/domain/permissions.py` | entities | `can_delete_job_database()` |
 | `pulldb/worker/cleanup.py` | features | `delete_job_databases()`, `is_target_database_protected()`, `JobDeleteResult`, `TargetProtectionResult` |
-| `pulldb/infra/mysql.py` | shared | `mark_job_deleted()`, `hard_delete_job()`, `has_any_deployed_job_for_target()`, `has_any_locked_job_for_target()` |
+| `pulldb/infra/mysql_jobs.py` | shared | `JobRepository.mark_job_deleted()`, `hard_delete_job()`, `has_any_deployed_job_for_target()`, `has_any_locked_job_for_target()` |
 | `pulldb/worker/admin_tasks.py` | features | `_execute_bulk_delete_jobs()` handler |
 | `pulldb/web/features/jobs/routes.py` | pages | Delete routes (single + bulk) |
 
@@ -552,7 +552,7 @@ Allows users to resubmit failed jobs using the same backup and settings. Availab
 | File | Layer | Purpose |
 |------|-------|---------|
 | `pulldb/web/features/jobs/routes.py` | pages | `api_resubmit_job()`, `_validate_resubmit()` |
-| `pulldb/infra/mysql.py` | shared | `get_in_progress_job_for_target()`, `update_job_options()` |
+| `pulldb/infra/mysql_jobs.py` | shared | `JobRepository.get_in_progress_job_for_target()`, `update_job_options()` |
 | `pulldb/web/templates/features/jobs/jobs.html` | pages | Resubmit button + modal in History view |
 
 ### API Endpoint
@@ -800,7 +800,7 @@ In-memory mock system for testing without external dependencies.
 
 | Adapter | Replaces | Key Class |
 |---------|----------|-----------|
-| `mock_mysql.py` | `pulldb/infra/mysql.py` | `SimulatedJobRepository`, `SimulatedUserRepository` |
+| `mock_mysql.py` | `pulldb/infra/mysql.py` (facade) | `SimulatedJobRepository`, `SimulatedUserRepository` |
 | `mock_s3.py` | `pulldb/infra/s3.py` | `MockS3Client` |
 | `mock_exec.py` | `pulldb/infra/exec.py` | `MockProcessExecutor` |
 
@@ -908,7 +908,7 @@ The web package follows HCA internally for UI component organization.
 | **widgets** | `web/widgets/` | `sidebar/`, `filter_bar/`, `lazy_table/`, `virtual_table/`, `breadcrumbs/`, `bulk_actions/`, `searchable_dropdown/` |
 | **pages** | `web/pages/` | Empty - pages co-located within features (`features/<name>/pages/`) |
 
-### Feature Packages (v1.0.8)
+### Feature Packages (v1.1.0)
 
 | Package | Files | Routes | Purpose |
 |---------|-------|--------|---------|
@@ -922,7 +922,7 @@ The web package follows HCA internally for UI component organization.
 | `requests/` | 2 | 10 | Feature request board |
 | `mockup/` | 2 | 1 | Development mockup pages |
 
-### Widget Packages (v1.0.8)
+### Widget Packages (v1.1.0)
 
 | Package | Files | Purpose |
 |---------|-------|---------|
@@ -1127,7 +1127,7 @@ The Worker performs all actual operations (database drops, S3 downloads, restore
 │ │BAR  │                  (content-body)                           │
 │ │HOVER│               Scrolls independently                       │
 │ │     ├───────────────────────────────────────────────────────────┤
-│ │     │ © 2026 pullDB • v1.0.8    │    Service Titan/Field Routes │
+│ │     │ © 2026 pullDB • v1.1.0    │    Service Titan/Field Routes │
 └───────┴───────────────────────────────────────────────────────────┘
 ```
 
@@ -1478,7 +1478,7 @@ This file should be created and applied in the production account only. Keep sec
 - Atomic rename via stored procedure: `pulldb_atomic_rename` / `pulldb_atomic_rename_preview` exists and is versioned
 - **Progress deduplication** (v0.2.0): ProcesslistMonitor polls every 2s but events only emit when overall percent OR any table's percent changes by 1%+. Dedup key: `(int(percent), active_threads, tuple(sorted(table_progress)))`. CLI uses TTY detection for in-place line updates (`\r`). Web UI has `_deduplicate_logs()`.
 
-### Worker Process Features (v1.0.8)
+### Worker Process Features (v1.1.0)
 
 | Feature | Description | Source |
 |---------|-------------|--------|
@@ -1737,7 +1737,7 @@ grep -v "changeLog" resume | grep -v "salesRoutesAccess" | head
   )
   ```
 - **Key Attributes**: `MySQLCredentials.username` (NOT `.user`), `.password`, `.host`, `.port`
-- **Documentation Updates**: Added clarification sections to KNOWLEDGE-POOL.md, KNOWLEDGE-POOL.json, and code comments in `pulldb/infra/bootstrap.py` and `pulldb/infra/mysql.py`.
+- **Documentation Updates**: Added clarification sections to KNOWLEDGE-POOL.md, KNOWLEDGE-POOL.json, and code comments in `pulldb/infra/bootstrap.py` and `pulldb/infra/mysql.py` (now decomposed into 8 sub-modules + facade).
 
 ## myloader 0.19 Metadata Compatibility
 - **Source**: `src/myloader/myloader_process.c` (GitHub)

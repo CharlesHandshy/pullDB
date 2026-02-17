@@ -377,7 +377,7 @@ def configure_host_repo(
     repo.get_enabled_hosts.return_value = hosts or []
     
     # Configure get_host_credentials to return proper MySQLCredentials
-    # This is needed for _target_database_exists_on_host() and other DB checks
+    # And database_exists / get_pulldb_metadata_owner for DB protection checks
     def mock_get_credentials(hostname: str) -> MySQLCredentials:
         return MySQLCredentials(
             username="mock_user",
@@ -388,6 +388,8 @@ def configure_host_repo(
     
     repo.get_host_credentials.side_effect = mock_get_credentials
     repo.get_host_credentials_for_maintenance.side_effect = mock_get_credentials
+    repo.database_exists.return_value = False
+    repo.get_pulldb_metadata_owner.return_value = (False, None, None)
 
 
 # ---------------------------------------------------------------------------

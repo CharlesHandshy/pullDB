@@ -12,12 +12,25 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, Form, Request, Query, HTTPException
+from fastapi import APIRouter, Depends, Form, Request, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResponse
 
-from pulldb.api.logic import enqueue_job
-from pulldb.api.schemas import JobRequest
+from pulldb.domain.errors import (
+    DatabaseProtectionError,
+    DuplicateJobError,
+    EnqueueBackupNotFoundError,
+    EnqueueError,
+    EnqueueValidationError,
+    HostUnavailableError,
+    HostUnauthorizedError,
+    JobLockedError,
+    JobNotFoundError,
+    RateLimitError,
+    UserDisabledError,
+)
+from pulldb.domain.schemas import JobRequest
+from pulldb.domain.services.enqueue import enqueue_job
 from pulldb.domain.models import User, UserRole
 from pulldb.domain.naming import normalize_customer_name
 from pulldb.web.dependencies import get_api_state, require_login, templates
@@ -170,6 +183,8 @@ async def search_backups(
     customer: str = Query(...),
     env: str = Query("both"),
     date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    date_mode: str = Query("on_or_after"),
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> HTMLResponse:
@@ -182,9 +197,16 @@ async def search_backups(
         customer: Customer name or pattern.
         env: Environment filter ('both', 'staging', 'prod').
         date_from: Start date filter in YYYYMMDD format. API defaults to 7 days ago.
+        date_to: End date filter in YYYYMMDD format (used with 'between' mode).
+        date_mode: Date filter mode ('on_or_after', 'on_or_before', 'on_date', 'between').
         limit: Max results per page.
         offset: Pagination offset.
     """
+    # Validate date_mode early to avoid unnecessary API round-trip
+    valid_modes = ("on_or_after", "on_or_before", "on_date", "between")
+    if date_mode not in valid_modes:
+        date_mode = "on_or_after"
+
     # Forward session cookie for API authentication
     cookies = {}
     if session_token := request.cookies.get("session_token"):
@@ -196,9 +218,12 @@ async def search_backups(
             "environment": env,
             "limit": limit,
             "offset": offset,
+            "date_mode": date_mode,
         }
         if date_from:
             params["date_from"] = date_from
+        if date_to:
+            params["date_to"] = date_to
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
@@ -222,6 +247,8 @@ async def search_backups(
                 "customer": customer,
                 "env": env,
                 "date_from": date_from,
+                "date_to": date_to or "",
+                "date_mode": date_mode,
                 "error": f"API error: {e.response.status_code}",
             }
         )
@@ -238,6 +265,8 @@ async def search_backups(
                 "customer": customer,
                 "env": env,
                 "date_from": date_from,
+                "date_to": date_to or "",
+                "date_mode": date_mode,
                 "error": f"Connection error: {e}",
             }
         )
@@ -276,6 +305,8 @@ async def search_backups(
             "customer": customer,
             "env": env,
             "date_from": date_from or data.get("date_from"),
+            "date_to": date_to or "",
+            "date_mode": date_mode,
         }
     )
 
@@ -545,10 +576,22 @@ async def restore_submit(
         if normalization_warning:
             redirect_url = f"/web/jobs?{urlencode({'restore_warning': normalization_warning})}"
         return RedirectResponse(url=redirect_url, status_code=303)
-    except HTTPException as exc:
-        # Handle specific HTTP errors (e.g., 409 Conflict for duplicate jobs)
-        error_status = exc.status_code if hasattr(exc, 'status_code') else 400
-        error_message = exc.detail if hasattr(exc, 'detail') else str(exc)
+    except EnqueueError as exc:
+        # Handle domain enqueue errors (409 Conflict, 429 Rate Limit, etc.)
+        _error_status_map: dict[type[EnqueueError], int] = {
+            EnqueueValidationError: 400,
+            HostUnauthorizedError: 403,
+            UserDisabledError: 403,
+            JobNotFoundError: 404,
+            EnqueueBackupNotFoundError: 404,
+            DuplicateJobError: 409,
+            DatabaseProtectionError: 409,
+            JobLockedError: 409,
+            RateLimitError: 429,
+            HostUnavailableError: 503,
+        }
+        error_status = _error_status_map.get(type(exc), 500)
+        error_message = exc.detail
         return templates.TemplateResponse(
             "features/restore/restore.html",
             {

@@ -15,9 +15,19 @@ import inspect
 import pytest
 
 from pulldb.infra.mysql import JobRepository
+from pulldb.infra.mysql_admin import (
+    AdminTaskRepository,
+    DisallowedUserRepository,
+)
+from pulldb.infra.mysql_history import JobHistorySummaryRepository
+from pulldb.infra.mysql_settings import SettingsRepository
 from pulldb.simulation.adapters.mock_mysql import (
+    SimulatedAdminTaskRepository,
+    SimulatedDisallowedUserRepository,
     SimulatedHostRepository,
+    SimulatedJobHistorySummaryRepository,
     SimulatedJobRepository,
+    SimulatedSettingsRepository,
     SimulatedUserRepository,
 )
 
@@ -200,3 +210,67 @@ class TestSpecificMethodsExist:
         assert hasattr(SimulatedJobRepository, "has_active_jobs_for_target"), (
             "has_active_jobs_for_target missing - required for cleanup safety"
         )
+
+
+class TestSettingsRepositoryParity:
+    """Ensure SimulatedSettingsRepository matches SettingsRepository interface."""
+
+    def test_all_public_methods_exist(self) -> None:
+        """SimulatedSettingsRepository must implement all SettingsRepository public methods."""
+        real_methods = _get_public_methods(SettingsRepository)
+        sim_methods = _get_public_methods(SimulatedSettingsRepository)
+
+        missing = set(real_methods.keys()) - set(sim_methods.keys())
+        if missing:
+            pytest.fail(
+                "SimulatedSettingsRepository is missing methods that exist in "
+                f"SettingsRepository:\n  {sorted(missing)}"
+            )
+
+
+class TestDisallowedUserRepositoryParity:
+    """Ensure SimulatedDisallowedUserRepository matches DisallowedUserRepository."""
+
+    def test_all_public_methods_exist(self) -> None:
+        """SimulatedDisallowedUserRepository must implement all public methods."""
+        real_methods = _get_public_methods(DisallowedUserRepository)
+        sim_methods = _get_public_methods(SimulatedDisallowedUserRepository)
+
+        missing = set(real_methods.keys()) - set(sim_methods.keys())
+        if missing:
+            pytest.fail(
+                "SimulatedDisallowedUserRepository is missing methods that exist in "
+                f"DisallowedUserRepository:\n  {sorted(missing)}"
+            )
+
+
+class TestAdminTaskRepositoryParity:
+    """Ensure SimulatedAdminTaskRepository matches AdminTaskRepository."""
+
+    def test_all_public_methods_exist(self) -> None:
+        """SimulatedAdminTaskRepository must implement all public methods."""
+        real_methods = _get_public_methods(AdminTaskRepository)
+        sim_methods = _get_public_methods(SimulatedAdminTaskRepository)
+
+        missing = set(real_methods.keys()) - set(sim_methods.keys())
+        if missing:
+            pytest.fail(
+                "SimulatedAdminTaskRepository is missing methods that exist in "
+                f"AdminTaskRepository:\n  {sorted(missing)}"
+            )
+
+
+class TestJobHistorySummaryRepositoryParity:
+    """Ensure SimulatedJobHistorySummaryRepository matches production."""
+
+    def test_all_public_methods_exist(self) -> None:
+        """SimulatedJobHistorySummaryRepository must implement all public methods."""
+        real_methods = _get_public_methods(JobHistorySummaryRepository)
+        sim_methods = _get_public_methods(SimulatedJobHistorySummaryRepository)
+
+        missing = set(real_methods.keys()) - set(sim_methods.keys())
+        if missing:
+            pytest.fail(
+                "SimulatedJobHistorySummaryRepository is missing methods that exist in "
+                f"JobHistorySummaryRepository:\n  {sorted(missing)}"
+            )

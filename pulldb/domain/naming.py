@@ -26,9 +26,15 @@ __all__ = [
     "NormalizedCustomerName",
     "normalize_customer_name",
     "normalize_customer_name_simple",
+    "generate_staging_name",
     "HASH_SUFFIX_LEN",
     "MAX_CUSTOMER_LEN",
     "TRUNCATE_LEN",
+    "MAX_DATABASE_NAME_LENGTH",
+    "STAGING_SUFFIX_LENGTH",
+    "JOB_ID_PREFIX_LENGTH",
+    "MAX_TARGET_LENGTH",
+    "STAGING_PATTERN_TEMPLATE",
 ]
 
 logger = logging.getLogger(__name__)
@@ -154,3 +160,87 @@ def normalize_customer_name_simple(customer: str) -> str:
         Normalized customer name (42 chars or less).
     """
     return normalize_customer_name(customer).normalized
+
+
+# ---------------------------------------------------------------------------
+# Staging name generation
+# ---------------------------------------------------------------------------
+# These constants and the ``generate_staging_name`` function were extracted
+# from ``pulldb/worker/staging.py`` so that domain-layer code (e.g. the
+# enqueue service) can use them without importing from the features layer.
+# ``pulldb/worker/staging.py`` re-exports them for backward compatibility.
+
+import re as _re
+
+from pulldb.domain.errors import StagingError
+
+# MySQL database name length limit (63 chars but we use 64 for legacy compat)
+MAX_DATABASE_NAME_LENGTH = 64
+
+# Staging suffix length: underscore + 12 hex chars from job_id
+STAGING_SUFFIX_LENGTH = 13
+
+# Job ID prefix length for staging suffix (hex characters)
+JOB_ID_PREFIX_LENGTH = 12
+
+# Maximum target database name length (derived)
+MAX_TARGET_LENGTH = MAX_DATABASE_NAME_LENGTH - STAGING_SUFFIX_LENGTH
+
+# Pattern for matching orphaned staging databases: {target}_[0-9a-f]{12}
+STAGING_PATTERN_TEMPLATE = r"^{target}_[0-9a-f]{{12}}$"
+
+
+def generate_staging_name(target_db: str, job_id: str) -> str:
+    """Generate staging database name from target and job_id.
+
+    Format: {target}_{job_id_first_12_chars}
+    Example: jdoecustomer_550e8400e29b
+
+    Args:
+        target_db: Final target database name (must be <= 51 chars).
+        job_id: Job UUID (will use first 12 hex characters).
+
+    Returns:
+        Staging database name.
+
+    Raises:
+        StagingError: If target_db exceeds maximum length (51 chars) or
+            job_id is too short (< 12 chars).
+    """
+    max_target_length = MAX_DATABASE_NAME_LENGTH - STAGING_SUFFIX_LENGTH
+
+    if len(target_db) > max_target_length:
+        raise StagingError(
+            f"Target database name '{target_db}' is {len(target_db)} chars, "
+            f"exceeds maximum of {max_target_length} chars. "
+            f"Staging name would exceed MySQL's {MAX_DATABASE_NAME_LENGTH} char limit. "
+            f"Choose a shorter customer ID or username."
+        )
+
+    if len(job_id) < JOB_ID_PREFIX_LENGTH:
+        raise StagingError(
+            f"Job ID '{job_id}' is too short ({len(job_id)} chars), "
+            f"need at least {JOB_ID_PREFIX_LENGTH} characters for staging suffix."
+        )
+
+    # Strip hyphens from UUID and take first 12 hex chars
+    job_id_clean = job_id.replace("-", "").lower()
+    job_id_prefix = job_id_clean[:JOB_ID_PREFIX_LENGTH]
+
+    # Validate job_id prefix contains only hex characters
+    if len(job_id_prefix) < JOB_ID_PREFIX_LENGTH:
+        raise StagingError(
+            f"Job ID '{job_id}' has insufficient hex characters after "
+            f"removing hyphens ({len(job_id_prefix)} chars). "
+            f"Expected at least {JOB_ID_PREFIX_LENGTH} hex digits."
+        )
+
+    if not _re.match(r"^[0-9a-f]{12}$", job_id_prefix):
+        raise StagingError(
+            f"Job ID prefix '{job_id_prefix}' contains non-hexadecimal characters. "
+            f"Expected 12 hex digits from job_id."
+        )
+
+    staging_name = f"{target_db}_{job_id_prefix}"
+
+    return staging_name

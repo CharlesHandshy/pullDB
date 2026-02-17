@@ -13,6 +13,7 @@ from fastapi import APIRouter
 
 # Import all feature routers (web2-style unified routes)
 from pulldb.web.features.admin.routes import router as admin_router
+from pulldb.web.features.admin.overlord_routes import router as admin_overlord_router
 from pulldb.web.features.audit.routes import router as audit_router
 from pulldb.web.features.auth.routes import router as auth_router
 from pulldb.web.features.dashboard.routes import router as dashboard_router
@@ -35,6 +36,7 @@ main_router.include_router(dashboard_router)
 main_router.include_router(jobs_router)
 main_router.include_router(restore_router)
 main_router.include_router(admin_router)
+main_router.include_router(admin_overlord_router)
 main_router.include_router(audit_router)
 main_router.include_router(manager_router)
 main_router.include_router(requests_router)

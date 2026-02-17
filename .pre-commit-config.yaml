@@ -100,6 +100,14 @@ repos:
   # Local ownership & permission drift audit (Development File Ownership Principle)
   - repo: local
     hooks:
+      - id: lint-imports
+        name: lint-imports (HCA layer enforcement)
+        entry: lint-imports
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        always_run: true
+
       - id: permission-audit
         name: permission-audit (test-env)
         entry: bash scripts/audit-permissions.sh test-env

@@ -2,26 +2,27 @@
      Feature: 54166071 - Button to update overlord.companies
      HCA Layer: features
      
-     This modal provides a form to view and edit overlord.companies routing data
-     for a deployed job's database. It includes:
-     - Read-only fields: database (auto-populated from job target)
-     - Editable fields: subdomain, name, dbHost, dbHostRead
-     - dbHost fields auto-populated from job's restore host
-     - Release dropdown to control cleanup behavior
+     Full-coverage modal for managing ALL 27 columns of overlord.companies.
+     Core fields always visible; extended fields in collapsible sections.
+     Uses combobox dropdowns for host selection, CSS tooltips, and
+     semantic color tokens for dark/light mode compatibility.
 -->
 
 <div id="overlord-modal" class="modal modal-hidden">
     <div class="modal-backdrop" onclick="closeOverlordModal()"></div>
-    <div class="modal-content modal-content-wide">
+    <div class="modal-content overlord-modal-compact">
         <!-- Header -->
-        <div class="modal-header">
-            <h3 class="modal-title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
-                Overlord Companies
-            </h3>
+        <div class="modal-header overlord-modal__header">
+            <div class="overlord-modal__title-group">
+                <h3 class="modal-title overlord-modal__title">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    Database Management
+                </h3>
+                <span id="overlord-header-badge" class="overlord-badge overlord-badge--muted js-hidden"></span>
+            </div>
             <button type="button" class="modal-close" onclick="closeOverlordModal()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" x2="6" y1="6" y2="18"/>
@@ -29,373 +30,1996 @@
                 </svg>
             </button>
         </div>
-        
+
+        <!-- ═══════════════════════════════════════════════════
+             TOP-LEVEL TABS: Companies vs Employees
+             ═══════════════════════════════════════════════════ -->
+        <div class="overlord-top-tabs" role="tablist">
+            <button type="button" class="overlord-top-tabs__tab overlord-top-tabs__tab--active"
+                    role="tab" aria-selected="true" aria-controls="overlord-panel-companies"
+                    onclick="switchOverlordTopTab(this, 'overlord-panel-companies')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09"/></svg>
+                overlord.companies
+            </button>
+            <button type="button" class="overlord-top-tabs__tab"
+                    role="tab" aria-selected="false" aria-controls="overlord-panel-employees"
+                    onclick="switchOverlordTopTab(this, 'overlord-panel-employees')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span id="overlord-employees-tab-label">[db].employees</span>
+            </button>
+        </div>
+
+        <!-- PANEL: overlord.companies -->
+        <div id="overlord-panel-companies" class="overlord-top-panel overlord-top-panel--active">
         <form id="overlord-form" onsubmit="return submitOverlordForm(event)">
             <input type="hidden" id="overlord-job-id" name="job_id">
             <input type="hidden" id="overlord-database" name="database">
             
-            <div class="modal-body">
-                <!-- Status Banner (for existing tracking) -->
-                <div id="overlord-status-banner" class="alert mb-4 js-hidden">
-                    <span id="overlord-status-message"></span>
+            <div class="modal-body overlord-modal__body">
+                <!-- Status Banner -->
+                <div id="overlord-status-banner" class="overlord-banner js-hidden">
+                    <span id="overlord-status-icon" class="overlord-banner__icon"></span>
+                    <span id="overlord-status-message" class="overlord-banner__text"></span>
                 </div>
                 
-                <!-- Database Info -->
-                <div class="form-section">
-                    <div class="form-section-title">
-                        Database Identification
+                <!-- ═══════════════════════════════════════════════════
+                     CORE: Identity & Routing (always visible)
+                     ═══════════════════════════════════════════════════ -->
+                
+                <!-- Row: companyID (readonly) + database (readonly) -->
+                <div class="overlord-field-row">
+                    <div class="overlord-field">
+                        <label class="overlord-field__label">
+                            Company ID
+                            <span class="overlord-tooltip" data-tooltip="Auto-increment primary key. Read-only.">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </span>
+                        </label>
+                        <div class="overlord-field__readonly" id="overlord-display-companyid">—</div>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Database Name</label>
-                            <div class="form-value-readonly" id="overlord-display-database">—</div>
-                            <span class="form-hint">Auto-set from job target (read-only)</span>
+                    <div class="overlord-field">
+                        <label class="overlord-field__label">
+                            Database
+                            <span class="overlord-tooltip" data-tooltip="Auto-set from the job target. Read-only.">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </span>
+                        </label>
+                        <div class="overlord-field__readonly" id="overlord-display-database">—</div>
+                    </div>
+                </div>
+
+                <!-- Row: subdomain + company code -->
+                <div class="overlord-field-row">
+                    <div class="overlord-field">
+                        <label for="overlord-subdomain" class="overlord-field__label overlord-field__label--required">
+                            Subdomain
+                            <span class="overlord-tooltip" data-tooltip="DNS-safe routing subdomain (e.g. acme → acme.yourapp.com). Lowercase, numbers, hyphens. 1-30 chars.">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </span>
+                        </label>
+                        <input type="text" id="overlord-subdomain" name="subdomain" class="form-input"
+                               placeholder="company-name" required
+                               maxlength="30"
+                               pattern="[a-z0-9]([a-z0-9\-]{0,28}[a-z0-9])?"
+                               title="Lowercase letters, numbers, and hyphens (1-30 chars)">
+                    </div>
+                    <div class="overlord-field">
+                        <label for="overlord-company" class="overlord-field__label">
+                            Company Code
+                            <span class="overlord-tooltip" data-tooltip="Internal company code identifier.">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </span>
+                        </label>
+                        <input type="text" id="overlord-company" name="company" class="form-input"
+                               placeholder="Company code" maxlength="50">
+                    </div>
+                </div>
+
+                <!-- Subdomain duplicate warning (hidden by default) -->
+                <div id="subdomain-duplicates-container" class="overlord-dupes js-hidden">
+                    <div class="overlord-dupes__header">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        <strong>Subdomain conflict</strong> — shared by:
+                    </div>
+                    <table class="overlord-dupes__table">
+                        <thead><tr><th>ID</th><th>Database</th><th>Host</th></tr></thead>
+                        <tbody id="subdomain-duplicates-body"></tbody>
+                    </table>
+                </div>
+
+                <!-- Row: name + owner (auto-populated, read-only) -->
+                <div class="overlord-field-row">
+                    <div class="overlord-field">
+                        <label for="overlord-name" class="overlord-field__label">
+                            Display Name
+                            <span class="overlord-tooltip" data-tooltip="Human-readable company display name.">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </span>
+                        </label>
+                        <input type="text" id="overlord-name" name="name" class="form-input"
+                               placeholder="Company display name" maxlength="50">
+                    </div>
+                    <div class="overlord-field">
+                        <label class="overlord-field__label">
+                            Owner
+                            <span class="overlord-tooltip" data-tooltip="pullDB user who owns this record. Auto-set from your session.">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </span>
+                        </label>
+                        <div class="overlord-field__readonly" id="overlord-display-owner">—</div>
+                        <input type="hidden" id="overlord-owner" name="owner">
+                    </div>
+                </div>
+                
+                <!-- Row: dbHost + dbHostRead (combobox dropdowns) -->
+                <div class="overlord-field-row">
+                    <div class="overlord-field">
+                        <label for="overlord-dbhost" class="overlord-field__label overlord-field__label--required">
+                            Primary Host
+                            <span class="overlord-tooltip" data-tooltip="Write endpoint for database routing. Select a known host or type a custom hostname.">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </span>
+                        </label>
+                        <div class="overlord-combobox">
+                            <input type="text" id="overlord-dbhost" name="dbHost" class="form-input overlord-combobox__input"
+                                   list="overlord-hosts-list"
+                                   placeholder="Select or type host..." required
+                                   autocomplete="off">
+                            <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
                         </div>
-                        <div class="form-group">
-                            <label for="overlord-subdomain" class="form-label required">Subdomain</label>
-                            <input type="text" id="overlord-subdomain" name="subdomain" class="form-input"
-                                   placeholder="company-name" required
-                                   maxlength="30"
-                                   pattern="[a-z0-9]([a-z0-9\-]{0,28}[a-z0-9])?"
-                                   title="Lowercase letters, numbers, and hyphens only (1-30 chars). Must start and end with alphanumeric.">
-                            <span class="form-hint">DNS-safe subdomain for routing (e.g., acme for acme.yourapp.com). Lowercase, numbers, hyphens only.</span>
-                            <!-- Subdomain duplicate warning table -->
-                            <div id="subdomain-duplicates-container" class="subdomain-duplicates js-hidden">
-                                <div class="subdomain-duplicates-header">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                                        <line x1="12" y1="9" x2="12" y2="13"/>
-                                        <line x1="12" y1="17" x2="12.01" y2="17"/>
-                                    </svg>
-                                    <strong>Subdomain already in use</strong> — The following records share this subdomain:
+                    </div>
+                    <div class="overlord-field">
+                        <label for="overlord-dbhost-read" class="overlord-field__label">
+                            Read Replica
+                            <span class="overlord-tooltip" data-tooltip="Read-only endpoint for reporting queries.">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </span>
+                        </label>
+                        <div class="overlord-combobox">
+                            <input type="text" id="overlord-dbhost-read" name="dbHostRead" class="form-input overlord-combobox__input"
+                                   list="overlord-hosts-list"
+                                   placeholder="Select or type host..."
+                                   autocomplete="off">
+                            <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Shared datalist for host comboboxes -->
+                <datalist id="overlord-hosts-list"></datalist>
+
+                <!-- ═══════════════════════════════════════════════════
+                     TAB CARDS: Extended fields in tabbed panels
+                     ═══════════════════════════════════════════════════ -->
+                <div class="overlord-tabs">
+                    <div class="overlord-tabs__bar" role="tablist">
+                        <button type="button" class="overlord-tabs__tab overlord-tabs__tab--active" 
+                                role="tab" aria-selected="true" aria-controls="overlord-tab-routing"
+                                onclick="switchOverlordTab(this, 'overlord-tab-routing')">
+                            Routing
+                        </button>
+                        <button type="button" class="overlord-tabs__tab"
+                                role="tab" aria-selected="false" aria-controls="overlord-tab-branding"
+                                onclick="switchOverlordTab(this, 'overlord-tab-branding')">
+                            Branding
+                        </button>
+                        <button type="button" class="overlord-tabs__tab"
+                                role="tab" aria-selected="false" aria-controls="overlord-tab-contact"
+                                onclick="switchOverlordTab(this, 'overlord-tab-contact')">
+                            Contact
+                        </button>
+                        <button type="button" class="overlord-tabs__tab"
+                                role="tab" aria-selected="false" aria-controls="overlord-tab-franchise"
+                                onclick="switchOverlordTab(this, 'overlord-tab-franchise')">
+                            Franchise
+                        </button>
+                    </div>
+
+                    <!-- TAB: Extended Routing -->
+                    <div id="overlord-tab-routing" class="overlord-tabs__panel overlord-tabs__panel--active" role="tabpanel">
+                        <!-- dbServer + dbHostApiRead -->
+                        <div class="overlord-field-row">
+                            <div class="overlord-field">
+                                <label for="overlord-dbserver" class="overlord-field__label">
+                                    DB Server
+                                    <span class="overlord-tooltip" data-tooltip="Legacy server identifier (varchar 20).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="text" id="overlord-dbserver" name="dbServer" class="form-input"
+                                       placeholder="Server name" maxlength="20">
+                            </div>
+                            <div class="overlord-field">
+                                <label for="overlord-dbhost-api-read" class="overlord-field__label">
+                                    API Read Host
+                                    <span class="overlord-tooltip" data-tooltip="Dedicated API read-only endpoint.">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <div class="overlord-combobox">
+                                    <input type="text" id="overlord-dbhost-api-read" name="dbHostApiRead" class="form-input overlord-combobox__input"
+                                           list="overlord-hosts-list" placeholder="Select or type host..." autocomplete="off">
+                                    <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
                                 </div>
-                                <table class="subdomain-duplicates-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Company ID</th>
-                                            <th>Database</th>
-                                            <th>Subdomain</th>
-                                            <th>dbHost</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="subdomain-duplicates-body">
-                                    </tbody>
-                                </table>
+                            </div>
+                        </div>
+                        <!-- dbHostDynamicRead + enableDynamicRead -->
+                        <div class="overlord-field-row">
+                            <div class="overlord-field">
+                                <label for="overlord-dbhost-dynamic-read" class="overlord-field__label">
+                                    Dynamic Read Host
+                                    <span class="overlord-tooltip" data-tooltip="Dynamic read routing endpoint.">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <div class="overlord-combobox">
+                                    <input type="text" id="overlord-dbhost-dynamic-read" name="dbHostDynamicRead" class="form-input overlord-combobox__input"
+                                           list="overlord-hosts-list" placeholder="Select or type host..." autocomplete="off">
+                                    <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+                                </div>
+                            </div>
+                            <div class="overlord-field">
+                                <label for="overlord-enable-dynamic-read" class="overlord-field__label">
+                                    Enable Dynamic Read
+                                    <span class="overlord-tooltip" data-tooltip="Toggle dynamic read routing (0=off, 1=on).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <select id="overlord-enable-dynamic-read" name="enableDynamicRead" class="form-select">
+                                    <option value="0">Disabled (0)</option>
+                                    <option value="1">Enabled (1)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: Branding & Display -->
+                    <div id="overlord-tab-branding" class="overlord-tabs__panel" role="tabpanel">
+                        <!-- visible + order -->
+                        <div class="overlord-field-row">
+                            <div class="overlord-field">
+                                <label for="overlord-visible" class="overlord-field__label">
+                                    Visible
+                                    <span class="overlord-tooltip" data-tooltip="Company visibility flag (0=hidden, 1=visible).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <select id="overlord-visible" name="visible" class="form-select">
+                                    <option value="1">Visible (1)</option>
+                                    <option value="0">Hidden (0)</option>
+                                </select>
+                            </div>
+                            <div class="overlord-field">
+                                <label for="overlord-order" class="overlord-field__label">
+                                    Order
+                                    <span class="overlord-tooltip" data-tooltip="Sort order for display listing.">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="number" id="overlord-order" name="order" class="form-input" placeholder="0">
+                            </div>
+                        </div>
+                        <!-- brandingPrefix + brandingLogo -->
+                        <div class="overlord-field-row">
+                            <div class="overlord-field">
+                                <label for="overlord-branding-prefix" class="overlord-field__label">
+                                    Branding Prefix
+                                    <span class="overlord-tooltip" data-tooltip="Prefix used in branding templates.">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="text" id="overlord-branding-prefix" name="brandingPrefix" class="form-input" placeholder="Prefix">
+                            </div>
+                            <div class="overlord-field">
+                                <label for="overlord-branding-logo" class="overlord-field__label">
+                                    Branding Logo
+                                    <span class="overlord-tooltip" data-tooltip="Branding logo identifier (integer).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="number" id="overlord-branding-logo" name="brandingLogo" class="form-input" placeholder="0">
+                            </div>
+                        </div>
+                        <!-- logo + branding -->
+                        <div class="overlord-field-row">
+                            <div class="overlord-field">
+                                <label for="overlord-logo" class="overlord-field__label">
+                                    Logo
+                                    <span class="overlord-tooltip" data-tooltip="Logo filename or identifier (varchar 50).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="text" id="overlord-logo" name="logo" class="form-input" placeholder="Logo" maxlength="50">
+                            </div>
+                            <div class="overlord-field">
+                                <label for="overlord-branding" class="overlord-field__label">
+                                    Branding
+                                    <span class="overlord-tooltip" data-tooltip="Branding theme identifier (varchar 15).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="text" id="overlord-branding" name="branding" class="form-input" placeholder="Branding" maxlength="15">
+                            </div>
+                        </div>
+                        <!-- legacyBranding + exclusiveDomain -->
+                        <div class="overlord-field-row">
+                            <div class="overlord-field">
+                                <label for="overlord-legacy-branding" class="overlord-field__label">
+                                    Legacy Branding
+                                    <span class="overlord-tooltip" data-tooltip="Legacy branding flag (0=off, 1=on).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <select id="overlord-legacy-branding" name="legacyBranding" class="form-select">
+                                    <option value="0">Off (0)</option>
+                                    <option value="1">On (1)</option>
+                                </select>
+                            </div>
+                            <div class="overlord-field">
+                                <label for="overlord-exclusive-domain" class="overlord-field__label">
+                                    Exclusive Domain
+                                    <span class="overlord-tooltip" data-tooltip="Custom domain for this company (varchar 50).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="text" id="overlord-exclusive-domain" name="exclusiveDomain" class="form-input"
+                                       placeholder="custom.domain.com" maxlength="50">
+                            </div>
+                        </div>
+                        <!-- mascot (single) -->
+                        <div class="overlord-field-row overlord-field-row--single">
+                            <div class="overlord-field">
+                                <label for="overlord-mascot" class="overlord-field__label">
+                                    Mascot
+                                    <span class="overlord-tooltip" data-tooltip="Mascot identifier (varchar 40).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="text" id="overlord-mascot" name="mascot" class="form-input" placeholder="Mascot" maxlength="40">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: Contact & Billing -->
+                    <div id="overlord-tab-contact" class="overlord-tabs__panel" role="tabpanel">
+                        <!-- adminContact + adminPhone -->
+                        <div class="overlord-field-row">
+                            <div class="overlord-field">
+                                <label for="overlord-admin-contact" class="overlord-field__label">
+                                    Admin Contact
+                                    <span class="overlord-tooltip" data-tooltip="Primary admin contact name (varchar 40).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="text" id="overlord-admin-contact" name="adminContact" class="form-input"
+                                       placeholder="Contact name" maxlength="40">
+                            </div>
+                            <div class="overlord-field">
+                                <label for="overlord-admin-phone" class="overlord-field__label">
+                                    Admin Phone
+                                    <span class="overlord-tooltip" data-tooltip="Phone number (varchar 10).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="text" id="overlord-admin-phone" name="adminPhone" class="form-input"
+                                       placeholder="Phone" maxlength="10">
+                            </div>
+                        </div>
+                        <!-- adminEmail + billingEmail -->
+                        <div class="overlord-field-row">
+                            <div class="overlord-field">
+                                <label for="overlord-admin-email" class="overlord-field__label">
+                                    Admin Email
+                                    <span class="overlord-tooltip" data-tooltip="Admin email address (varchar 80).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="email" id="overlord-admin-email" name="adminEmail" class="form-input"
+                                       placeholder="admin@example.com" maxlength="80">
+                            </div>
+                            <div class="overlord-field">
+                                <label for="overlord-billing-email" class="overlord-field__label">
+                                    Billing Email
+                                    <span class="overlord-tooltip overlord-tooltip--left" data-tooltip="Billing contact email (varchar 100).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="email" id="overlord-billing-email" name="billingEmail" class="form-input"
+                                       placeholder="billing@example.com" maxlength="100">
+                            </div>
+                        </div>
+                        <!-- billingName + sendTRInvoice -->
+                        <div class="overlord-field-row">
+                            <div class="overlord-field">
+                                <label for="overlord-billing-name" class="overlord-field__label">
+                                    Billing Name
+                                    <span class="overlord-tooltip" data-tooltip="Billing contact name (varchar 30).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="text" id="overlord-billing-name" name="billingName" class="form-input"
+                                       placeholder="Billing name" maxlength="30">
+                            </div>
+                            <div class="overlord-field">
+                                <label for="overlord-send-tr-invoice" class="overlord-field__label">
+                                    Send TR Invoice
+                                    <span class="overlord-tooltip overlord-tooltip--left" data-tooltip="Whether to send TR invoices (0=no, 1=yes).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <select id="overlord-send-tr-invoice" name="sendTRInvoice" class="form-select">
+                                    <option value="0">No (0)</option>
+                                    <option value="1">Yes (1)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: Franchise & Operations -->
+                    <div id="overlord-tab-franchise" class="overlord-tabs__panel" role="tabpanel">
+                        <!-- canFranchise + franchiseName -->
+                        <div class="overlord-field-row">
+                            <div class="overlord-field">
+                                <label for="overlord-can-franchise" class="overlord-field__label">
+                                    Can Franchise
+                                    <span class="overlord-tooltip" data-tooltip="Whether this company can be franchised (0=no, 1=yes).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <select id="overlord-can-franchise" name="canFranchise" class="form-select">
+                                    <option value="0">No (0)</option>
+                                    <option value="1">Yes (1)</option>
+                                </select>
+                            </div>
+                            <div class="overlord-field">
+                                <label for="overlord-franchise-name" class="overlord-field__label">
+                                    Franchise Name
+                                    <span class="overlord-tooltip" data-tooltip="Franchise display name (varchar 50).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="text" id="overlord-franchise-name" name="franchiseName" class="form-input"
+                                       placeholder="Franchise name" maxlength="50">
+                            </div>
+                        </div>
+                        <!-- franchiseLogo + blockPrtDate -->
+                        <div class="overlord-field-row">
+                            <div class="overlord-field">
+                                <label for="overlord-franchise-logo" class="overlord-field__label">
+                                    Franchise Logo
+                                    <span class="overlord-tooltip" data-tooltip="Franchise logo identifier (varchar 50).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="text" id="overlord-franchise-logo" name="franchiseLogo" class="form-input"
+                                       placeholder="Logo" maxlength="50">
+                            </div>
+                            <div class="overlord-field">
+                                <label for="overlord-block-prt-date" class="overlord-field__label">
+                                    Block PRT Date
+                                    <span class="overlord-tooltip overlord-tooltip--left" data-tooltip="Date to block print operations (YYYY-MM-DD format).">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    </span>
+                                </label>
+                                <input type="date" id="overlord-block-prt-date" name="blockPrtDate" class="form-input">
                             </div>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Editable Fields -->
-                <div class="form-section">
-                    <div class="form-section-title">
-                        Company Information
+
+                <!-- ═══════════════════════════════════════════════════
+                     Release Control (always visible)
+                     ═══════════════════════════════════════════════════ -->
+                <div class="overlord-release-row">
+                    <div class="overlord-field overlord-field--release">
+                        <label for="overlord-release-action" class="overlord-field__label">
+                            On Job Deletion
+                            <span class="overlord-tooltip" data-tooltip="Controls what happens to this overlord record when the pullDB job is deleted or expires.">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </span>
+                        </label>
+                        <select id="overlord-release-action" name="release_action" class="form-select overlord-release__select">
+                            <option value="delete" selected>Delete record completely</option>
+                            <option value="restore">Restore original values</option>
+                            <option value="clear">Clear host fields only</option>
+                        </select>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group form-group-wide">
-                            <label for="overlord-name" class="form-label">Company Name</label>
-                            <input type="text" id="overlord-name" name="name" class="form-input"
-                                   placeholder="Company display name">
+                    <!-- Inline original values (shown for restore) -->
+                    <div id="overlord-original-values" class="overlord-originals js-hidden">
+                        <div class="overlord-originals__item">
+                            <span class="overlord-originals__label">Was:</span>
+                            <code id="overlord-original-dbhost">—</code>
                         </div>
-                    </div>
-                </div>
-                
-                <!-- Host Configuration -->
-                <div class="form-section">
-                    <div class="form-section-title">
-                        Host Configuration
-                        <span class="form-section-hint">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                                <circle cx="12" cy="12" r="10"/>
-                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                                <line x1="12" y1="17" x2="12.01" y2="17"/>
-                            </svg>
-                            These values route application traffic to your database host
-                        </span>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group form-group-wide">
-                            <label for="overlord-dbhost" class="form-label required">Primary Host (dbHost)</label>
-                            <input type="text" id="overlord-dbhost" name="dbHost" class="form-input"
-                                   placeholder="staging.db.example.com" required>
-                            <span class="form-hint">Main database connection for read/write operations</span>
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group form-group-wide">
-                            <label for="overlord-dbhost-read" class="form-label">Read Replica (dbHostRead)</label>
-                            <input type="text" id="overlord-dbhost-read" name="dbHostRead" class="form-input"
-                                   placeholder="staging-read.db.example.com (optional)">
-                            <span class="form-hint">Read-only connection for reporting queries (optional)</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Release Control -->
-                <div class="form-section">
-                    <div class="form-section-title">
-                        Release Control
-                        <span class="form-section-hint">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                            </svg>
-                            What happens when this job is deleted
-                        </span>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group form-group-wide">
-                            <label for="overlord-release-action" class="form-label">On Job Deletion</label>
-                            <select id="overlord-release-action" name="release_action" class="form-select">
-                                <option value="restore">🔄 Restore Original Values</option>
-                                <option value="clear">🧹 Clear Host Fields Only</option>
-                                <option value="delete">🗑️ Delete Record Completely</option>
-                            </select>
-                            <div class="form-hint release-hint" id="release-hint">
-                                Restores the previous dbHost values that existed before pullDB claimed this record.
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Original Values (shown when restoring) -->
-                    <div id="overlord-original-values" class="overlord-original-values js-hidden">
-                        <div class="original-values-label">Original Values (will be restored):</div>
-                        <div class="original-values-grid">
-                            <div class="original-value-item">
-                                <span class="original-value-label">dbHost:</span>
-                                <code id="overlord-original-dbhost">—</code>
-                            </div>
-                            <div class="original-value-item">
-                                <span class="original-value-label">dbHostRead:</span>
-                                <code id="overlord-original-dbhost-read">—</code>
-                            </div>
+                        <div class="overlord-originals__item">
+                            <span class="overlord-originals__label">Read:</span>
+                            <code id="overlord-original-dbhost-read">—</code>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <div class="modal-footer">
+            <div class="modal-footer overlord-modal__footer">
                 <button type="button" class="btn btn-ghost" onclick="closeOverlordModal()">Cancel</button>
-                <button type="submit" id="overlord-submit-btn" class="btn btn-primary">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <button type="submit" id="overlord-submit-btn" class="btn btn-primary overlord-submit">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
                         <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
                         <polyline points="17 21 17 13 7 13 7 21"/>
                         <polyline points="7 3 7 8 15 8"/>
                     </svg>
-                    <span id="overlord-submit-text">Save Changes</span>
+                    <span id="overlord-submit-text">Save</span>
                 </button>
             </div>
         </form>
-    </div>
-</div>
+        </div><!-- /overlord-panel-companies -->
+
+        <!-- PANEL: [database].employees -->
+        <div id="overlord-panel-employees" class="overlord-top-panel">
+            <div class="overlord-employees">
+                <!-- Search / Filter Bar -->
+                <div class="overlord-employees__toolbar">
+                    <div class="overlord-employees__search">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="overlord-employees-search" class="form-input overlord-employees__search-input"
+                               placeholder="Search employees..." oninput="filterEmployees(this.value)">
+                    </div>
+                    <div class="overlord-employees__filter">
+                        <select id="overlord-employees-active-filter" class="form-select" onchange="filterEmployees()">
+                            <option value="all">All</option>
+                            <option value="1" selected>Active</option>
+                            <option value="0">Inactive</option>
+                        </select>
+                    </div>
+                    <span id="overlord-employees-count" class="overlord-employees__count">—</span>
+                </div>
+
+                <!-- Loading state -->
+                <div id="overlord-employees-loading" class="overlord-employees__loading js-hidden">
+                    Loading employees...
+                </div>
+
+                <!-- Error state -->
+                <div id="overlord-employees-error" class="overlord-banner overlord-banner--danger js-hidden">
+                    <span class="overlord-banner__icon">✕</span>
+                    <span id="overlord-employees-error-msg" class="overlord-banner__text"></span>
+                </div>
+
+                <!-- Employee Table -->
+                <div class="overlord-employees__table-wrap">
+                    <table class="overlord-employees__table" id="overlord-employees-table">
+                        <thead>
+                            <tr>
+                                <th class="emp-col-id">ID</th>
+                                <th class="emp-col-name">Name</th>
+                                <th class="emp-col-username">Username</th>
+                                <th class="emp-col-email">Email</th>
+                                <th class="emp-col-active">Active</th>
+                                <th class="emp-col-type">Type</th>
+                                <th class="emp-col-office">Office</th>
+                                <th class="emp-col-2fa">2FA</th>
+                                <th class="emp-col-actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="overlord-employees-tbody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div><!-- /overlord-panel-employees -->
+
+    </div><!-- /modal-body -->
+
+    <!-- EMPLOYEE EDIT CARD — slides over entire modal content -->
+    <div id="emp-edit-card" class="emp-edit-card js-hidden">
+        <div class="emp-edit-card__header">
+            <button type="button" class="emp-edit-card__back" onclick="closeEmployeeEditCard()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                Back to List
+            </button>
+            <div class="emp-edit-card__title">
+                <span id="emp-edit-card-title">Edit Employee</span>
+                <span id="emp-edit-card-badge" class="emp-badge emp-badge--active"></span>
+            </div>
+        </div>
+
+        <div class="emp-edit-card__body">
+            <!-- Tab bar -->
+            <div class="ecard-tabs" role="tablist">
+                <button type="button" class="ecard-tabs__tab ecard-tabs__tab--active"
+                        role="tab" aria-selected="true" aria-controls="ecard-panel-profile"
+                        onclick="switchEcardTab(this, 'ecard-panel-profile')">Profile</button>
+                <button type="button" class="ecard-tabs__tab"
+                        role="tab" aria-selected="false" aria-controls="ecard-panel-role"
+                        onclick="switchEcardTab(this, 'ecard-panel-role')">Role</button>
+                <button type="button" class="ecard-tabs__tab"
+                        role="tab" aria-selected="false" aria-controls="ecard-panel-access"
+                        onclick="switchEcardTab(this, 'ecard-panel-access')">Access</button>
+                <button type="button" class="ecard-tabs__tab"
+                        role="tab" aria-selected="false" aria-controls="ecard-panel-commissions"
+                        onclick="switchEcardTab(this, 'ecard-panel-commissions')">Commissions</button>
+                <button type="button" class="ecard-tabs__tab"
+                        role="tab" aria-selected="false" aria-controls="ecard-panel-linking"
+                        onclick="switchEcardTab(this, 'ecard-panel-linking')">Linking</button>
+            </div>
+
+            <!-- TAB PANEL: Profile (Identity + Contact) -->
+            <div id="ecard-panel-profile" class="ecard-tabs__panel ecard-tabs__panel--active" role="tabpanel">
+                <fieldset class="emp-edit-card__section">
+                    <legend>Identity</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="emp-field">
+                            <label>Employee ID</label>
+                            <input type="text" id="ecard-employeeID" class="form-input" readonly disabled>
+                        </div>
+                        <div class="emp-field">
+                            <label>First Name</label>
+                            <input type="text" id="ecard-fname" class="form-input" maxlength="20">
+                        </div>
+                        <div class="emp-field">
+                            <label>Last Name</label>
+                            <input type="text" id="ecard-lname" class="form-input" maxlength="20">
+                        </div>
+                        <div class="emp-field">
+                            <label>Nickname</label>
+                            <input type="text" id="ecard-nickname" class="form-input" maxlength="40">
+                        </div>
+                        <div class="emp-field">
+                            <label>Initials</label>
+                            <input type="text" id="ecard-initials" class="form-input" maxlength="8">
+                        </div>
+                        <div class="emp-field">
+                            <label>Username</label>
+                            <input type="text" id="ecard-username" class="form-input" maxlength="255">
+                        </div>
+                    </div>
+                </fieldset>
+                <fieldset class="emp-edit-card__section">
+                    <legend>Contact</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="emp-field">
+                            <label>Email</label>
+                            <input type="email" id="ecard-email" class="form-input" maxlength="50">
+                        </div>
+                        <div class="emp-field">
+                            <label>Phone</label>
+                            <input type="text" id="ecard-phone" class="form-input" maxlength="10">
+                        </div>
+                        <div class="emp-field">
+                            <label>Pic URL</label>
+                            <input type="text" id="ecard-pic" class="form-input" maxlength="100">
+                        </div>
+                        <div class="emp-field emp-field--wide">
+                            <label>About</label>
+                            <textarea id="ecard-about" class="form-input" maxlength="500" rows="2"></textarea>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- TAB PANEL: Role (Status & Role) -->
+            <div id="ecard-panel-role" class="ecard-tabs__panel" role="tabpanel">
+                <fieldset class="emp-edit-card__section">
+                    <legend>Status &amp; Role</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="emp-field">
+                            <label>Active</label>
+                            <select id="ecard-active" class="form-select">
+                                <option value="1">Yes</option>
+                                <option value="0">No</option>
+                            </select>
+                        </div>
+                        <div class="emp-field">
+                            <label>Type</label>
+                            <input type="number" id="ecard-type" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Office ID</label>
+                            <input type="number" id="ecard-officeID" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Owner</label>
+                            <input type="number" id="ecard-owner" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Supervisor ID</label>
+                            <input type="number" id="ecard-supervisorID" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>System User</label>
+                            <select id="ecard-systemUser" class="form-select">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                        <div class="emp-field">
+                            <label>Roaming Rep</label>
+                            <input type="number" id="ecard-roamingRep" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Experience</label>
+                            <input type="number" id="ecard-experience" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Gateway</label>
+                            <input type="number" id="ecard-gateway" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Subscribed</label>
+                            <input type="number" id="ecard-subscribed" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Deals User</label>
+                            <input type="number" id="ecard-dealsUser" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Recruiter</label>
+                            <input type="number" id="ecard-recruiter" class="form-input">
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- TAB PANEL: Access (Access Control + 2FA) -->
+            <div id="ecard-panel-access" class="ecard-tabs__panel" role="tabpanel">
+                <fieldset class="emp-edit-card__section">
+                    <legend>Access Control</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="emp-field">
+                            <label>Access Profile ID</label>
+                            <input type="number" id="ecard-accessControlProfileID" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Login Location</label>
+                            <input type="text" id="ecard-loginLocation" class="form-input" maxlength="25">
+                        </div>
+                        <div class="emp-field">
+                            <label>Last Login</label>
+                            <input type="text" id="ecard-lastLogin" class="form-input" readonly disabled>
+                        </div>
+                        <div class="emp-field">
+                            <label>IP Jail</label>
+                            <input type="text" id="ecard-IPJail" class="form-input" maxlength="15">
+                        </div>
+                        <div class="emp-field">
+                            <label>Reset Password</label>
+                            <select id="ecard-resetPassword" class="form-select">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                        <div class="emp-field">
+                            <label>Update Terms</label>
+                            <select id="ecard-updateTermsOfService" class="form-select">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                        <div class="emp-field">
+                            <label>Update Privacy</label>
+                            <select id="ecard-updatePrivacyPolicy" class="form-select">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                    </div>
+                </fieldset>
+                <fieldset class="emp-edit-card__section">
+                    <legend>Password &amp; Credentials</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="emp-field">
+                            <label>Set New Password</label>
+                            <input type="text" id="ecard-password" class="form-input" placeholder="Leave blank to keep current">
+                            <span class="emp-field__hint">Setting a password will clear the hash for reset</span>
+                        </div>
+                        <div class="emp-field">
+                            <label>Password Hash Status</label>
+                            <span id="ecard-passwordHash" class="emp-field__status-badge">—</span>
+                        </div>
+                        <div class="emp-field">
+                            <label>PW Code Created</label>
+                            <input type="text" id="ecard-pwCodeCreated" class="form-input" readonly disabled>
+                        </div>
+                    </div>
+                </fieldset>
+                <fieldset class="emp-edit-card__section">
+                    <legend>Two-Factor Authentication</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="emp-field">
+                            <label>2FA Enabled</label>
+                            <select id="ecard-twoFactorEnabled" class="form-select">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                        <div class="emp-field">
+                            <label>2FA Required</label>
+                            <select id="ecard-twoFactorRequired" class="form-select">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                        <div class="emp-field">
+                            <label>2FA Config Due</label>
+                            <input type="text" id="ecard-twoFactorConfigDueDate" class="form-input" placeholder="YYYY-MM-DD HH:MM:SS">
+                        </div>
+                        <div class="emp-field">
+                            <label>2FA Secret Key</label>
+                            <div class="emp-field__sensitive">
+                                <input type="text" id="ecard-twoFactorSecretBase32" class="form-input" readonly disabled>
+                                <button type="button" class="emp-copy-btn" onclick="ecardCopyField('ecard-twoFactorSecretBase32')" title="Copy to clipboard">📋</button>
+                            </div>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- TAB PANEL: Commissions -->
+            <div id="ecard-panel-commissions" class="ecard-tabs__panel" role="tabpanel">
+                <fieldset class="emp-edit-card__section">
+                    <legend>Commissions</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="emp-field">
+                            <label>Commission Rate</label>
+                            <input type="number" step="0.0001" id="ecard-commissionRate" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Sales Commission</label>
+                            <input type="number" step="0.0001" id="ecard-salesCommissionRate" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Service Commission</label>
+                            <input type="number" step="0.0001" id="ecard-serviceCommissionRate" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Schedule Commission</label>
+                            <input type="number" step="0.0001" id="ecard-scheduleCommissionRate" class="form-input">
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- TAB PANEL: Linking & Misc -->
+            <div id="ecard-panel-linking" class="ecard-tabs__panel" role="tabpanel">
+                <fieldset class="emp-edit-card__section">
+                    <legend>Linking &amp; Miscellaneous</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="emp-field">
+                            <label>Employee Link</label>
+                            <input type="text" id="ecard-employeeLink" class="form-input" maxlength="40">
+                        </div>
+                        <div class="emp-field">
+                            <label>Master Employee ID</label>
+                            <input type="number" id="ecard-masterEmployeeID" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Master Office ID</label>
+                            <input type="number" id="ecard-masterOfficeID" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Latest News ID</label>
+                            <input type="number" id="ecard-latestNewsID" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>License Number</label>
+                            <input type="text" id="ecard-licenseNumber" class="form-input" maxlength="50">
+                        </div>
+                        <div class="emp-field">
+                            <label>Inspection License</label>
+                            <input type="text" id="ecard-inspectionLicenseNumber" class="form-input" maxlength="50">
+                        </div>
+                        <div class="emp-field">
+                            <label>Sentricon Cred ID</label>
+                            <input type="number" id="ecard-sentriconCredentialID" class="form-input">
+                        </div>
+                        <div class="emp-field">
+                            <label>Office Extension</label>
+                            <input type="text" id="ecard-officeExtention" class="form-input" maxlength="10">
+                        </div>
+                        <div class="emp-field">
+                            <label>Extension Password</label>
+                            <div class="emp-field__sensitive">
+                                <input type="text" id="ecard-officeExtentionPassword" class="form-input" readonly disabled>
+                                <button type="button" class="emp-copy-btn" onclick="ecardCopyField('ecard-officeExtentionPassword')" title="Copy to clipboard">📋</button>
+                            </div>
+                        </div>
+                        <div class="emp-field">
+                            <label>Google Calendar</label>
+                            <input type="text" id="ecard-googleCalendarAuth" class="form-input" maxlength="256">
+                        </div>
+                        <div class="emp-field">
+                            <label>Update Needed</label>
+                            <select id="ecard-updateNeeded" class="form-select">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                        <div class="emp-field">
+                            <label>Date Updated</label>
+                            <input type="text" id="ecard-dateUpdated" class="form-input" readonly disabled>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+        </div>
+
+        <!-- Footer with Save/Cancel -->
+        <div class="emp-edit-card__footer">
+            <button type="button" class="emp-edit-card__cancel" onclick="closeEmployeeEditCard()">Cancel</button>
+            <button type="button" class="emp-edit-card__save" id="emp-edit-card-save-btn" onclick="saveEmployeeCard()">
+                Save Changes
+            </button>
+        </div>
+    </div><!-- /emp-edit-card -->
+
+</div><!-- /modal-content -->
 
 <style>
-/* Overlord Modal Styles */
-.overlord-original-values {
-    margin-top: var(--space-3);
-    padding: var(--space-3);
-    background: var(--gray-50);
-    border-radius: var(--radius-md);
-    border: 1px dashed var(--gray-200);
+/* =============================================================================
+   OVERLORD MODAL — Full-Coverage Layout
+   Theme-aware using semantic tokens for dark/light mode.
+   All 27 columns of overlord.companies exposed via collapsible sections.
+   ============================================================================= */
+
+/* Modal sizing — wider to accommodate two panels */
+.overlord-modal-compact {
+    max-width: 900px;
+    width: 95vw;
 }
 
-.original-values-label {
-    font-size: var(--text-sm);
-    color: var(--gray-600);
-    margin-bottom: var(--space-2);
-    font-weight: var(--font-medium);
+/* Scrollable body for tall content */
+.overlord-modal-compact .modal-body {
+    max-height: 70vh;
+    overflow-y: auto;
 }
 
-.original-values-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-2);
-}
-
-.original-value-item {
+/* =============================================================================
+   TOP-LEVEL TABS (Companies / Employees)
+   ============================================================================= */
+.overlord-top-tabs {
     display: flex;
+    gap: 0;
+    background: var(--color-bg-subtle);
+    border-bottom: 2px solid var(--color-border-light);
+    flex-shrink: 0;
+    padding: 0 var(--space-4);
+}
+
+.overlord-top-tabs__tab {
+    display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-}
-
-.original-value-label {
+    padding: var(--space-3) var(--space-4);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
     font-size: var(--text-sm);
-    color: var(--gray-500);
-}
-
-.original-value-item code {
-    font-size: var(--text-sm);
-    padding: var(--space-1) var(--space-2);
-    background: var(--gray-100);
-    border-radius: var(--radius-sm);
-}
-
-.release-hint {
-    margin-top: var(--space-2);
-    padding: var(--space-2);
-    background: var(--blue-50);
-    border-radius: var(--radius-sm);
-    border-left: 3px solid var(--blue-400);
-}
-
-.form-value-readonly {
-    padding: var(--space-2) var(--space-3);
-    background: var(--gray-50);
-    border: 1px solid var(--gray-200);
-    border-radius: var(--radius-md);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-muted);
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+    white-space: nowrap;
     font-family: var(--font-mono);
+}
+.overlord-top-tabs__tab:hover {
+    color: var(--color-text-primary);
+}
+.overlord-top-tabs__tab--active {
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
+}
+.overlord-top-tabs__tab svg {
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+.overlord-top-tabs__tab--active svg {
+    opacity: 1;
+}
+
+/* Top-level panels */
+.overlord-top-panel {
+    display: none;
+}
+.overlord-top-panel--active {
+    display: block;
+}
+
+/* =============================================================================
+   EMPLOYEES TAB
+   ============================================================================= */
+.overlord-employees {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.overlord-employees__toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.overlord-employees__search {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.overlord-employees__search svg {
+    position: absolute;
+    left: var(--space-3);
+    color: var(--color-text-muted);
+    pointer-events: none;
+}
+.overlord-employees__search-input {
+    padding-left: var(--space-8) !important;
+    font-size: var(--text-sm) !important;
+    height: 34px !important;
+}
+
+.overlord-employees__filter select {
     font-size: var(--text-sm);
-    color: var(--gray-600);
+    height: 34px;
+    min-width: 90px;
 }
 
-/* Badge for read-only indicator */
-.badge-info {
-    background: var(--blue-100);
-    color: var(--blue-700);
+.overlord-employees__count {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    font-weight: var(--font-medium);
+    white-space: nowrap;
 }
 
-/* Form section styling */
-.form-section {
-    margin-bottom: var(--space-5);
-    padding-bottom: var(--space-4);
-    border-bottom: 1px solid var(--gray-100);
+.overlord-employees__loading {
+    text-align: center;
+    padding: var(--space-6);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
 }
 
-.form-section:last-child {
+.overlord-employees__table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+}
+
+.overlord-employees__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-xs);
+}
+.overlord-employees__table th {
+    position: sticky;
+    top: 0;
+    background: var(--color-bg-subtle);
+    padding: var(--space-2) var(--space-2);
+    text-align: left;
+    font-size: 10px;
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid var(--color-border-light);
+    white-space: nowrap;
+}
+.overlord-employees__table td {
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--color-border-light);
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.overlord-employees__table tr:last-child td {
     border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
+}
+.overlord-employees__table tr:hover td {
+    background: var(--color-bg-subtle);
+}
+.overlord-employees__table tr.emp-row--inactive td {
+    opacity: 0.5;
 }
 
-.form-section-title {
+/* Column widths */
+.emp-col-id { width: 50px; }
+.emp-col-name { min-width: 140px; }
+.emp-col-username { min-width: 120px; }
+.emp-col-email { min-width: 160px; }
+.emp-col-active { width: 55px; text-align: center; }
+.emp-col-type { width: 50px; text-align: center; }
+.emp-col-office { width: 55px; text-align: center; }
+.emp-col-2fa { width: 40px; text-align: center; }
+.emp-col-actions { width: 50px; text-align: center; }
+
+/* Active/inactive badge */
+.emp-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: var(--radius-full, 9999px);
+    font-size: 10px;
+    font-weight: var(--font-semibold);
+    text-align: center;
+}
+.emp-badge--active {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+    border: 1px solid var(--color-success-border);
+}
+.emp-badge--inactive {
+    background: var(--color-bg-subtle);
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border-light);
+}
+
+/* Inline edit button */
+.emp-edit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-text-muted);
+    transition: all var(--transition-fast);
+}
+.emp-edit-btn:hover {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+    background: var(--color-bg-subtle);
+}
+
+/* Inline edit row */
+.emp-edit-row td {
+    background: var(--color-bg-subtle) !important;
+    padding: var(--space-2) !important;
+}
+.emp-edit-row .form-input,
+.emp-edit-row .form-select {
+    font-size: 11px !important;
+    height: 28px !important;
+    padding: 2px var(--space-2) !important;
+}
+.emp-edit-actions {
+    display: flex;
+    gap: var(--space-1);
+}
+.emp-save-btn, .emp-cancel-btn {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid;
+    cursor: pointer;
+    font-weight: var(--font-semibold);
+}
+.emp-save-btn {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+}
+.emp-save-btn:hover { opacity: 0.9; }
+.emp-cancel-btn {
+    background: transparent;
+    color: var(--color-text-muted);
+    border-color: var(--color-border-light);
+}
+.emp-cancel-btn:hover { color: var(--color-text-primary); }
+
+/* ==========================================================================
+   EMPLOYEE EDIT CARD — Full-field slide-over panel
+   ========================================================================== */
+.emp-edit-card {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg-primary);
+    animation: empCardSlideIn 0.2s ease-out;
+}
+@keyframes empCardSlideIn {
+    from { transform: translateX(40px); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+}
+.emp-edit-card.js-hidden { display: none; }
+
+.emp-edit-card__header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border-light);
+    background: var(--color-bg-secondary);
+    flex-shrink: 0;
+}
+.emp-edit-card__back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    background: transparent;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    font-weight: var(--font-medium);
+    transition: all var(--transition-fast);
+}
+.emp-edit-card__back:hover {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+}
+.emp-edit-card__title {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
-    color: var(--gray-700);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: var(--space-3);
+    color: var(--color-text-primary);
 }
 
-.form-section-hint {
+.emp-edit-card__body {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* Employee edit card inner tabs */
+.ecard-tabs {
+    display: flex;
+    gap: 0;
+    background: var(--color-bg-subtle);
+    border-bottom: 2px solid var(--color-border-light);
+    flex-shrink: 0;
+    padding: 0 var(--space-3);
+}
+.ecard-tabs__tab {
+    padding: var(--space-2) var(--space-3);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: var(--font-semibold);
+    color: var(--color-text-muted);
+    text-align: center;
+    white-space: nowrap;
+    transition: color var(--transition-fast), border-color var(--transition-fast),
+                background var(--transition-fast);
+}
+.ecard-tabs__tab:hover {
+    color: var(--color-text-primary);
+    background: var(--color-bg-tertiary);
+}
+.ecard-tabs__tab--active {
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
+    background: transparent;
+}
+.ecard-tabs__panel {
+    display: none;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+.ecard-tabs__panel--active {
+    display: flex;
+}
+.emp-edit-card__section {
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    margin-bottom: var(--space-3);
+    background: var(--color-bg-secondary);
+}
+.emp-edit-card__section legend {
+    font-size: 11px;
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    padding: 0 var(--space-2);
+}
+.emp-edit-card__grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-2) var(--space-3);
+}
+.emp-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.emp-field--wide {
+    grid-column: span 3;
+}
+.emp-field label {
+    font-size: 10px;
+    font-weight: var(--font-medium);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.emp-field .form-input,
+.emp-field .form-select {
+    font-size: 12px;
+    height: 30px;
+    padding: var(--space-1) var(--space-2);
+}
+.emp-field textarea.form-input {
+    height: auto;
+    resize: vertical;
+}
+.emp-field .form-input[readonly] {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: var(--color-bg-subtle);
+}
+
+/* Sensitive field wrapper — input + copy button side-by-side */
+.emp-field__sensitive {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+.emp-field__sensitive .form-input {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-mono, 'Consolas', monospace);
+    font-size: 11px;
+}
+.emp-copy-btn {
+    flex-shrink: 0;
+    width: 28px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all var(--transition-fast);
+    position: relative;
+}
+.emp-copy-btn:hover {
+    background: var(--color-bg-hover);
+    border-color: var(--color-text-muted);
+}
+.emp-copy-btn.copied::after {
+    content: 'Copied!';
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    background: var(--color-text-primary);
+    color: var(--color-bg-primary);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    pointer-events: none;
+    animation: ecardFadeOut 1.4s ease forwards;
+}
+@keyframes ecardFadeOut {
+    0%, 60% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* Password hash status badge */
+.emp-field__status-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-weight: var(--font-semibold);
+    border: 1px solid var(--color-border-light);
+    background: var(--color-bg-subtle);
+    color: var(--color-text-muted);
+}
+.emp-field__status-badge.is-set {
+    color: var(--color-success, #22c55e);
+    border-color: var(--color-success, #22c55e);
+    background: rgba(34, 197, 94, 0.08);
+}
+.emp-field__status-badge.not-set {
+    color: var(--color-warning, #eab308);
+    border-color: var(--color-warning, #eab308);
+    background: rgba(234, 179, 8, 0.08);
+}
+
+/* Field hint text */
+.emp-field__hint {
+    font-size: 9px;
+    color: var(--color-text-muted);
+    opacity: 0.7;
+    margin-top: 1px;
+}
+
+.emp-edit-card__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--color-border-light);
+    background: var(--color-bg-secondary);
+    flex-shrink: 0;
+}
+.emp-edit-card__cancel {
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    font-weight: var(--font-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+.emp-edit-card__cancel:hover {
+    color: var(--color-text-primary);
+    border-color: var(--color-text-muted);
+}
+.emp-edit-card__save {
+    padding: var(--space-2) var(--space-4);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--color-primary);
+    color: white;
+    font-size: 12px;
+    font-weight: var(--font-semibold);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+.emp-edit-card__save:hover { opacity: 0.9; }
+.emp-edit-card__save:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Header */
+.overlord-modal__header {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border-light);
+}
+
+.overlord-modal__title-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.overlord-modal__title {
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--color-text-primary);
+}
+
+.overlord-modal__title svg {
+    color: var(--color-primary);
+    flex-shrink: 0;
+}
+
+/* Status badge in header */
+.overlord-badge {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-full, 9999px);
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+.overlord-badge--synced {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+    border: 1px solid var(--color-success-border);
+}
+.overlord-badge--claimed {
+    background: var(--color-info-bg);
+    color: var(--color-info);
+    border: 1px solid var(--color-info-border);
+}
+.overlord-badge--new {
+    background: var(--color-warning-bg);
+    color: var(--color-warning);
+    border: 1px solid var(--color-warning-border);
+}
+.overlord-badge--muted {
+    background: var(--color-bg-subtle);
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border-light);
+}
+
+/* Body — compact padding */
+.overlord-modal__body {
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+/* Status banner — slim inline banner */
+.overlord-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+}
+.overlord-banner--info {
+    background: var(--color-info-bg);
+    color: var(--color-info);
+    border: 1px solid var(--color-info-border);
+}
+.overlord-banner--success {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+    border: 1px solid var(--color-success-border);
+}
+.overlord-banner--danger {
+    background: var(--color-error-bg);
+    color: var(--color-error);
+    border: 1px solid var(--color-error-border);
+}
+.overlord-banner--warning {
+    background: var(--color-warning-bg);
+    color: var(--color-warning);
+    border: 1px solid var(--color-warning-border);
+}
+
+/* Field rows — two-column grid */
+.overlord-field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+}
+.overlord-field-row--single {
+    grid-template-columns: 1fr;
+}
+
+/* Individual fields */
+.overlord-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+.overlord-field--full {
+    grid-column: 1 / -1;
+}
+
+.overlord-field__label {
     display: flex;
     align-items: center;
     gap: var(--space-1);
     font-size: var(--text-xs);
-    font-weight: var(--font-normal);
-    color: var(--gray-500);
-    text-transform: none;
-    letter-spacing: normal;
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.overlord-field__label--required::after {
+    content: "*";
+    color: var(--color-error);
+    font-weight: var(--font-bold);
 }
 
-/* Subdomain duplicate warning table */
-.subdomain-duplicates {
-    margin-top: var(--space-3);
-    padding: var(--space-3);
-    background: var(--yellow-50);
-    border: 1px solid var(--yellow-300);
+/* Read-only field */
+.overlord-field__readonly {
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-border-light);
     border-radius: var(--radius-md);
-}
-
-.subdomain-duplicates-header {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    min-height: 36px;
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--yellow-800);
-    margin-bottom: var(--space-2);
 }
 
-.subdomain-duplicates-header svg {
-    color: var(--yellow-600);
+/* Combobox wrapper */
+.overlord-combobox {
+    position: relative;
+}
+.overlord-combobox__input {
+    padding-right: var(--space-8) !important;
+}
+.overlord-combobox__chevron {
+    position: absolute;
+    right: var(--space-3);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-muted);
+    pointer-events: none;
+    transition: color var(--transition-fast);
+}
+.overlord-combobox__input:focus + .overlord-combobox__chevron {
+    color: var(--color-primary);
+}
+
+/* Compact form inputs inside modal */
+.overlord-modal-compact .form-input,
+.overlord-modal-compact .form-select {
+    font-size: var(--text-sm);
+    padding: var(--space-2) var(--space-3);
+    height: 36px;
+}
+
+/* =============================================================================
+   TAB CARDS
+   ============================================================================= */
+.overlord-tabs {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    min-height: 0;
+    flex: 1;
+}
+
+.overlord-tabs__bar {
+    display: flex;
+    gap: 0;
+    background: var(--color-bg-subtle);
+    border-bottom: 2px solid var(--color-border-light);
     flex-shrink: 0;
 }
 
-.subdomain-duplicates-table {
-    width: 100%;
-    border-collapse: collapse;
+.overlord-tabs__tab {
+    flex: 1;
+    padding: var(--space-2) var(--space-3);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-muted);
+    text-align: center;
+    transition: color var(--transition-fast), border-color var(--transition-fast),
+                background var(--transition-fast);
+    white-space: nowrap;
+}
+.overlord-tabs__tab:hover {
+    color: var(--color-text-primary);
+    background: var(--color-bg-tertiary);
+}
+.overlord-tabs__tab--active {
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
+    background: transparent;
+}
+
+.overlord-tabs__panel {
+    display: none;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    overflow-y: auto;
+    min-height: 0;
+}
+.overlord-tabs__panel--active {
+    display: flex;
+}
+
+/* Release control row */
+.overlord-release-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border-light);
+}
+
+.overlord-field--release {
+    flex: 1;
+}
+
+.overlord-release__select {
     font-size: var(--text-sm);
 }
 
-.subdomain-duplicates-table th {
-    text-align: left;
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--yellow-300);
-    color: var(--yellow-900);
-    font-weight: var(--font-semibold);
+/* Original values (inline, compact) */
+.overlord-originals {
+    display: flex;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-bg-subtle);
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--color-border-light);
+}
+.overlord-originals__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
     font-size: var(--text-xs);
+    min-width: 0;
+}
+.overlord-originals__label {
+    color: var(--color-text-muted);
+    font-weight: var(--font-medium);
+    flex-shrink: 0;
+}
+.overlord-originals code {
+    font-size: var(--text-xs);
+    padding: 1px var(--space-1);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+}
+
+/* Subdomain duplicates warning */
+.overlord-dupes {
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-warning-bg);
+    border: 1px solid var(--color-warning-border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
+}
+.overlord-dupes__header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--color-warning);
+    margin-bottom: var(--space-1);
+    font-size: var(--text-xs);
+}
+.overlord-dupes__header svg {
+    flex-shrink: 0;
+}
+.overlord-dupes__table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.overlord-dupes__table th {
+    text-align: left;
+    padding: 2px var(--space-2);
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    color: var(--color-warning);
+    border-bottom: 1px solid var(--color-warning-border);
+    font-weight: var(--font-semibold);
 }
-
-.subdomain-duplicates-table td {
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--yellow-200);
-    color: var(--yellow-900);
+.overlord-dupes__table td {
+    padding: 2px var(--space-2);
     font-family: var(--font-mono);
-    font-size: var(--text-xs);
+    font-size: 11px;
+    color: var(--color-text-primary);
+    border-bottom: 1px solid var(--color-warning-border);
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.overlord-dupes__table tr:last-child td {
+    border-bottom: none;
 }
 
-.subdomain-duplicates-table tr:last-child td {
-    border-bottom: none;
+/* Footer — compact */
+.overlord-modal__footer {
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--color-border-light);
+}
+
+.overlord-submit {
+    gap: var(--space-1);
+    font-size: var(--text-sm);
+}
+
+/* =============================================================================
+   TOOLTIPS — CSS-only via data-tooltip attribute
+   ============================================================================= */
+
+.overlord-tooltip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: help;
+    color: var(--color-text-muted);
+    transition: color var(--transition-fast);
+}
+.overlord-tooltip:hover {
+    color: var(--color-primary);
+}
+
+.overlord-tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: 11px;
+    font-weight: var(--font-normal);
+    text-transform: none;
+    letter-spacing: normal;
+    line-height: 1.4;
+    white-space: normal;
+    width: max-content;
+    max-width: 240px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    z-index: var(--z-tooltip, 700);
+    box-shadow: var(--shadow-lg);
+}
+.overlord-tooltip::before {
+    content: "";
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: var(--color-border);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    z-index: var(--z-tooltip, 700);
+}
+.overlord-tooltip:hover::after,
+.overlord-tooltip:hover::before {
+    opacity: 1;
+}
+
+/* Tooltip flip: if near right edge, align left */
+.overlord-tooltip--left::after {
+    left: 0;
+    transform: none;
+}
+.overlord-tooltip--left::before {
+    left: 8px;
+    transform: none;
+}
+
+/* =============================================================================
+   RESPONSIVE
+   ============================================================================= */
+@media (max-width: 700px) {
+    .overlord-field-row {
+        grid-template-columns: 1fr;
+    }
+    .overlord-modal-compact {
+        max-width: 100%;
+    }
+    .overlord-originals {
+        flex-direction: column;
+        gap: var(--space-1);
+    }
 }
 </style>
 
 <script>
 /**
- * Overlord Modal Controller
+ * Overlord Modal Controller — Full-Column Coverage
  * Feature: 54166071
+ * All 27 columns of overlord.companies are editable.
  */
 
-// Current state
+// State
 let overlordState = {
     jobId: null,
     database: null,
+    restoreHost: null,
     rowExistedBefore: false,
     previousDbHost: null,
     previousDbHostRead: null,
 };
 
+// Employee state
+let employeeState = {
+    employees: [],       // raw data from API
+    filtered: [],        // after search/filter
+    loaded: false,       // whether data has been fetched for this modal open
+    editingId: null,     // employeeID currently being edited inline
+};
+
+/**
+ * Switch top-level tab (Companies / Employees)
+ */
+function switchOverlordTopTab(tabBtn, panelId) {
+    // Deactivate all top-level tabs
+    document.querySelectorAll('.overlord-top-tabs__tab').forEach(t => {
+        t.classList.remove('overlord-top-tabs__tab--active');
+        t.setAttribute('aria-selected', 'false');
+    });
+    document.querySelectorAll('.overlord-top-panel').forEach(p => {
+        p.classList.remove('overlord-top-panel--active');
+    });
+    // Activate clicked tab + panel
+    tabBtn.classList.add('overlord-top-tabs__tab--active');
+    tabBtn.setAttribute('aria-selected', 'true');
+    document.getElementById(panelId).classList.add('overlord-top-panel--active');
+
+    // Lazy-load employees on first switch
+    if (panelId === 'overlord-panel-employees' && !employeeState.loaded && overlordState.jobId) {
+        loadEmployees();
+    }
+}
+
+/**
+ * Switch tab panel
+ */
+function switchOverlordTab(tabBtn, panelId) {
+    // Deactivate all tabs
+    const bar = tabBtn.closest('.overlord-tabs__bar');
+    bar.querySelectorAll('.overlord-tabs__tab').forEach(t => {
+        t.classList.remove('overlord-tabs__tab--active');
+        t.setAttribute('aria-selected', 'false');
+    });
+    // Hide all panels
+    const tabs = tabBtn.closest('.overlord-tabs');
+    tabs.querySelectorAll('.overlord-tabs__panel').forEach(p => {
+        p.classList.remove('overlord-tabs__panel--active');
+    });
+    // Activate clicked tab + panel
+    tabBtn.classList.add('overlord-tabs__tab--active');
+    tabBtn.setAttribute('aria-selected', 'true');
+    document.getElementById(panelId).classList.add('overlord-tabs__panel--active');
+}
+
 /**
  * Open the overlord modal for a job
- * @param {string} jobId - Job UUID
  */
 async function openOverlordModal(jobId) {
     const modal = document.getElementById('overlord-modal');
     if (!modal) return;
     
-    // Show modal immediately with loading state
     modal.classList.remove('modal-hidden');
     resetOverlordForm();
     
     try {
-        // Fetch current state from API
         const response = await fetch(`/api/v1/overlord/${jobId}`);
         
         if (!response.ok) {
-            // Handle specific HTTP error codes
             let errorMsg = 'Failed to load overlord data';
-            
-            // Try to get error detail from response body first
             let errorData = null;
-            try {
-                errorData = await response.json();
-            } catch {
-                // Response body not JSON, use status-based fallback
-            }
+            try { errorData = await response.json(); } catch {}
             
             if (response.status === 503) {
-                errorMsg = 'Connection to overlord database failed. Please try again or contact administrator.';
+                errorMsg = 'Cannot connect to overlord database. Contact administrator.';
             } else if (response.status === 404) {
                 errorMsg = 'Job not found';
             } else if (response.status === 403) {
-                errorMsg = 'You don\'t have permission to manage overlord for this job';
+                errorMsg = 'Permission denied for this job';
             } else if (errorData && errorData.detail) {
-                // Use the specific error message from the API
                 errorMsg = errorData.detail;
             }
             
@@ -405,126 +2029,242 @@ async function openOverlordModal(jobId) {
         
         const data = await response.json();
         
-        // Check if overlord is enabled at all
         if (data.enabled === false) {
             showOverlordError('Overlord integration is not configured');
             return;
         }
         
-        // SUCCESS PATH: No tracking AND no company record = show "Create New Record" form
-        // This is handled in populateOverlordForm() which shows the create banner
+        // Populate host datalist from available_hosts
+        populateHostDatalist(data.available_hosts || []);
+        
         populateOverlordForm(data);
         
     } catch (error) {
         console.error('Failed to load overlord data:', error);
-        showOverlordError(error.message || 'Failed to load overlord data. Please try again.');
+        showOverlordError(error.message || 'Failed to load overlord data');
     }
 }
 
-/**
- * Close the modal
- */
 function closeOverlordModal() {
     const modal = document.getElementById('overlord-modal');
-    if (modal) {
-        modal.classList.add('modal-hidden');
-    }
+    if (modal) modal.classList.add('modal-hidden');
 }
 
 /**
- * Reset form to empty state
+ * Populate the shared datalist with available hosts
  */
+function populateHostDatalist(hosts) {
+    const datalist = document.getElementById('overlord-hosts-list');
+    if (!datalist) return;
+    
+    datalist.innerHTML = '';
+    hosts.forEach(h => {
+        const option = document.createElement('option');
+        option.value = h.hostname;
+        if (h.alias) {
+            option.label = h.alias;
+            option.textContent = h.alias;
+        }
+        datalist.appendChild(option);
+    });
+}
+
 function resetOverlordForm() {
-    document.getElementById('overlord-form').reset();
+    const form = document.getElementById('overlord-form');
+    form.reset();
+    
+    // Clear hidden fields and readonly displays
     document.getElementById('overlord-job-id').value = '';
     document.getElementById('overlord-database').value = '';
+    document.getElementById('overlord-display-companyid').textContent = '—';
     document.getElementById('overlord-display-database').textContent = '—';
-    document.getElementById('overlord-subdomain').value = '';
     document.getElementById('overlord-status-banner').classList.add('js-hidden');
     document.getElementById('overlord-original-values').classList.add('js-hidden');
     document.getElementById('subdomain-duplicates-container').classList.add('js-hidden');
     
+    // Reset header badge
+    const badge = document.getElementById('overlord-header-badge');
+    badge.classList.add('js-hidden');
+    badge.className = 'overlord-badge overlord-badge--muted js-hidden';
+    badge.textContent = '';
+    
+    // Reset tabs to first tab (Routing)
+    document.querySelectorAll('.overlord-tabs__tab').forEach(t => {
+        t.classList.remove('overlord-tabs__tab--active');
+        t.setAttribute('aria-selected', 'false');
+    });
+    document.querySelectorAll('.overlord-tabs__panel').forEach(p => {
+        p.classList.remove('overlord-tabs__panel--active');
+    });
+    const firstTab = document.querySelector('.overlord-tabs__tab');
+    if (firstTab) {
+        firstTab.classList.add('overlord-tabs__tab--active');
+        firstTab.setAttribute('aria-selected', 'true');
+    }
+    const firstPanel = document.querySelector('.overlord-tabs__panel');
+    if (firstPanel) firstPanel.classList.add('overlord-tabs__panel--active');
+
+    // Clear owner readonly display
+    const ownerDisplay = document.getElementById('overlord-display-owner');
+    if (ownerDisplay) ownerDisplay.textContent = '—';
+    
     overlordState = {
-        jobId: null,
-        database: null,
-        restoreHost: null,
-        rowExistedBefore: false,
-        previousDbHost: null,
-        previousDbHostRead: null,
+        jobId: null, database: null, restoreHost: null,
+        rowExistedBefore: false, previousDbHost: null, previousDbHostRead: null,
     };
+
+    // Reset employee state and switch back to companies tab
+    employeeState = { employees: [], filtered: [], loaded: false, editingId: null };
+    const empTbody = document.getElementById('overlord-employees-tbody');
+    if (empTbody) empTbody.innerHTML = '';
+    const empCount = document.getElementById('overlord-employees-count');
+    if (empCount) empCount.textContent = '0';
+    const empSearch = document.getElementById('overlord-employees-search');
+    if (empSearch) empSearch.value = '';
+    const empFilter = document.getElementById('overlord-employees-active-filter');
+    if (empFilter) empFilter.value = 'all';
+    const empTabLabel = document.getElementById('overlord-employees-tab-label');
+    if (empTabLabel) empTabLabel.textContent = '[db].employees';
+    // Close employee edit card if open
+    const empEditCard = document.getElementById('emp-edit-card');
+    if (empEditCard) empEditCard.classList.add('js-hidden');
+
+    // Reset top-level tabs back to companies
+    document.querySelectorAll('.overlord-top-tabs__tab').forEach(t => {
+        t.classList.remove('overlord-top-tabs__tab--active');
+    });
+    document.querySelectorAll('.overlord-top-panel').forEach(p => {
+        p.classList.remove('overlord-top-panel--active');
+    });
+    const companiesTab = document.querySelector('.overlord-top-tabs__tab');
+    if (companiesTab) companiesTab.classList.add('overlord-top-tabs__tab--active');
+    const companiesPanel = document.getElementById('overlord-panel-companies');
+    if (companiesPanel) companiesPanel.classList.add('overlord-top-panel--active');
 }
 
 /**
- * Populate form with data from API
- * @param {Object} data - API response data
+ * Populate form with API data (raw row dict with MySQL column names)
  */
 function populateOverlordForm(data) {
     const { tracking, company, job } = data;
     const isNewRecord = !company;
     
-    // Store state
     overlordState.jobId = job.id;
     overlordState.database = job.target;
-    overlordState.restoreHost = job.dbhost;  // Host where DB was restored
+    overlordState.restoreHost = job.dbhost;
+    
+    // Set employees tab label with actual database name
+    const empTabLabel = document.getElementById('overlord-employees-tab-label');
+    if (empTabLabel) empTabLabel.textContent = `${job.target}.employees`;
     
     // Hidden fields
     document.getElementById('overlord-job-id').value = job.id;
     document.getElementById('overlord-database').value = job.target;
-    
-    // Database name (read-only display)
     document.getElementById('overlord-display-database').textContent = job.target;
     
-    // Show status banner for new record
+    // Header badge
+    const badge = document.getElementById('overlord-header-badge');
     const banner = document.getElementById('overlord-status-banner');
     const message = document.getElementById('overlord-status-message');
+    const statusIcon = document.getElementById('overlord-status-icon');
     
     if (isNewRecord) {
-        // New record - show create message and default populate fields
-        banner.classList.remove('js-hidden', 'alert-success', 'alert-warning');
-        banner.classList.add('alert-info');
-        message.innerHTML = '<strong>Create New Record</strong> — No existing overlord.companies entry found. Fill in the details below to create one.';
+        // New record — default values
+        badge.textContent = 'New';
+        badge.className = 'overlord-badge overlord-badge--new';
+        badge.classList.remove('js-hidden');
         
-        // Default subdomain to target name (convert underscores to hyphens for DNS safety)
+        banner.classList.remove('js-hidden');
+        banner.className = 'overlord-banner overlord-banner--info';
+        statusIcon.textContent = 'ℹ';
+        message.textContent = 'No existing record — fill in details to create one.';
+        
+        document.getElementById('overlord-display-companyid').textContent = '(auto)';
         document.getElementById('overlord-subdomain').value = job.target
             .replace(/_/g, '-').toLowerCase();
-        
-        // Default company name empty
         document.getElementById('overlord-name').value = '';
-        
-        // Default hosts to restore host
         document.getElementById('overlord-dbhost').value = job.dbhost || '';
         document.getElementById('overlord-dbhost-read').value = job.dbhost || '';
-        
+
+        // Owner auto-set from session user
+        document.getElementById('overlord-owner').value = job.owner_username || '';
+        document.getElementById('overlord-display-owner').textContent = job.owner_username || '—';
     } else {
-        // Existing record - use company values
-        document.getElementById('overlord-subdomain').value = company.subdomain || '';
-        document.getElementById('overlord-name').value = company.name || '';
+        // Existing record — populate all fields from raw row dict
+        // company is now a raw dict with MySQL column names as keys
+        const c = company;
         
-        // Host fields - use existing values, or fall back to job.dbhost if empty
-        const existingDbHost = company.dbHost || '';
-        const existingDbHostRead = company.dbHostRead || '';
-        document.getElementById('overlord-dbhost').value = existingDbHost || job.dbhost || '';
-        document.getElementById('overlord-dbhost-read').value = existingDbHostRead || job.dbhost || '';
+        // READ-ONLY displays
+        document.getElementById('overlord-display-companyid').textContent = c.companyID || '—';
+        
+        // Core fields
+        _setVal('overlord-subdomain', c.subdomain);
+        _setVal('overlord-company', c.company);
+        _setVal('overlord-name', c.name);
+
+        // Owner: display existing owner, hidden input carries value
+        _setVal('overlord-owner', c.owner);
+        document.getElementById('overlord-display-owner').textContent = c.owner || job.owner_username || '—';
+        _setVal('overlord-dbhost', c.dbHost || job.dbhost || '');
+        _setVal('overlord-dbhost-read', c.dbHostRead || job.dbhost || '');
+        
+        // Extended routing
+        _setVal('overlord-dbserver', c.dbServer);
+        _setVal('overlord-dbhost-api-read', c.dbHostApiRead);
+        _setVal('overlord-dbhost-dynamic-read', c.dbHostDynamicRead);
+        _setSelect('overlord-enable-dynamic-read', c.enableDynamicRead);
+        
+        // Branding & display
+        _setSelect('overlord-visible', c.visible);
+        _setVal('overlord-order', c.order);
+        _setVal('overlord-branding-prefix', c.brandingPrefix);
+        _setVal('overlord-branding-logo', c.brandingLogo);
+        _setVal('overlord-logo', c.logo);
+        _setVal('overlord-branding', c.branding);
+        _setSelect('overlord-legacy-branding', c.legacyBranding);
+        _setVal('overlord-exclusive-domain', c.exclusiveDomain);
+        _setVal('overlord-mascot', c.mascot);
+        
+        // Contact & billing
+        _setVal('overlord-admin-contact', c.adminContact);
+        _setVal('overlord-admin-phone', c.adminPhone);
+        _setVal('overlord-admin-email', c.adminEmail);
+        _setVal('overlord-billing-email', c.billingEmail);
+        _setVal('overlord-billing-name', c.billingName);
+        _setSelect('overlord-send-tr-invoice', c.sendTRInvoice);
+        
+        // Franchise & operations
+        _setSelect('overlord-can-franchise', c.canFranchise);
+        _setVal('overlord-franchise-name', c.franchiseName);
+        _setVal('overlord-franchise-logo', c.franchiseLogo);
+        _setVal('overlord-block-prt-date', c.blockPrtDate);
     }
     
-    // Tracking state (if we have a claim)
+    // Tracking state
     if (tracking) {
         overlordState.rowExistedBefore = tracking.row_existed_before;
         overlordState.previousDbHost = tracking.previous_dbhost;
         overlordState.previousDbHostRead = tracking.previous_dbhost_read;
         
-        // Update status banner (overrides new record message if we have tracking)
-        banner.classList.remove('js-hidden', 'alert-info', 'alert-success', 'alert-warning');
+        banner.classList.remove('js-hidden');
         
         if (tracking.status === 'synced') {
-            banner.classList.add('alert-success');
-            message.textContent = '✓ Overlord routing is active for this database';
+            badge.textContent = 'Synced';
+            badge.className = 'overlord-badge overlord-badge--synced';
+            badge.classList.remove('js-hidden');
+            banner.className = 'overlord-banner overlord-banner--success';
+            statusIcon.textContent = '✓';
+            message.textContent = 'Routing active for this database';
         } else if (tracking.status === 'claimed') {
-            banner.classList.add('alert-info');
-            message.textContent = 'Claimed but not yet synced. Save to activate routing.';
+            badge.textContent = 'Claimed';
+            badge.className = 'overlord-badge overlord-badge--claimed';
+            badge.classList.remove('js-hidden');
+            banner.className = 'overlord-banner overlord-banner--info';
+            statusIcon.textContent = 'ℹ';
+            message.textContent = 'Claimed — save to activate routing';
         }
         
-        // Show original values if they exist
+        // Original values
         if (tracking.row_existed_before && tracking.previous_dbhost) {
             document.getElementById('overlord-original-dbhost').textContent = tracking.previous_dbhost || '(empty)';
             document.getElementById('overlord-original-dbhost-read').textContent = tracking.previous_dbhost_read || '(empty)';
@@ -533,50 +2273,45 @@ function populateOverlordForm(data) {
         updateReleaseHint();
     }
     
-    // Show subdomain duplicates from initial load (if any)
+    // Subdomain duplicates
     if (data.subdomain_duplicates && data.subdomain_duplicates.length > 0) {
         renderSubdomainDuplicates(data.subdomain_duplicates);
     }
     
-    // Trigger a live check for the current subdomain value
     const currentSubdomain = document.getElementById('overlord-subdomain').value;
     if (currentSubdomain) {
         checkSubdomainDuplicates(currentSubdomain);
     }
 }
 
+/** Helper: set input value (handles null/undefined) */
+function _setVal(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = (value != null && value !== '') ? value : '';
+}
+
+/** Helper: set select/dropdown value */
+function _setSelect(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = (value != null) ? String(value) : '0';
+}
+
 /**
- * Update release action hint text
+ * Update release hint / show original values
  */
 function updateReleaseHint() {
     const action = document.getElementById('overlord-release-action').value;
-    const hint = document.getElementById('release-hint');
     const originalValues = document.getElementById('overlord-original-values');
     
-    switch (action) {
-        case 'restore':
-            hint.textContent = 'Restores the previous dbHost values that existed before pullDB claimed this record.';
-            hint.style.borderLeftColor = 'var(--blue-400)';
-            hint.style.background = 'var(--blue-50)';
-            originalValues.classList.toggle('js-hidden', !overlordState.rowExistedBefore);
-            break;
-        case 'clear':
-            hint.textContent = 'Sets dbHost and dbHostRead to empty strings, disabling routing without deleting the record.';
-            hint.style.borderLeftColor = 'var(--yellow-400)';
-            hint.style.background = 'var(--yellow-50)';
-            originalValues.classList.add('js-hidden');
-            break;
-        case 'delete':
-            hint.textContent = 'Permanently deletes this row from overlord.companies. Use with caution.';
-            hint.style.borderLeftColor = 'var(--red-400)';
-            hint.style.background = 'var(--red-50)';
-            originalValues.classList.add('js-hidden');
-            break;
+    if (action === 'restore' && overlordState.rowExistedBefore) {
+        originalValues.classList.remove('js-hidden');
+    } else {
+        originalValues.classList.add('js-hidden');
     }
 }
 
 /**
- * Handle form submission
+ * Form submission — collects ALL form fields
  */
 async function submitOverlordForm(event) {
     event.preventDefault();
@@ -585,21 +2320,42 @@ async function submitOverlordForm(event) {
     const submitBtn = document.getElementById('overlord-submit-btn');
     const submitText = document.getElementById('overlord-submit-text');
     
-    // Disable form during submission
     submitBtn.disabled = true;
     submitText.textContent = 'Saving...';
     
     try {
         const formData = new FormData(form);
+        
+        // Build payload with ALL fields
         const payload = {
             job_id: formData.get('job_id'),
             database: formData.get('database'),
-            subdomain: formData.get('subdomain'),
-            name: formData.get('name'),
-            dbHost: formData.get('dbHost'),
-            dbHostRead: formData.get('dbHostRead'),
             release_action: formData.get('release_action'),
         };
+        
+        // All column fields — only include non-empty values
+        const allFields = [
+            // Core
+            'subdomain', 'name', 'company', 'owner',
+            'dbHost', 'dbHostRead',
+            // Extended routing
+            'dbServer', 'dbHostApiRead', 'dbHostDynamicRead', 'enableDynamicRead',
+            // Branding & display
+            'visible', 'order', 'brandingPrefix', 'brandingLogo',
+            'logo', 'branding', 'legacyBranding', 'exclusiveDomain', 'mascot',
+            // Contact & billing
+            'adminContact', 'adminPhone', 'adminEmail',
+            'billingEmail', 'billingName', 'sendTRInvoice',
+            // Franchise & operations
+            'canFranchise', 'franchiseName', 'franchiseLogo', 'blockPrtDate',
+        ];
+        
+        allFields.forEach(field => {
+            const val = formData.get(field);
+            if (val !== null && val !== '') {
+                payload[field] = val;
+            }
+        });
         
         const response = await fetch(`/api/v1/overlord/${payload.job_id}/sync`, {
             method: 'POST',
@@ -609,7 +2365,6 @@ async function submitOverlordForm(event) {
         
         if (!response.ok) {
             const error = await response.json();
-            // Handle Pydantic 422 validation errors (e.g., subdomain format)
             if (response.status === 422 && error.detail) {
                 const messages = Array.isArray(error.detail)
                     ? error.detail.map(e => e.msg || e.message || JSON.stringify(e)).join('; ')
@@ -619,8 +2374,7 @@ async function submitOverlordForm(event) {
             throw new Error(error.detail || 'Failed to save changes');
         }
         
-        // Success - show toast and close modal
-        showToast('Overlord routing updated successfully', 'success');
+        showToast('Overlord record updated', 'success');
         closeOverlordModal();
         
     } catch (error) {
@@ -628,41 +2382,42 @@ async function submitOverlordForm(event) {
         showToast(error.message || 'Failed to save changes', 'error');
     } finally {
         submitBtn.disabled = false;
-        submitText.textContent = 'Save Changes';
+        submitText.textContent = 'Save';
     }
 }
 
-/**
- * Show error in modal
- */
 function showOverlordError(message) {
     const banner = document.getElementById('overlord-status-banner');
     const messageEl = document.getElementById('overlord-status-message');
-    banner.classList.remove('js-hidden', 'alert-info', 'alert-success');
-    banner.classList.add('alert-danger');
+    const statusIcon = document.getElementById('overlord-status-icon');
+    banner.classList.remove('js-hidden');
+    banner.className = 'overlord-banner overlord-banner--danger';
+    statusIcon.textContent = '✕';
     messageEl.textContent = message;
+    
+    // Update header badge
+    const badge = document.getElementById('overlord-header-badge');
+    badge.textContent = 'Error';
+    badge.className = 'overlord-badge overlord-badge--muted';
+    badge.classList.remove('js-hidden');
 }
 
-// Attach event listener for release action change
+// Event listeners
 document.addEventListener('DOMContentLoaded', function() {
     const releaseSelect = document.getElementById('overlord-release-action');
     if (releaseSelect) {
         releaseSelect.addEventListener('change', updateReleaseHint);
     }
     
-    // Subdomain input: auto-lowercase + debounced duplicate check
+    // Subdomain auto-lowercase + debounced duplicate check
     const subdomainInput = document.getElementById('overlord-subdomain');
     if (subdomainInput) {
         let subdomainCheckTimer = null;
         
         subdomainInput.addEventListener('input', function(e) {
-            // Auto-lowercase and strip invalid characters
             const cleaned = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
-            if (cleaned !== e.target.value) {
-                e.target.value = cleaned;
-            }
+            if (cleaned !== e.target.value) e.target.value = cleaned;
             
-            // Debounced duplicate check (400ms)
             clearTimeout(subdomainCheckTimer);
             const val = e.target.value.trim();
             if (val.length >= 1) {
@@ -675,8 +2430,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 /**
- * Check for subdomain duplicates via API (live, debounced)
- * @param {string} subdomain - The subdomain value to check
+ * Check subdomain duplicates
  */
 async function checkSubdomainDuplicates(subdomain) {
     if (!subdomain || !overlordState.database) return;
@@ -699,10 +2453,6 @@ async function checkSubdomainDuplicates(subdomain) {
     }
 }
 
-/**
- * Render duplicate subdomain records into the warning table
- * @param {Array} duplicates - Array of {company_id, database, subdomain, dbHost}
- */
 function renderSubdomainDuplicates(duplicates) {
     const container = document.getElementById('subdomain-duplicates-container');
     const tbody = document.getElementById('subdomain-duplicates-body');
@@ -712,12 +2462,10 @@ function renderSubdomainDuplicates(duplicates) {
         return;
     }
     
-    // Build table rows
     tbody.innerHTML = duplicates.map(d => `
         <tr>
             <td>${_escapeHtml(String(d.company_id))}</td>
             <td>${_escapeHtml(d.database)}</td>
-            <td>${_escapeHtml(d.subdomain)}</td>
             <td>${_escapeHtml(d.dbHost)}</td>
         </tr>
     `).join('');
@@ -725,10 +2473,382 @@ function renderSubdomainDuplicates(duplicates) {
     container.classList.remove('js-hidden');
 }
 
-/** Escape HTML to prevent XSS in table rendering */
 function _escapeHtml(str) {
     const div = document.createElement('div');
     div.appendChild(document.createTextNode(str || ''));
     return div.innerHTML;
+}
+
+// =============================================================================
+// EMPLOYEE TAB FUNCTIONS
+// =============================================================================
+
+/**
+ * Load employees from the customer database via API
+ */
+async function loadEmployees() {
+    if (!overlordState.jobId) return;
+
+    const loading = document.getElementById('overlord-employees-loading');
+    const errorEl = document.getElementById('overlord-employees-error');
+    const tbody = document.getElementById('overlord-employees-tbody');
+
+    loading.classList.remove('js-hidden');
+    errorEl.classList.add('js-hidden');
+    tbody.innerHTML = '';
+
+    try {
+        const response = await fetch(`/api/v1/overlord/${overlordState.jobId}/employees`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        employeeState.employees = data.employees || [];
+        employeeState.loaded = true;
+
+        // Update tab label with actual database name
+        const tabLabel = document.getElementById('overlord-employees-tab-label');
+        if (tabLabel) tabLabel.textContent = `${data.database}.employees`;
+
+        filterEmployees();
+    } catch (error) {
+        console.error('Failed to load employees:', error);
+        const errMsg = document.getElementById('overlord-employees-error-msg');
+        errMsg.textContent = error.message || 'Failed to load employees';
+        errorEl.classList.remove('js-hidden');
+    } finally {
+        loading.classList.add('js-hidden');
+    }
+}
+
+/**
+ * Filter employees by search text and active status
+ */
+function filterEmployees(searchOverride) {
+    const searchInput = document.getElementById('overlord-employees-search');
+    const filterSelect = document.getElementById('overlord-employees-active-filter');
+    const search = (searchOverride !== undefined ? searchOverride : (searchInput ? searchInput.value : '')).toLowerCase().trim();
+    const activeFilter = filterSelect ? filterSelect.value : 'all';
+
+    employeeState.filtered = employeeState.employees.filter(emp => {
+        // Active filter
+        if (activeFilter !== 'all' && String(emp.active) !== activeFilter) return false;
+        // Search filter
+        if (search) {
+            const haystack = [
+                emp.fname, emp.lname, emp.username, emp.email,
+                String(emp.employeeID), emp.initials, emp.nickname,
+            ].filter(Boolean).join(' ').toLowerCase();
+            if (!haystack.includes(search)) return false;
+        }
+        return true;
+    });
+
+    renderEmployeeTable();
+}
+
+/**
+ * Render the employee table rows
+ */
+function renderEmployeeTable() {
+    const tbody = document.getElementById('overlord-employees-tbody');
+    const countEl = document.getElementById('overlord-employees-count');
+
+    countEl.textContent = `${employeeState.filtered.length} of ${employeeState.employees.length}`;
+
+    if (employeeState.filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--color-text-muted);padding:var(--space-4);">No employees found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = employeeState.filtered.map(emp => {
+        const isInactive = emp.active === 0 || emp.active === '0';
+        const rowClass = isInactive ? 'emp-row--inactive' : '';
+        const activeBadge = isInactive
+            ? '<span class="emp-badge emp-badge--inactive">No</span>'
+            : '<span class="emp-badge emp-badge--active">Yes</span>';
+        const tfa = emp.twoFactorEnabled ? '✓' : '—';
+
+        return `<tr class="${rowClass}" data-emp-id="${emp.employeeID}">
+            <td class="emp-col-id">${emp.employeeID}</td>
+            <td class="emp-col-name" title="${_escapeHtml(emp.fname)} ${_escapeHtml(emp.lname)}">${_escapeHtml(emp.fname)} ${_escapeHtml(emp.lname)}</td>
+            <td class="emp-col-username" title="${_escapeHtml(emp.username)}">${_escapeHtml(emp.username)}</td>
+            <td class="emp-col-email" title="${_escapeHtml(emp.email)}">${_escapeHtml(emp.email)}</td>
+            <td class="emp-col-active">${activeBadge}</td>
+            <td class="emp-col-type">${emp.type ?? '—'}</td>
+            <td class="emp-col-office">${emp.officeID ?? '—'}</td>
+            <td class="emp-col-2fa">${tfa}</td>
+            <td class="emp-col-actions">
+                <button type="button" class="emp-edit-btn" title="Edit employee" onclick="startEditEmployee(${emp.employeeID})">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+/**
+ * Switch between employee edit card tabs
+ */
+function switchEcardTab(tabBtn, panelId) {
+    // Deactivate all tabs/panels
+    document.querySelectorAll('.ecard-tabs__tab').forEach(t => {
+        t.classList.remove('ecard-tabs__tab--active');
+        t.setAttribute('aria-selected', 'false');
+    });
+    document.querySelectorAll('.ecard-tabs__panel').forEach(p => {
+        p.classList.remove('ecard-tabs__panel--active');
+    });
+    // Activate clicked tab + target panel
+    tabBtn.classList.add('ecard-tabs__tab--active');
+    tabBtn.setAttribute('aria-selected', 'true');
+    const panel = document.getElementById(panelId);
+    if (panel) panel.classList.add('ecard-tabs__panel--active');
+}
+
+/**
+ * Open the employee edit card with all fields for a given employee
+ */
+function startEditEmployee(employeeId) {
+    const emp = employeeState.employees.find(e => e.employeeID === employeeId);
+    if (!emp) return;
+    employeeState.editingId = employeeId;
+
+    const card = document.getElementById('emp-edit-card');
+    const title = document.getElementById('emp-edit-card-title');
+    const badge = document.getElementById('emp-edit-card-badge');
+
+    title.textContent = `Edit: ${emp.fname || ''} ${emp.lname || ''} (#${emp.employeeID})`;
+    badge.textContent = emp.active == 1 ? 'Active' : 'Inactive';
+    badge.className = emp.active == 1 ? 'emp-badge emp-badge--active' : 'emp-badge emp-badge--inactive';
+
+    // Map of all edit card field IDs to their employee property names
+    const fieldMap = {
+        'ecard-employeeID': 'employeeID',
+        'ecard-fname': 'fname',
+        'ecard-lname': 'lname',
+        'ecard-nickname': 'nickname',
+        'ecard-initials': 'initials',
+        'ecard-username': 'username',
+        'ecard-email': 'email',
+        'ecard-phone': 'phone',
+        'ecard-about': 'about',
+        'ecard-active': 'active',
+        'ecard-type': 'type',
+        'ecard-officeID': 'officeID',
+        'ecard-owner': 'owner',
+        'ecard-supervisorID': 'supervisorID',
+        'ecard-systemUser': 'systemUser',
+        'ecard-roamingRep': 'roamingRep',
+        'ecard-experience': 'experience',
+        'ecard-gateway': 'gateway',
+        'ecard-subscribed': 'subscribed',
+        'ecard-dealsUser': 'dealsUser',
+        'ecard-recruiter': 'recruiter',
+        'ecard-accessControlProfileID': 'accessControlProfileID',
+        'ecard-loginLocation': 'loginLocation',
+        'ecard-lastLogin': 'lastLogin',
+        'ecard-IPJail': 'IPJail',
+        'ecard-resetPassword': 'resetPassword',
+        'ecard-updateTermsOfService': 'updateTermsOfService',
+        'ecard-updatePrivacyPolicy': 'updatePrivacyPolicy',
+        'ecard-twoFactorEnabled': 'twoFactorEnabled',
+        'ecard-twoFactorRequired': 'twoFactorRequired',
+        'ecard-twoFactorConfigDueDate': 'twoFactorConfigDueDate',
+        'ecard-twoFactorSecretBase32': 'twoFactorSecretBase32',
+        'ecard-commissionRate': 'commissionRate',
+        'ecard-salesCommissionRate': 'salesCommissionRate',
+        'ecard-serviceCommissionRate': 'serviceCommissionRate',
+        'ecard-scheduleCommissionRate': 'scheduleCommissionRate',
+        'ecard-employeeLink': 'employeeLink',
+        'ecard-masterEmployeeID': 'masterEmployeeID',
+        'ecard-masterOfficeID': 'masterOfficeID',
+        'ecard-latestNewsID': 'latestNewsID',
+        'ecard-licenseNumber': 'licenseNumber',
+        'ecard-inspectionLicenseNumber': 'inspectionLicenseNumber',
+        'ecard-sentriconCredentialID': 'sentriconCredentialID',
+        'ecard-pic': 'pic',
+        'ecard-officeExtention': 'officeExtention',
+        'ecard-officeExtentionPassword': 'officeExtentionPassword',
+        'ecard-googleCalendarAuth': 'googleCalendarAuth',
+        'ecard-updateNeeded': 'updateNeeded',
+        'ecard-dateUpdated': 'dateUpdated',
+        'ecard-pwCodeCreated': 'pwCodeCreated',
+    };
+
+    // Populate all fields
+    for (const [inputId, prop] of Object.entries(fieldMap)) {
+        const el = document.getElementById(inputId);
+        if (!el) continue;
+        const val = emp[prop];
+        if (el.tagName === 'SELECT') {
+            el.value = val != null ? String(val) : '0';
+        } else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+            el.value = val != null ? String(val) : '';
+        }
+    }
+
+    // Password field always starts empty (write-only)
+    const pwInput = document.getElementById('ecard-password');
+    if (pwInput) pwInput.value = '';
+
+    // Password hash status badge
+    const hashBadge = document.getElementById('ecard-passwordHash');
+    if (hashBadge) {
+        const hashVal = emp.passwordHash;
+        if (hashVal && hashVal.length > 0) {
+            hashBadge.textContent = 'Set';
+            hashBadge.className = 'emp-field__status-badge is-set';
+        } else {
+            hashBadge.textContent = 'Not Set';
+            hashBadge.className = 'emp-field__status-badge not-set';
+        }
+    }
+
+    card.classList.remove('js-hidden');
+    // Reset to Profile tab
+    const firstTab = card.querySelector('.ecard-tabs__tab');
+    if (firstTab) switchEcardTab(firstTab, 'ecard-panel-profile');
+}
+
+/**
+ * Close the employee edit card and return to employee list
+ */
+function closeEmployeeEditCard() {
+    const card = document.getElementById('emp-edit-card');
+    card.classList.add('js-hidden');
+    employeeState.editingId = null;
+}
+
+/**
+ * Copy a read-only field value to clipboard (for sensitive fields)
+ */
+function ecardCopyField(inputId) {
+    const el = document.getElementById(inputId);
+    if (!el || !el.value) return;
+    navigator.clipboard.writeText(el.value).then(() => {
+        // Flash "Copied!" tooltip on the adjacent button
+        const btn = el.closest('.emp-field__sensitive')?.querySelector('.emp-copy-btn');
+        if (btn) {
+            btn.classList.add('copied');
+            setTimeout(() => btn.classList.remove('copied'), 1500);
+        }
+    }).catch(() => {
+        // Fallback: select + execCommand for older browsers
+        el.removeAttribute('disabled');
+        el.select();
+        document.execCommand('copy');
+        el.setAttribute('disabled', '');
+    });
+}
+
+/**
+ * Cancel inline editing (legacy compat + card close)
+ */
+function cancelEditEmployee() {
+    closeEmployeeEditCard();
+}
+
+/**
+ * Save employee from the edit card (all fields)
+ */
+async function saveEmployeeCard() {
+    const employeeId = employeeState.editingId;
+    if (!overlordState.jobId || !employeeId) return;
+
+    // Check if password is being set — requires confirmation
+    const pwEl = document.getElementById('ecard-password');
+    const newPassword = pwEl ? pwEl.value.trim() : '';
+    if (newPassword) {
+        const confirmed = confirm(
+            'Setting a new password will clear the existing passwordHash.\n\n' +
+            'This forces a password reset for this employee.\n\n' +
+            'Continue?'
+        );
+        if (!confirmed) return;
+    }
+
+    // All updatable fields from the card (excludes readonly: employeeID, lastLogin, dateUpdated,
+    // passwordHash, twoFactorSecretBase32, officeExtentionPassword, pwCodeCreated)
+    const textFields = [
+        'fname', 'lname', 'nickname', 'initials', 'username',
+        'email', 'phone', 'about', 'loginLocation', 'IPJail',
+        'employeeLink', 'licenseNumber', 'inspectionLicenseNumber',
+        'pic', 'officeExtention', 'googleCalendarAuth', 'twoFactorConfigDueDate',
+    ];
+    const intFields = [
+        'active', 'type', 'officeID', 'owner', 'supervisorID', 'systemUser',
+        'roamingRep', 'experience', 'gateway', 'subscribed', 'dealsUser',
+        'recruiter', 'accessControlProfileID', 'resetPassword',
+        'updateTermsOfService', 'updatePrivacyPolicy',
+        'twoFactorEnabled', 'twoFactorRequired',
+        'masterEmployeeID', 'masterOfficeID', 'latestNewsID',
+        'sentriconCredentialID', 'updateNeeded',
+    ];
+    const floatFields = [
+        'commissionRate', 'salesCommissionRate',
+        'serviceCommissionRate', 'scheduleCommissionRate',
+    ];
+
+    const payload = {};
+
+    textFields.forEach(f => {
+        const el = document.getElementById(`ecard-${f}`);
+        if (el && el.value !== '') payload[f] = el.value;
+    });
+    intFields.forEach(f => {
+        const el = document.getElementById(`ecard-${f}`);
+        if (el && el.value !== '') {
+            const v = parseInt(el.value, 10);
+            if (!isNaN(v)) payload[f] = v;
+        }
+    });
+    floatFields.forEach(f => {
+        const el = document.getElementById(`ecard-${f}`);
+        if (el && el.value !== '') {
+            const v = parseFloat(el.value);
+            if (!isNaN(v)) payload[f] = v;
+        }
+    });
+
+    // Include password only if user typed a new one
+    if (newPassword) {
+        payload.password = newPassword;
+    }
+
+    if (Object.keys(payload).length === 0) {
+        showToast('No changes to save', 'info');
+        return;
+    }
+
+    const saveBtn = document.getElementById('emp-edit-card-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+
+    try {
+        const response = await fetch(`/api/v1/overlord/${overlordState.jobId}/employees/${employeeId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || 'Failed to save');
+        }
+
+        // Update local state
+        const emp = employeeState.employees.find(e => e.employeeID === employeeId);
+        if (emp) Object.assign(emp, payload);
+
+        showToast('Employee updated', 'success');
+        closeEmployeeEditCard();
+        filterEmployees();
+    } catch (error) {
+        console.error('Failed to save employee:', error);
+        showToast(error.message || 'Failed to save employee', 'error');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Changes'; }
+    }
 }
 </script>

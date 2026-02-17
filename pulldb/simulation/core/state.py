@@ -95,6 +95,14 @@ class SimulationState:
     # Phase 0.5: Host credential error state tracking
     # hostname -> error message (if credentials failed)
     host_credential_errors: dict[str, str] = field(default_factory=dict)
+
+    # Admin tasks (AdminTaskRepository)
+    # task_id -> AdminTask dataclass
+    admin_tasks: list[Any] = field(default_factory=list)
+
+    # Job history summaries (JobHistorySummaryRepository)
+    # Chronological list of summary dicts
+    history_summaries: list[dict[str, Any]] = field(default_factory=list)
     
     # Concurrency control
     lock: threading.RLock = field(default_factory=threading.RLock)
@@ -122,6 +130,8 @@ class SimulationState:
             self.api_keys.clear()
             self.disallowed_usernames.clear()
             self.host_credential_errors.clear()
+            self.admin_tasks.clear()
+            self.history_summaries.clear()
 
 
 # Global singleton instance

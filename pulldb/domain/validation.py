@@ -553,5 +553,20 @@ def validate_setting_value(
             result = validate_directory(value, key, check_writable=True)
             if not result.valid:
                 return result
+        elif validator.startswith("is_one_of:"):
+            allowed = validator.split(":", 1)[1].split(",")
+            if value not in allowed:
+                return ValidationResult(
+                    valid=False,
+                    error=f"'{key}' must be one of [{', '.join(allowed)}], got '{value}'",
+                )
+        elif validator == "is_csv_integers":
+            for part in value.split(","):
+                part = part.strip()
+                if part and not part.isdigit():
+                    return ValidationResult(
+                        valid=False,
+                        error=f"'{key}' must be comma-separated integers, got '{part}'",
+                    )
 
     return ValidationResult(valid=True)

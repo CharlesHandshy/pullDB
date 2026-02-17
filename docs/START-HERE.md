@@ -1,6 +1,6 @@
 # pullDB Documentation
 
-> **Version**: 1.0.8 | **Start here to navigate all pullDB documentation**
+> **Version**: 1.1.0 | **Start here to navigate all pullDB documentation**
 
 ---
 

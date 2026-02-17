@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from pulldb.infra.overlord import (
+from pulldb.domain.overlord import (
     OverlordAlreadyClaimedError,
     OverlordConnectionError,
     OverlordOwnershipError,
@@ -42,7 +42,11 @@ class OverlordClaimRequest(BaseModel):
 
 
 class OverlordSyncRequest(BaseModel):
-    """Request to sync changes to overlord.companies."""
+    """Request to sync changes to overlord.companies.
+    
+    Accepts all 27 columns from the companies table.
+    Only non-None fields are written to the database.
+    """
     
     job_id: str
     database: str
@@ -56,6 +60,37 @@ class OverlordSyncRequest(BaseModel):
     dbHost: str
     dbHostRead: str | None = None
     release_action: str = "restore"  # restore, clear, delete
+    # Extended routing
+    dbServer: str | None = None
+    dbHostDynamicRead: str | None = None
+    enableDynamicRead: int | None = None
+    dbHostApiRead: str | None = None
+    # Metadata
+    company: str | None = None
+    owner: str | None = None
+    visible: int | None = None
+    order: int | None = None
+    # Branding
+    brandingPrefix: str | None = None
+    brandingLogo: int | None = None
+    logo: str | None = None
+    branding: str | None = None
+    legacyBranding: int | None = None
+    exclusiveDomain: str | None = None
+    mascot: str | None = None
+    # Contact & billing
+    adminContact: str | None = None
+    adminPhone: str | None = None
+    adminEmail: str | None = None
+    billingEmail: str | None = None
+    billingName: str | None = None
+    sendTRInvoice: int | None = None
+    # Franchise
+    canFranchise: int | None = None
+    franchiseName: str | None = None
+    franchiseLogo: str | None = None
+    # Operations
+    blockPrtDate: str | None = None
 
 
 class OverlordReleaseRequest(BaseModel):
@@ -74,6 +109,13 @@ class SubdomainDuplicateEntry(BaseModel):
     dbHost: str
 
 
+class AvailableHost(BaseModel):
+    """An available database host for combobox selection."""
+
+    hostname: str
+    alias: str | None = None
+
+
 class OverlordStateResponse(BaseModel):
     """Response with current overlord state for a job."""
     
@@ -82,6 +124,7 @@ class OverlordStateResponse(BaseModel):
     company: dict[str, Any] | None
     enabled: bool
     subdomain_duplicates: list[SubdomainDuplicateEntry] | None = None
+    available_hosts: list[AvailableHost] | None = None
 
 
 class OverlordSyncResponse(BaseModel):
@@ -98,6 +141,124 @@ class OverlordReleaseResponse(BaseModel):
     success: bool
     action_taken: str
     message: str
+
+
+class EmployeeRecord(BaseModel):
+    """A single employee record from the customer database.
+
+    All 54 columns from the employees table minus signature (binary)
+    and recoveryHash (security).  Sensitive fields like passwordHash
+    and twoFactorSecretBase32 are returned read-only for display.
+    """
+
+    employeeID: int
+    fname: str | None = None
+    lname: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    username: str | None = None
+    active: int | None = None
+    type: int | None = None
+    officeID: int | None = None
+    lastLogin: str | None = None
+    loginLocation: str | None = None
+    gateway: int | None = None
+    initials: str | None = None
+    experience: int | None = None
+    pic: str | None = None
+    about: str | None = None
+    nickname: str | None = None
+    employeeLink: str | None = None
+    subscribed: int | None = None
+    licenseNumber: str | None = None
+    owner: int | None = None
+    updateNeeded: int | None = None
+    roamingRep: int | None = None
+    IPJail: str | None = None
+    commissionRate: float | None = None
+    salesCommissionRate: float | None = None
+    serviceCommissionRate: float | None = None
+    scheduleCommissionRate: float | None = None
+    recruiter: int | None = None
+    latestNewsID: int | None = None
+    dealsUser: int | None = None
+    googleCalendarAuth: str | None = None
+    supervisorID: int | None = None
+    accessControlProfileID: int | None = None
+    sentriconCredentialID: int | None = None
+    updateTermsOfService: int | None = None
+    updatePrivacyPolicy: int | None = None
+    officeExtention: str | None = None
+    inspectionLicenseNumber: str | None = None
+    systemUser: int | None = None
+    masterEmployeeID: int | None = None
+    masterOfficeID: int | None = None
+    dateUpdated: str | None = None
+    resetPassword: int | None = None
+    twoFactorRequired: int | None = None
+    twoFactorConfigDueDate: str | None = None
+    twoFactorEnabled: int | None = None
+    password: str | None = None
+    passwordHash: str | None = None
+    twoFactorSecretBase32: str | None = None
+    officeExtentionPassword: str | None = None
+    pwCodeCreated: str | None = None
+
+
+class EmployeeUpdateRequest(BaseModel):
+    """Request to update an employee record.
+
+    All updatable columns. Excludes: employeeID (PK),
+    recoveryHash (security), signature (binary),
+    dateUpdated (auto-managed).  Password is write-only;
+    setting it also clears passwordHash for a reset.
+    """
+
+    fname: str | None = None
+    lname: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    username: str | None = None
+    active: int | None = None
+    type: int | None = None
+    officeID: int | None = None
+    loginLocation: str | None = None
+    gateway: int | None = None
+    initials: str | None = None
+    experience: int | None = None
+    pic: str | None = None
+    about: str | None = None
+    nickname: str | None = None
+    employeeLink: str | None = None
+    subscribed: int | None = None
+    licenseNumber: str | None = None
+    owner: int | None = None
+    updateNeeded: int | None = None
+    roamingRep: int | None = None
+    IPJail: str | None = None
+    commissionRate: float | None = None
+    salesCommissionRate: float | None = None
+    serviceCommissionRate: float | None = None
+    scheduleCommissionRate: float | None = None
+    recruiter: int | None = None
+    latestNewsID: int | None = None
+    dealsUser: int | None = None
+    googleCalendarAuth: str | None = None
+    supervisorID: int | None = None
+    accessControlProfileID: int | None = None
+    sentriconCredentialID: int | None = None
+    updateTermsOfService: int | None = None
+    updatePrivacyPolicy: int | None = None
+    officeExtention: str | None = None
+    inspectionLicenseNumber: str | None = None
+    systemUser: int | None = None
+    masterEmployeeID: int | None = None
+    masterOfficeID: int | None = None
+    resetPassword: int | None = None
+    twoFactorRequired: int | None = None
+    twoFactorConfigDueDate: str | None = None
+    twoFactorEnabled: int | None = None
+    password: str | None = None
 
 
 # =============================================================================
@@ -154,7 +315,9 @@ def create_overlord_router(
         
         # Get current state (handle errors gracefully - Security Rule 6: Error Differentiation)
         try:
-            tracking, company = overlord_manager.get_state(job.target)
+            tracking, _company_model = overlord_manager.get_state(job.target)
+            # Get full row dict for complete column coverage in the modal
+            company_row = overlord_manager.get_full_row(job.target)
         except OverlordConnectionError as e:
             logger.warning(f"Overlord connection failed for job {job_id}: {e}")
             raise HTTPException(
@@ -185,10 +348,11 @@ def create_overlord_router(
         
         # Check for subdomain duplicates if company has a subdomain
         subdomain_duplicates = None
-        if company and company.subdomain:
+        subdomain_val = company_row.get("subdomain") if company_row else None
+        if subdomain_val:
             try:
                 dupes = overlord_manager.check_subdomain_duplicates(
-                    company.subdomain, exclude_database=job.target
+                    subdomain_val, exclude_database=job.target
                 )
                 if dupes:
                     subdomain_duplicates = [
@@ -203,17 +367,35 @@ def create_overlord_router(
             except Exception:
                 logger.debug("Subdomain duplicate check failed (non-critical)", exc_info=True)
         
+        # Get available hosts for combobox dropdowns
+        available_hosts_list = None
+        host_repo = getattr(state, "host_repo", None)
+        if host_repo:
+            try:
+                db_hosts = host_repo.get_enabled_hosts()
+                available_hosts_list = [
+                    AvailableHost(
+                        hostname=h.hostname,
+                        alias=getattr(h, "host_alias", None),
+                    )
+                    for h in db_hosts
+                ]
+            except Exception:
+                logger.debug("Failed to fetch available hosts (non-critical)", exc_info=True)
+
         return OverlordStateResponse(
             job={
                 "id": job.id,
                 "target": job.target,
                 "status": job.status.value,
                 "dbhost": job.dbhost,
+                "owner_username": user.username,
             },
             tracking=_tracking_to_dict(tracking) if tracking else None,
-            company=_company_to_dict(company) if company else None,
+            company=_company_to_dict(company_row) if company_row else None,
             enabled=True,
             subdomain_duplicates=subdomain_duplicates,
+            available_hosts=available_hosts_list,
         )
     
     @router.post("/{job_id}/claim", response_model=OverlordSyncResponse)
@@ -326,16 +508,28 @@ def create_overlord_router(
                     created_by=user.username,
                 )
             
-            # Sync to overlord
+            # Sync to overlord — include all non-None fields from request
             data = {
                 "database": job.target,
                 "subdomain": request.subdomain,
                 "dbHost": request.dbHost,
             }
-            if request.name:
-                data["name"] = request.name
-            if request.dbHostRead:
-                data["dbHostRead"] = request.dbHostRead
+            # Map all optional fields — only include if provided (not None)
+            _optional_fields = [
+                "name", "dbHostRead", "dbServer",
+                "dbHostDynamicRead", "enableDynamicRead", "dbHostApiRead",
+                "company", "owner", "visible", "order",
+                "brandingPrefix", "brandingLogo", "logo", "branding",
+                "legacyBranding", "exclusiveDomain", "mascot",
+                "adminContact", "adminPhone", "adminEmail",
+                "billingEmail", "billingName", "sendTRInvoice",
+                "canFranchise", "franchiseName", "franchiseLogo",
+                "blockPrtDate",
+            ]
+            for field in _optional_fields:
+                value = getattr(request, field, None)
+                if value is not None:
+                    data[field] = value
             
             overlord_manager.sync(
                 database_name=job.target,
@@ -480,6 +674,232 @@ def create_overlord_router(
             logger.warning(f"Subdomain check failed: {e}")
             return {"duplicates": [], "error": "Check failed"}
     
+    # =========================================================================
+    # Employee Management Endpoints
+    # =========================================================================
+
+    # Allowlist of safe column names for reading from the employees table.
+    # Excludes only: signature (binary blob), recoveryHash (security).
+    _EMPLOYEE_SAFE_COLUMNS: frozenset[str] = frozenset({
+        "employeeID", "fname", "lname", "phone", "email", "username",
+        "active", "type", "officeID", "lastLogin", "loginLocation",
+        "gateway", "initials", "experience", "pic", "about", "nickname",
+        "employeeLink", "subscribed", "licenseNumber", "owner",
+        "updateNeeded", "roamingRep", "IPJail", "commissionRate",
+        "salesCommissionRate", "serviceCommissionRate",
+        "scheduleCommissionRate", "recruiter", "latestNewsID",
+        "dealsUser", "googleCalendarAuth", "supervisorID",
+        "accessControlProfileID", "sentriconCredentialID",
+        "updateTermsOfService", "updatePrivacyPolicy",
+        "officeExtention", "inspectionLicenseNumber", "systemUser",
+        "masterEmployeeID", "masterOfficeID", "dateUpdated",
+        "resetPassword", "twoFactorRequired", "twoFactorConfigDueDate",
+        "twoFactorEnabled",
+        "password", "passwordHash", "twoFactorSecretBase32",
+        "officeExtentionPassword", "pwCodeCreated",
+    })
+
+    # Columns that are safe to UPDATE (excludes PK, binary blobs,
+    # auto-managed timestamps, and read-only sensitive fields)
+    _EMPLOYEE_UPDATABLE_COLUMNS: frozenset[str] = frozenset({
+        "fname", "lname", "phone", "email", "username",
+        "active", "type", "officeID", "loginLocation", "gateway",
+        "initials", "experience", "pic", "about", "nickname",
+        "employeeLink", "subscribed", "licenseNumber", "owner",
+        "updateNeeded", "roamingRep", "IPJail", "commissionRate",
+        "salesCommissionRate", "serviceCommissionRate",
+        "scheduleCommissionRate", "recruiter", "latestNewsID",
+        "dealsUser", "googleCalendarAuth", "supervisorID",
+        "accessControlProfileID", "sentriconCredentialID",
+        "updateTermsOfService", "updatePrivacyPolicy",
+        "officeExtention", "inspectionLicenseNumber", "systemUser",
+        "masterEmployeeID", "masterOfficeID", "resetPassword",
+        "twoFactorRequired", "twoFactorConfigDueDate", "twoFactorEnabled",
+        "password",
+    })
+
+    @router.get("/{job_id}/employees")
+    async def get_employees(
+        job_id: str,
+        state: Any = Depends(get_api_state),
+        user: Any = Depends(require_auth),
+    ) -> dict[str, Any]:
+        """Get employees from the customer database for a job.
+
+        Connects to the job's target host and reads the employees table
+        from the customer database (job.target).
+        """
+        import mysql.connector
+
+        # Validate job access
+        job = state.job_repo.get_job_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        if not _can_manage_overlord(user, job):
+            raise HTTPException(status_code=403, detail="Permission denied")
+
+        host_repo = getattr(state, "host_repo", None)
+        if not host_repo:
+            raise HTTPException(status_code=500, detail="Host repository unavailable")
+
+        try:
+            creds = host_repo.get_host_credentials(job.dbhost)
+        except (ValueError, Exception) as e:
+            logger.error(f"Failed to resolve credentials for {job.dbhost}: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Cannot resolve host credentials for {job.dbhost}",
+            ) from e
+
+        try:
+            conn = mysql.connector.connect(
+                host=creds.host,
+                port=creds.port,
+                user=creds.username,
+                password=creds.password,
+                database=job.target,
+                connect_timeout=10,
+            )
+        except mysql.connector.Error as e:
+            logger.error(f"Employee DB connect failed for {job.target}: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Database connection failed: {e}",
+            ) from e
+
+        try:
+            with conn:
+                with conn.cursor(dictionary=True) as cursor:
+                    safe_cols = ", ".join(
+                        f"`{c}`" for c in sorted(_EMPLOYEE_SAFE_COLUMNS)
+                    )
+                    cursor.execute(
+                        f"SELECT {safe_cols} FROM employees"
+                        " ORDER BY lname, fname"
+                    )
+                    rows = cursor.fetchall()
+
+            # Serialize datetime fields
+            for row in rows:
+                for k, v in row.items():
+                    if hasattr(v, "isoformat"):
+                        row[k] = v.isoformat()
+
+            return {
+                "database": job.target,
+                "employees": rows,
+                "count": len(rows),
+            }
+        except mysql.connector.Error as e:
+            error_str = str(e)
+            logger.error(f"Employee query failed for {job.target}: {e}")
+            if "doesn't exist" in error_str:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Table 'employees' not found in {job.target}",
+                ) from e
+            raise HTTPException(
+                status_code=503,
+                detail=f"Database error querying employees: {error_str}",
+            ) from e
+        finally:
+            conn.close()
+
+    @router.put("/{job_id}/employees/{employee_id}")
+    async def update_employee(
+        job_id: str,
+        employee_id: int,
+        request: EmployeeUpdateRequest,
+        state: Any = Depends(get_api_state),
+        user: Any = Depends(require_auth),
+    ) -> dict[str, Any]:
+        """Update a single employee record in the customer database."""
+        import mysql.connector
+
+        # Validate job access
+        job = state.job_repo.get_job_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        if not _can_manage_overlord(user, job):
+            raise HTTPException(status_code=403, detail="Permission denied")
+
+        host_repo = getattr(state, "host_repo", None)
+        if not host_repo:
+            raise HTTPException(status_code=500, detail="Host repository unavailable")
+
+        # Build SET clause from non-None fields (safe column allowlist)
+        updates: dict[str, Any] = {}
+        for field, value in request.model_dump(exclude_none=True).items():
+            if field in _EMPLOYEE_UPDATABLE_COLUMNS:
+                updates[field] = value
+
+        # Special password-reset logic: setting password also clears
+        # passwordHash so the application recognises a pending reset.
+        if "password" in updates:
+            updates["passwordHash"] = ""
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+
+        try:
+            creds = host_repo.get_host_credentials(job.dbhost)
+        except (ValueError, Exception) as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Cannot resolve host credentials for {job.dbhost}",
+            ) from e
+
+        try:
+            conn = mysql.connector.connect(
+                host=creds.host,
+                port=creds.port,
+                user=creds.username,
+                password=creds.password,
+                database=job.target,
+                connect_timeout=10,
+            )
+        except mysql.connector.Error as e:
+            logger.error(f"Employee DB connect failed for {job.target}: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Database connection failed: {e}",
+            ) from e
+
+        try:
+            with conn:
+                with conn.cursor() as cursor:
+                    set_clause = ", ".join(
+                        f"`{col}` = %s" for col in updates
+                    )
+                    values = list(updates.values()) + [employee_id]
+                    cursor.execute(
+                        f"UPDATE employees SET {set_clause}"
+                        " WHERE employeeID = %s",
+                        values,
+                    )
+                    affected = cursor.rowcount
+                # conn.__exit__ auto-commits on success, rolls back on error
+
+            if affected == 0:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Employee {employee_id} not found",
+                )
+
+            return {
+                "success": True,
+                "employee_id": employee_id,
+                "updated_fields": list(updates.keys()),
+            }
+        except mysql.connector.Error as e:
+            logger.error(f"Employee update failed for {job.target}: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Database error updating employee: {e}",
+            ) from e
+        finally:
+            conn.close()
+
     return router
 
 
@@ -550,15 +970,29 @@ def _tracking_to_dict(tracking: Any) -> dict[str, Any]:
 
 
 def _company_to_dict(company: Any) -> dict[str, Any]:
-    """Convert company record to dict for API response."""
+    """Convert company record to dict for API response.
+    
+    Accepts either an OverlordCompany domain model or a raw row dict.
+    Raw row dicts (from get_full_row) are returned as-is for full column coverage.
+    """
     if not company:
         return {}
     
+    # If it's already a dict (raw row from get_row_snapshot), return as-is
+    if isinstance(company, dict):
+        return company
+    
+    # Domain model fallback (OverlordCompany)
     return {
-        "company_id": company.company_id,
+        "companyID": company.company_id,
         "database": company.database,
         "name": company.name,
+        "company": company.company_name,
         "subdomain": company.subdomain,
         "dbHost": company.db_host,
         "dbHostRead": company.db_host_read,
+        "visible": company.visible,
+        "owner": company.owner,
+        "brandingPrefix": company.branding_prefix,
+        "brandingLogo": company.branding_logo,
     }

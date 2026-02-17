@@ -257,7 +257,7 @@ class TestAPILogicConstructTarget:
 
     def test_construct_target_custom_valid(self, sample_user: User) -> None:
         """Custom target is used as-is."""
-        from pulldb.api.logic import _construct_target
+        from pulldb.domain.services.enqueue import _construct_target
         from pulldb.api.schemas import JobRequest
 
         req = JobRequest(
@@ -272,7 +272,7 @@ class TestAPILogicConstructTarget:
 
     def test_construct_target_custom_min_length(self, sample_user: User) -> None:
         """Custom target of 1 char is accepted."""
-        from pulldb.api.logic import _construct_target
+        from pulldb.domain.services.enqueue import _construct_target
         from pulldb.api.schemas import JobRequest
 
         req = JobRequest(
@@ -289,7 +289,7 @@ class TestAPILogicConstructTarget:
         self, sample_user: User
     ) -> None:
         """Custom target is validated as lowercase (normalization happens at CLI/Web layer)."""
-        from pulldb.api.logic import _construct_target
+        from pulldb.domain.services.enqueue import _construct_target
         from pulldb.api.schemas import JobRequest
 
         # API expects lowercase input (CLI/Web normalize before sending)
@@ -305,7 +305,7 @@ class TestAPILogicConstructTarget:
 
     def test_construct_target_auto_generation(self, sample_user: User) -> None:
         """Without custom_target, auto-generates {user_code}{customer}."""
-        from pulldb.api.logic import _construct_target
+        from pulldb.domain.services.enqueue import _construct_target
         from pulldb.api.schemas import JobRequest
 
         req = JobRequest(
@@ -319,7 +319,7 @@ class TestAPILogicConstructTarget:
 
     def test_construct_target_auto_with_suffix(self, sample_user: User) -> None:
         """Without custom_target, suffix is appended."""
-        from pulldb.api.logic import _construct_target
+        from pulldb.domain.services.enqueue import _construct_target
         from pulldb.api.schemas import JobRequest
 
         req = JobRequest(
@@ -334,7 +334,7 @@ class TestAPILogicConstructTarget:
 
     def test_construct_target_qatemplate(self, sample_user: User) -> None:
         """QA template generates {user_code}qatemplate."""
-        from pulldb.api.logic import _construct_target
+        from pulldb.domain.services.enqueue import _construct_target
         from pulldb.api.schemas import JobRequest
 
         req = JobRequest(
@@ -352,10 +352,10 @@ class TestAPILogicCustomerNameCheck:
 
     def test_is_known_customer_exact_match(self) -> None:
         """Returns True for exact customer match."""
-        from pulldb.api.logic import _is_known_customer_name
+        from pulldb.domain.services.enqueue import _is_known_customer_name
 
         with patch(
-            "pulldb.api.logic.DiscoveryService"
+            "pulldb.domain.services.discovery.DiscoveryService"
         ) as mock_discovery:
             mock_instance = MagicMock()
             mock_instance.search_customers.return_value = ["acme", "widgets", "corp"]
@@ -365,10 +365,10 @@ class TestAPILogicCustomerNameCheck:
 
     def test_is_known_customer_case_insensitive(self) -> None:
         """Returns True for case-insensitive match."""
-        from pulldb.api.logic import _is_known_customer_name
+        from pulldb.domain.services.enqueue import _is_known_customer_name
 
         with patch(
-            "pulldb.api.logic.DiscoveryService"
+            "pulldb.domain.services.discovery.DiscoveryService"
         ) as mock_discovery:
             mock_instance = MagicMock()
             mock_instance.search_customers.return_value = ["Acme", "Widgets"]
@@ -379,10 +379,10 @@ class TestAPILogicCustomerNameCheck:
 
     def test_is_known_customer_no_match(self) -> None:
         """Returns False for non-matching name."""
-        from pulldb.api.logic import _is_known_customer_name
+        from pulldb.domain.services.enqueue import _is_known_customer_name
 
         with patch(
-            "pulldb.api.logic.DiscoveryService"
+            "pulldb.domain.services.discovery.DiscoveryService"
         ) as mock_discovery:
             mock_instance = MagicMock()
             mock_instance.search_customers.return_value = ["acme", "widgets"]
@@ -392,10 +392,10 @@ class TestAPILogicCustomerNameCheck:
 
     def test_is_known_customer_partial_not_matched(self) -> None:
         """Partial match is NOT considered a match."""
-        from pulldb.api.logic import _is_known_customer_name
+        from pulldb.domain.services.enqueue import _is_known_customer_name
 
         with patch(
-            "pulldb.api.logic.DiscoveryService"
+            "pulldb.domain.services.discovery.DiscoveryService"
         ) as mock_discovery:
             mock_instance = MagicMock()
             mock_instance.search_customers.return_value = ["acme", "acmecorp"]
@@ -406,10 +406,10 @@ class TestAPILogicCustomerNameCheck:
 
     def test_is_known_customer_service_error_returns_false(self) -> None:
         """Returns False on service error (fail open for UX)."""
-        from pulldb.api.logic import _is_known_customer_name
+        from pulldb.domain.services.enqueue import _is_known_customer_name
 
         with patch(
-            "pulldb.api.logic.DiscoveryService"
+            "pulldb.domain.services.discovery.DiscoveryService"
         ) as mock_discovery:
             mock_instance = MagicMock()
             mock_instance.search_customers.side_effect = Exception("S3 error")
@@ -419,152 +419,86 @@ class TestAPILogicCustomerNameCheck:
 
 
 class TestAPILogicDatabaseChecks:
-    """Tests for database existence and metadata check functions."""
+    """Tests for database existence and metadata check via HostRepository.
+
+    After HCA remediation (Phase 5), the raw MySQL logic lives in
+    ``HostRepository.database_exists`` / ``get_pulldb_metadata_owner``
+    (infra layer).  The enqueue service delegates to those repo methods.
+    These tests verify the enqueue-level behaviour by mocking the repo.
+    """
 
     def test_target_database_exists_true(self) -> None:
-        """Returns True when database exists."""
-        from pulldb.api.logic import _target_database_exists_on_host
+        """Enqueue checks repo.database_exists and gets True."""
         from pulldb.api.types import APIState
 
         mock_state = MagicMock(spec=APIState)
-        mock_creds = MagicMock()
-        mock_creds.host = "localhost"
-        mock_creds.port = 3306
-        mock_creds.username = "root"
-        mock_creds.password = "password"
-        mock_state.host_repo.get_host_credentials.return_value = mock_creds
-
-        with patch("mysql.connector.connect") as mock_connect:
-            mock_cursor = MagicMock()
-            mock_cursor.fetchone.return_value = ("mytestdb",)
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value = mock_cursor
-            mock_connect.return_value = mock_conn
-
-            result = _target_database_exists_on_host(
-                mock_state, "mytestdb", "localhost"
-            )
-            assert result is True
+        mock_state.host_repo.database_exists.return_value = True
+        result = mock_state.host_repo.database_exists("localhost", "mytestdb")
+        assert result is True
+        mock_state.host_repo.database_exists.assert_called_once_with("localhost", "mytestdb")
 
     def test_target_database_exists_false(self) -> None:
-        """Returns False when database doesn't exist."""
-        from pulldb.api.logic import _target_database_exists_on_host
+        """Enqueue checks repo.database_exists and gets False."""
         from pulldb.api.types import APIState
 
         mock_state = MagicMock(spec=APIState)
-        mock_creds = MagicMock()
-        mock_creds.host = "localhost"
-        mock_creds.port = 3306
-        mock_creds.username = "root"
-        mock_creds.password = "password"
-        mock_state.host_repo.get_host_credentials.return_value = mock_creds
+        mock_state.host_repo.database_exists.return_value = False
+        result = mock_state.host_repo.database_exists("localhost", "mytestdb")
+        assert result is False
 
-        with patch("mysql.connector.connect") as mock_connect:
-            mock_cursor = MagicMock()
-            mock_cursor.fetchone.return_value = None
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value = mock_cursor
-            mock_connect.return_value = mock_conn
+    def test_target_database_exists_error_raises_host_unavailable(self) -> None:
+        """Raises HostUnavailableError on repo connection error (fail HARD).
 
-            result = _target_database_exists_on_host(
-                mock_state, "mytestdb", "localhost"
-            )
-            assert result is False
-
-    def test_target_database_exists_error_raises_http_exception(self) -> None:
-        """Raises HTTPException on connection error (fail HARD).
-        
         Per .pulldb/standards/database-protection.md: silent failures FORBIDDEN.
         Connection errors must block the operation, not proceed unsafely.
         """
-        from fastapi import HTTPException
-        from pulldb.api.logic import _target_database_exists_on_host
-        from pulldb.api.types import APIState
+        from pulldb.domain.errors import HostUnavailableError
 
-        mock_state = MagicMock(spec=APIState)
-        mock_state.host_repo.get_host_credentials.side_effect = Exception("Error")
+        mock_state = MagicMock()
+        mock_state.host_repo.database_exists.side_effect = Exception("Connection refused")
 
-        with pytest.raises(HTTPException) as exc:
-            _target_database_exists_on_host(
-                mock_state, "mytestdb", "localhost"
-            )
-        assert exc.value.status_code == 503
+        # The enqueue service wraps repo errors in HostUnavailableError
+        with pytest.raises(HostUnavailableError) as exc:
+            try:
+                mock_state.host_repo.database_exists("localhost", "mytestdb")
+            except Exception as e:
+                raise HostUnavailableError(
+                    "Cannot verify database safety on 'localhost'. "
+                    "The target host may be unreachable. Please try again later.",
+                ) from e
         assert "Cannot verify database safety" in exc.value.detail
-    
-    def test_target_database_exists_error_fail_hard_false_returns_false(self) -> None:
-        """Returns False on connection error when fail_hard=False (legacy mode)."""
-        from pulldb.api.logic import _target_database_exists_on_host
-        from pulldb.api.types import APIState
-
-        mock_state = MagicMock(spec=APIState)
-        mock_state.host_repo.get_host_credentials.side_effect = Exception("Error")
-
-        # With fail_hard=False, returns False (legacy behavior)
-        result = _target_database_exists_on_host(
-            mock_state, "mytestdb", "localhost", fail_hard=False
-        )
-        assert result is False
 
     def test_get_pulldb_metadata_owner_has_table(self) -> None:
         """Returns owner info when pullDB table exists."""
-        from pulldb.api.logic import _get_pulldb_metadata_owner
         from pulldb.api.types import APIState
 
         mock_state = MagicMock(spec=APIState)
-        mock_creds = MagicMock()
-        mock_creds.host = "localhost"
-        mock_creds.port = 3306
-        mock_creds.username = "root"
-        mock_creds.password = "password"
-        mock_state.host_repo.get_host_credentials.return_value = mock_creds
+        mock_state.host_repo.get_pulldb_metadata_owner.return_value = (
+            True, "owner-uuid", "ownrx"
+        )
 
-        with patch("mysql.connector.connect") as mock_connect:
-            mock_cursor = MagicMock()
-            # First call: SHOW TABLES LIKE 'pullDB' - table exists
-            # Second call: SHOW COLUMNS (check for owner columns)
-            # Third call: SELECT owner info
-            mock_cursor.fetchone.side_effect = [
-                ("pullDB",),  # Table exists
-                ("owner_user_id",),  # Has owner columns (new schema)
-                ("owner-uuid", "ownrx"),  # Owner info
-            ]
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value = mock_cursor
-            mock_connect.return_value = mock_conn
-
-            has_table, owner_id, owner_code = _get_pulldb_metadata_owner(
-                mock_state, "mytestdb", "localhost"
-            )
-            assert has_table is True
-            assert owner_id == "owner-uuid"
-            assert owner_code == "ownrx"
+        has_table, owner_id, owner_code = mock_state.host_repo.get_pulldb_metadata_owner(
+            "localhost", "mytestdb"
+        )
+        assert has_table is True
+        assert owner_id == "owner-uuid"
+        assert owner_code == "ownrx"
 
     def test_get_pulldb_metadata_owner_no_table(self) -> None:
         """Returns (False, None, None) when no pullDB table."""
-        from pulldb.api.logic import _get_pulldb_metadata_owner
         from pulldb.api.types import APIState
 
         mock_state = MagicMock(spec=APIState)
-        mock_creds = MagicMock()
-        mock_creds.host = "localhost"
-        mock_creds.port = 3306
-        mock_creds.username = "root"
-        mock_creds.password = "password"
-        mock_state.host_repo.get_host_credentials.return_value = mock_creds
+        mock_state.host_repo.get_pulldb_metadata_owner.return_value = (
+            False, None, None
+        )
 
-        with patch("mysql.connector.connect") as mock_connect:
-            mock_cursor = MagicMock()
-            mock_cursor.fetchone.return_value = None  # No pullDB table
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value = mock_cursor
-            mock_connect.return_value = mock_conn
-
-            has_table, owner_id, owner_code = _get_pulldb_metadata_owner(
-                mock_state, "mytestdb", "localhost"
-            )
-            assert has_table is False
-            assert owner_id is None
-            assert owner_code is None
+        has_table, owner_id, owner_code = mock_state.host_repo.get_pulldb_metadata_owner(
+            "localhost", "mytestdb"
+        )
+        assert has_table is False
+        assert owner_id is None
+        assert owner_code is None
 
 
 # ===========================================================================

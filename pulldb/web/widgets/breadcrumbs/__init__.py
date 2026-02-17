@@ -149,6 +149,17 @@ BREADCRUMB_PATHS: dict[str, list[tuple[str, str | None]]] = {
         ("Hosts", "/web/admin/hosts"),
         ("Host", None),  # Replace with hostname via get_breadcrumbs(..., host="hostname")
     ],
+    "admin_overlord_companies": [
+        ("Dashboard", "/web/dashboard"),
+        ("Administration", "/web/admin"),
+        ("Companies", None),
+    ],
+    "admin_overlord_company_detail": [
+        ("Dashboard", "/web/dashboard"),
+        ("Administration", "/web/admin"),
+        ("Companies", "/web/admin/overlord/companies"),
+        ("Company", None),  # Replace via get_breadcrumbs(..., company="db_name")
+    ],
     "admin_api_keys": [
         ("Dashboard", "/web/dashboard"),
         ("Administration", "/web/admin"),

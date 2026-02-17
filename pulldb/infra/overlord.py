@@ -17,14 +17,23 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import datetime
-from enum import Enum
 from typing import TYPE_CHECKING, Any, Iterator
 
 import mysql.connector
 from mysql.connector.abstracts import MySQLConnectionAbstract
 
+from pulldb.domain.overlord import (
+    OverlordAlreadyClaimedError,
+    OverlordCompany,
+    OverlordConnectionError,
+    OverlordError,
+    OverlordExternalChangeError,
+    OverlordOwnershipError,
+    OverlordRowDeletedError,
+    OverlordSafetyError,
+    OverlordTracking,
+    OverlordTrackingStatus,
+)
 from pulldb.infra.secrets import CredentialResolver, MySQLCredentials
 
 if TYPE_CHECKING:
@@ -34,129 +43,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# Domain Models
-# =============================================================================
-
-
-class OverlordTrackingStatus(str, Enum):
-    """Status of overlord tracking record."""
-    
-    CLAIMED = "claimed"   # Record created, backup taken, not yet synced
-    SYNCED = "synced"     # Changes written to overlord.companies
-    RELEASED = "released"  # pullDB no longer managing this row
-
-
-@dataclass
-class OverlordTracking:
-    """Local tracking record for overlord.companies management."""
-    
-    id: int
-    database_name: str
-    company_id: int | None
-    job_id: str
-    job_target: str
-    created_by: str
-    status: OverlordTrackingStatus
-    row_existed_before: bool
-    previous_dbhost: str | None
-    previous_dbhost_read: str | None
-    previous_snapshot: dict[str, Any] | None
-    current_dbhost: str | None
-    current_dbhost_read: str | None
-    current_subdomain: str | None
-    created_at: datetime | None
-    updated_at: datetime | None
-    released_at: datetime | None
-
-
-@dataclass
-class OverlordCompany:
-    """Row from overlord.companies table.
-    
-    Note: This adapts to the actual schema of the external companies table.
-    We read whatever columns exist and provide safe defaults for optional ones.
-    The actual schema has: companyID, company, owner, brandingPrefix, brandingLogo, database
-    """
-    
-    company_id: int
-    database: str
-    # Core fields from actual schema
-    company_name: str | None = None  # 'company' column
-    owner: str | None = None
-    branding_prefix: str | None = None
-    branding_logo: int | None = None
-    # Extended fields (may not exist in all installations)
-    db_host: str | None = None
-    db_host_read: str | None = None
-    subdomain: str | None = None
-    visible: int | None = None
-    
-    @classmethod
-    def from_row(cls, row: dict[str, Any]) -> OverlordCompany:
-        """Create from database row.
-        
-        Handles varying schemas by using .get() for all optional fields.
-        Only companyID is required.
-        """
-        return cls(
-            company_id=row["companyID"],
-            database=row.get("database", ""),
-            company_name=row.get("company"),
-            owner=row.get("owner"),
-            branding_prefix=row.get("brandingPrefix"),
-            branding_logo=row.get("brandingLogo"),
-            # Extended fields - may not exist
-            db_host=row.get("dbHost"),
-            db_host_read=row.get("dbHostRead"),
-            subdomain=row.get("subdomain"),
-            visible=row.get("visible"),
-        )
-    
-    @property
-    def name(self) -> str:
-        """Backward-compatible name property."""
-        return self.company_name or self.database or f"Company #{self.company_id}"
-
-
-# =============================================================================
-# Errors
-# =============================================================================
-
-
-class OverlordError(Exception):
-    """Base error for overlord operations."""
-    pass
-
-
-class OverlordConnectionError(OverlordError):
-    """Failed to connect to overlord database."""
-    pass
-
-
-class OverlordOwnershipError(OverlordError):
-    """Operation denied - no ownership of this database."""
-    pass
-
-
-class OverlordAlreadyClaimedError(OverlordError):
-    """Database already claimed by another job."""
-    pass
-
-
-class OverlordSafetyError(OverlordError):
-    """Safety check failed - operation aborted."""
-    pass
-
-
-class OverlordExternalChangeError(OverlordError):
-    """External modification detected - row changed outside pullDB."""
-    pass
-
-
-class OverlordRowDeletedError(OverlordError):
-    """Row no longer exists - was deleted externally."""
-    pass
+# Re-export domain types for backward compatibility
+__all__ = [
+    "OverlordAlreadyClaimedError",
+    "OverlordCompany",
+    "OverlordConnection",
+    "OverlordConnectionError",
+    "OverlordError",
+    "OverlordExternalChangeError",
+    "OverlordOwnershipError",
+    "OverlordRepository",
+    "OverlordRowDeletedError",
+    "OverlordSafetyError",
+    "OverlordTracking",
+    "OverlordTrackingRepository",
+    "OverlordTrackingStatus",
+]
 
 
 # =============================================================================
@@ -377,16 +279,25 @@ class OverlordConnection:
 _VALID_TABLES: frozenset[str] = frozenset({"companies"})
 
 # Allowlist of valid column names for SQL safety
-# These are the columns we're allowed to read/write in the companies table
+# These are ALL columns in the overlord.companies table (27 total)
 _VALID_COLUMNS: frozenset[str] = frozenset({
     # Core identification
     "companyID", "database", "company", "name",
-    # Routing fields (what we actually modify)
+    # Routing fields
     "dbHost", "dbHostRead", "dbServer", "subdomain",
+    "dbHostDynamicRead", "enableDynamicRead", "dbHostApiRead",
     # Metadata fields
-    "owner", "visible", "brandingPrefix", "brandingLogo",
-    # Contact fields (read-only, may exist)
-    "adminContact", "adminPhone", "adminEmail", "billingEmail", "billingName",
+    "owner", "visible", "order",
+    # Branding fields
+    "brandingPrefix", "brandingLogo", "logo", "branding",
+    "legacyBranding", "exclusiveDomain", "mascot",
+    # Contact & billing fields
+    "adminContact", "adminPhone", "adminEmail",
+    "billingEmail", "billingName", "sendTRInvoice",
+    # Franchise fields
+    "canFranchise", "franchiseName", "franchiseLogo",
+    # Operations
+    "blockPrtDate",
 })
 
 
@@ -562,6 +473,171 @@ class OverlordRepository:
             
             if affected > 0:
                 logger.info(f"Deleted overlord company: database={database_name}")
+            return affected > 0
+    
+    def get_all(self) -> list[dict[str, Any]]:
+        """Get all company records from the overlord table.
+        
+        Returns all rows as dictionaries. For tables < 15k rows,
+        this is the preferred approach — pagination/filtering/sorting
+        happens in Python to allow cross-database enrichment with
+        local tracking data.
+        
+        Returns:
+            List of all rows as dicts
+        """
+        _validate_table_name(self._table)
+        with self._conn.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(f"SELECT * FROM {self._table} ORDER BY `companyID` ASC")
+            rows = cursor.fetchall()
+            cursor.close()
+            return [dict(r) for r in rows]
+
+    def get_paginated(
+        self,
+        *,
+        filters: dict[str, str] | None = None,
+        sort_column: str = "companyID",
+        sort_dir: str = "ASC",
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Get paginated company records with SQL-side filtering and sorting.
+
+        Args:
+            filters: Column→value substring filters (applied as ``LIKE %val%``).
+            sort_column: Column to sort by (validated against allowlist).
+            sort_dir: ``ASC`` or ``DESC``.
+            offset: Number of rows to skip.
+            limit: Maximum rows to return.
+
+        Returns:
+            Tuple of ``(rows, total_count)`` where *total_count* reflects
+            the filtered (pre-pagination) row count.
+        """
+        _validate_table_name(self._table)
+
+        # Validate sort direction
+        sort_dir = sort_dir.upper()
+        if sort_dir not in ("ASC", "DESC"):
+            sort_dir = "ASC"
+
+        # Build WHERE clause from filters
+        where_clauses: list[str] = []
+        params: list[Any] = []
+        if filters:
+            for col, val in filters.items():
+                # Only allow alphanumeric + underscore column names
+                if not col.replace("_", "").isalnum():
+                    continue
+                where_clauses.append(f"`{col}` LIKE %s")
+                params.append(f"%{val}%")
+
+        where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+        # Validate sort_column — use companyID as fallback for unknown columns
+        if not sort_column.replace("_", "").isalnum():
+            sort_column = "companyID"
+
+        with self._conn.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+
+            # Count query
+            cursor.execute(
+                f"SELECT COUNT(*) AS cnt FROM {self._table}{where_sql}",
+                params,
+            )
+            count_row = cursor.fetchone()
+            total = int(count_row["cnt"]) if count_row else 0  # type: ignore[index]
+
+            # Data query
+            cursor.execute(
+                f"SELECT * FROM {self._table}{where_sql} "
+                f"ORDER BY `{sort_column}` {sort_dir} LIMIT %s OFFSET %s",
+                [*params, limit, offset],
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+            return [dict(r) for r in rows], total
+
+    def get_by_id(self, company_id: int) -> dict[str, Any] | None:
+        """Get a single company record by companyID.
+        
+        Args:
+            company_id: The companyID primary key
+            
+        Returns:
+            Row as dict, or None if not found
+        """
+        _validate_table_name(self._table)
+        with self._conn.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                f"SELECT * FROM {self._table} WHERE `companyID` = %s",
+                (company_id,)
+            )
+            row = cursor.fetchone()
+            cursor.close()
+            return dict(row) if row else None
+    
+    def update_by_id(self, company_id: int, data: dict[str, Any]) -> bool:
+        """Update a company record by companyID.
+        
+        Args:
+            company_id: The companyID primary key
+            data: Column name -> value mapping (what to update)
+            
+        Returns:
+            True if row was updated, False if not found
+            
+        Raises:
+            ValueError: If any column name is not in the allowlist
+        """
+        if not data:
+            return False
+        
+        _validate_table_name(self._table)
+        columns = list(data.keys())
+        _validate_column_names(columns)
+        
+        set_clauses = ", ".join([f"`{k}` = %s" for k in columns])
+        values = list(data.values()) + [company_id]
+        
+        with self._conn.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"UPDATE {self._table} SET {set_clauses} WHERE `companyID` = %s",
+                tuple(values)
+            )
+            affected = cursor.rowcount
+            cursor.close()
+            
+            if affected > 0:
+                logger.info(f"Updated overlord company by ID: companyID={company_id}")
+            return affected > 0
+    
+    def delete_by_id(self, company_id: int) -> bool:
+        """Delete a company record by companyID.
+        
+        Args:
+            company_id: The companyID primary key
+            
+        Returns:
+            True if row was deleted, False if not found
+        """
+        _validate_table_name(self._table)
+        with self._conn.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"DELETE FROM {self._table} WHERE `companyID` = %s",
+                (company_id,)
+            )
+            affected = cursor.rowcount
+            cursor.close()
+            
+            if affected > 0:
+                logger.info(f"Deleted overlord company by ID: companyID={company_id}")
             return affected > 0
     
     def find_by_subdomain(
@@ -845,6 +921,30 @@ class OverlordTrackingRepository:
             rows = cursor.fetchall()
             cursor.close()
             return [self._row_to_tracking(row) for row in rows]
+
+    def delete_by_database_name(self, database_name: str) -> bool:
+        """Hard-delete a tracking record by database name.
+
+        Used for orphan cleanup when the remote overlord company is removed.
+
+        Args:
+            database_name: Database name to remove.
+
+        Returns:
+            True if a row was deleted, False if not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM overlord_tracking WHERE database_name = %s",
+                (database_name,),
+            )
+            affected = cursor.rowcount
+            conn.commit()
+            cursor.close()
+            if affected > 0:
+                logger.info("Deleted orphaned tracking record: %s", database_name)
+            return affected > 0
     
     def _row_to_tracking(self, row: dict[str, Any]) -> OverlordTracking:
         """Convert database row to OverlordTracking."""

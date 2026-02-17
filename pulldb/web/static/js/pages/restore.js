@@ -97,19 +97,84 @@
         return d.toISOString().split('T')[0];
     }
 
+    function getTodayDate() {
+        return new Date().toISOString().split('T')[0];
+    }
+
+    /**
+     * Toggle visibility of the "date-to" input and separator based on date mode.
+     * @param {string} prefix - '' for customer tab, 'qa-' for QA tab
+     */
+    function updateDateModeUI(prefix) {
+        const modeSelect = $(prefix + 'date-mode');
+        const dateFrom = $(prefix + 'date-from');
+        const dateTo = $(prefix + 'date-to');
+        const sep = $(prefix + 'date-range-sep');
+        if (!modeSelect) return;
+
+        const mode = modeSelect.value;
+        if (mode === 'between') {
+            show(dateTo);
+            show(sep);
+            // Default the "to" date to today if empty
+            if (dateTo && !dateTo.value) {
+                dateTo.value = getTodayDate();
+            }
+        } else {
+            hide(dateTo);
+            hide(sep);
+            // Clear stale date-to value when leaving "between" mode
+            if (dateTo) dateTo.value = '';
+        }
+
+        // Smart default: adjust date-from based on mode
+        if (dateFrom) {
+            if (mode === 'on_or_before' || mode === 'on_date') {
+                // Default to today — user wants to pick a specific cutoff/date
+                if (dateFrom.value === getDefaultDate()) {
+                    dateFrom.value = getTodayDate();
+                }
+            } else if (mode === 'on_or_after' || mode === 'between') {
+                // Default to 7 days ago — user wants recent window
+                if (dateFrom.value === getTodayDate()) {
+                    dateFrom.value = getDefaultDate();
+                }
+            }
+        }
+    }
+
     function initDatePicker() {
         const dateInput = $('date-from');
+        const dateToInput = $('date-to');
         const resetBtn = $('reset-date-btn');
+        const modeSelect = $('date-mode');
         
         if (!dateInput) return;
         
         // Set default to 7 days ago
         dateInput.value = getDefaultDate();
         
+        // Initialize date mode UI
+        updateDateModeUI('');
+
+        // Mode selector change
+        if (modeSelect) {
+            modeSelect.addEventListener('change', () => {
+                updateDateModeUI('');
+                if (selectedCustomer) {
+                    clearBackupSelection();
+                    loadBackups();
+                }
+            });
+        }
+        
         // Reset button
         if (resetBtn) {
             resetBtn.addEventListener('click', () => {
                 dateInput.value = getDefaultDate();
+                if (modeSelect) modeSelect.value = 'on_or_after';
+                if (dateToInput) dateToInput.value = '';
+                updateDateModeUI('');
                 if (selectedCustomer) {
                     loadBackups();
                 }
@@ -126,6 +191,16 @@
                 loadBackups();
             }
         });
+
+        // Reload backups when date-to changes
+        if (dateToInput) {
+            dateToInput.addEventListener('change', () => {
+                if (selectedCustomer) {
+                    clearBackupSelection();
+                    loadBackups();
+                }
+            });
+        }
     }
 
     // =============================================================================
@@ -364,12 +439,27 @@
         
         // Build URL
         const dateInput = $('date-from');
+        const dateToInput = $('date-to');
+        const modeSelect = $('date-mode');
         const dateValue = dateInput ? dateInput.value : '';
         const dateFrom = dateValue ? dateValue.replace(/-/g, '') : '';
+        const dateMode = modeSelect ? modeSelect.value : 'on_or_after';
         
         let url = `/web/restore/search-backups?customer=${encodeURIComponent(selectedCustomer)}&env=prod`;
         if (dateFrom) {
             url += `&date_from=${dateFrom}`;
+        }
+        url += `&date_mode=${dateMode}`;
+        
+        // Include date_to for "between" mode — require it before searching
+        if (dateMode === 'between') {
+            if (!dateToInput || !dateToInput.value) {
+                hide($('backup-loading'));
+                show($('backup-waiting'));
+                return;
+            }
+            const dateTo = dateToInput.value.replace(/-/g, '');
+            url += `&date_to=${dateTo}`;
         }
         
         // Use HTMX to load backups
@@ -683,11 +773,25 @@
         if (qaCount) qaCount.textContent = 'Loading...';
         
         const qaDateInput = $('qa-date-from');
+        const qaDateToInput = $('qa-date-to');
+        const qaModeSelect = $('qa-date-mode');
         const dateValue = qaDateInput ? qaDateInput.value : '';
         const dateFrom = dateValue ? dateValue.replace(/-/g, '') : '';
+        const dateMode = qaModeSelect ? qaModeSelect.value : 'on_or_after';
         
         let url = '/web/restore/search-backups?customer=qatemplate&env=prod';
         if (dateFrom) url += `&date_from=${dateFrom}`;
+        url += `&date_mode=${dateMode}`;
+        
+        // Require date_to for "between" mode before searching
+        if (dateMode === 'between') {
+            if (!qaDateToInput || !qaDateToInput.value) {
+                if (qaCount) qaCount.textContent = 'Select end date';
+                return;
+            }
+            const dateTo = qaDateToInput.value.replace(/-/g, '');
+            url += `&date_to=${dateTo}`;
+        }
         
         htmx.ajax('GET', url, { target: '#qa-backup-list' }).then(() => {
             const rows = qaList.querySelectorAll('tbody tr');
@@ -697,23 +801,52 @@
     
     function initQaDatePicker() {
         const dateInput = $('qa-date-from');
+        const dateToInput = $('qa-date-to');
         const resetBtn = $('qa-reset-date-btn');
+        const modeSelect = $('qa-date-mode');
         
         if (!dateInput) return;
         
         dateInput.value = getDefaultDate();
+        updateDateModeUI('qa-');
+        
+        // Mode selector change
+        if (modeSelect) {
+            modeSelect.addEventListener('change', () => {
+                updateDateModeUI('qa-');
+                if (isQaMode) {
+                    clearQaBackupSelection();
+                    loadQaBackups();
+                }
+            });
+        }
         
         if (resetBtn) {
             resetBtn.addEventListener('click', () => {
                 dateInput.value = getDefaultDate();
+                if (modeSelect) modeSelect.value = 'on_or_after';
+                if (dateToInput) dateToInput.value = '';
+                updateDateModeUI('qa-');
                 if (isQaMode) loadQaBackups();
             });
         }
         
         dateInput.addEventListener('change', () => {
             if (!dateInput.value) dateInput.value = getDefaultDate();
-            if (isQaMode) loadQaBackups();
+            if (isQaMode) {
+                clearQaBackupSelection();
+                loadQaBackups();
+            }
         });
+
+        if (dateToInput) {
+            dateToInput.addEventListener('change', () => {
+                if (isQaMode) {
+                    clearQaBackupSelection();
+                    loadQaBackups();
+                }
+            });
+        }
     }
     
     // QA backup selection
@@ -1060,14 +1193,24 @@
     // Force re-initialization on back/forward navigation (bfcache)
     window.addEventListener('pageshow', (event) => {
         if (event.persisted) {
-            // Page was restored from bfcache - reset dates
+            // Page was restored from bfcache - reset dates and modes
             const dateInput = $('date-from');
+            const dateToInput = $('date-to');
+            const modeSelect = $('date-mode');
             const qaDateInput = $('qa-date-from');
+            const qaDateToInput = $('qa-date-to');
+            const qaModeSelect = $('qa-date-mode');
             const defaultDate = new Date();
             defaultDate.setDate(defaultDate.getDate() - 7);
             const defaultStr = defaultDate.toISOString().split('T')[0];
             if (dateInput) dateInput.value = defaultStr;
+            if (dateToInput) dateToInput.value = '';
+            if (modeSelect) modeSelect.value = 'on_or_after';
             if (qaDateInput) qaDateInput.value = defaultStr;
+            if (qaDateToInput) qaDateToInput.value = '';
+            if (qaModeSelect) qaModeSelect.value = 'on_or_after';
+            updateDateModeUI('');
+            updateDateModeUI('qa-');
         }
     });
     

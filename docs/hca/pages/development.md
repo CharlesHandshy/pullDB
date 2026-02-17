@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 1.0.8 | **Last Updated**: January 2026
+> **Version**: 1.1.0 | **Last Updated**: February 2026
 
 This guide covers setting up a development environment, coding standards, testing, and contributing to pullDB.
 

@@ -60,6 +60,10 @@
                     {{ icon('hosts', size='20') }}
                     <span class="nav-label">Hosts</span>
                 </a>
+                <a href="/web/admin/overlord/companies" class="nav-link {% if '/web/admin/overlord/companies' in request.url.path %}active{% endif %}" title="Companies">
+                    {{ icon('layers', size='20') }}
+                    <span class="nav-label">Companies</span>
+                </a>
                 <a href="/web/admin/settings" class="nav-link {% if request.url.path == '/web/admin/settings' %}active{% endif %}" title="Settings">
                     {{ icon('settings', size='20') }}
                     <span class="nav-label">Settings</span>

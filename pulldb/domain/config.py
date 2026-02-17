@@ -142,8 +142,9 @@ class Config:
     myloader_binary: str = "/opt/pulldb.service/bin/myloader-0.21.1-1"
     myloader_default_args: tuple[str, ...] = (
         "--max-threads-for-post-actions=1",
-        "--rows=100000",
-        "--queries-per-transaction=5000",
+        "--max-threads-for-index-creation=1",
+        "--rows=50000",
+        "--queries-per-transaction=1000",
         "--optimize-keys=AFTER_IMPORT_PER_TABLE",
         "--checksum=warn",
         "--retry-count=20",
@@ -152,6 +153,7 @@ class Config:
         "--drop-table",
         "--verbose=3",
         "--max-threads-per-table=1",
+        "--throttle=Threads_running=6",
     )
     myloader_extra_args: tuple[str, ...] = ()
     myloader_timeout_seconds: float = 86400.0

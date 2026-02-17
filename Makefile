@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PIP ?= pip
 
-.PHONY: all wheel client server server-signed client-signed all-signed clean help dev-install changes
+.PHONY: all wheel client server server-signed client-signed all-signed clean help dev-install changes lint
 
 help:
 	@echo "pullDB Build System"
@@ -87,3 +87,10 @@ changes:
 
 changes-diff:
 	@./scripts/git-changes.sh --diff
+
+# Lint — run ruff + HCA layer enforcement
+lint:
+	@echo "=== Ruff ==="
+	ruff check pulldb/
+	@echo "=== import-linter (HCA) ==="
+	lint-imports

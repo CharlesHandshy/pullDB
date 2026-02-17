@@ -1748,7 +1748,7 @@ async def api_jobs_paginated(
     if view == "active" and hasattr(state, "overlord_manager") and state.overlord_manager:
         try:
             # Get all active overlord tracking records and extract their job IDs
-            active_tracking = state.overlord_manager._tracking_repo.list_active()
+            active_tracking = state.overlord_manager.tracking_repo.list_active()
             overlord_tracking_job_ids = {t.job_id for t in active_tracking}
         except Exception:
             pass  # Overlord not configured or error - leave empty
@@ -2584,8 +2584,21 @@ async def api_resubmit_job(
         JSON with new_job_id on success, or error details on failure.
     """
     from fastapi.concurrency import run_in_threadpool
-    from pulldb.api.logic import enqueue_job
-    from pulldb.api.schemas import JobRequest
+    from pulldb.domain.errors import (
+        DatabaseProtectionError,
+        DuplicateJobError,
+        EnqueueBackupNotFoundError,
+        EnqueueError,
+        EnqueueValidationError,
+        HostUnavailableError,
+        HostUnauthorizedError,
+        JobLockedError,
+        JobNotFoundError,
+        RateLimitError,
+        UserDisabledError,
+    )
+    from pulldb.domain.schemas import JobRequest
+    from pulldb.domain.services.enqueue import enqueue_job
     
     if not hasattr(state, "job_repo") or not state.job_repo:
         return JSONResponse(content={"detail": "Job repository unavailable"}, status_code=503)
@@ -2656,25 +2669,38 @@ async def api_resubmit_job(
     # Add audit trail to new job
     # We'll inject resubmit_of_job_id into the options after creation
     try:
-        response = await run_in_threadpool(enqueue_job, state, job_request)
+        result = await run_in_threadpool(enqueue_job, state, job_request)
         
         # Update the new job's options_json with audit trail
         await run_in_threadpool(
             _add_resubmit_audit_trail,
             state.job_repo,
-            response.job_id,
+            result.job.id,
             original_job.id,
         )
         
         return JSONResponse(content={
             "success": True,
-            "new_job_id": response.job_id,
-            "target": response.target,
+            "new_job_id": result.job.id,
+            "target": result.job.target,
             "message": f"Job resubmitted successfully as {original_job.owner_username}",
         }, status_code=201)
         
-    except HTTPException as e:
-        return JSONResponse(content={"detail": e.detail}, status_code=e.status_code)
+    except EnqueueError as e:
+        _error_status_map: dict[type[EnqueueError], int] = {
+            EnqueueValidationError: 400,
+            HostUnauthorizedError: 403,
+            UserDisabledError: 403,
+            JobNotFoundError: 404,
+            EnqueueBackupNotFoundError: 404,
+            DuplicateJobError: 409,
+            DatabaseProtectionError: 409,
+            JobLockedError: 409,
+            RateLimitError: 429,
+            HostUnavailableError: 503,
+        }
+        status = _error_status_map.get(type(e), 500)
+        return JSONResponse(content={"detail": e.detail}, status_code=status)
     except Exception as e:
         logger.exception("Resubmit failed for job %s", job_id)
         return JSONResponse(content={"detail": str(e)}, status_code=500)

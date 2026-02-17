@@ -4,7 +4,7 @@
 > **Last Audited:** 2026-01-31  
 > **Total Pages:** 14 (indexed in search-index.json)  
 > **Base URL:** http://localhost:8000/web/help/
-> **Version:** 1.0.8
+> **Version:** 1.1.0
 
 ## Page Inventory
 

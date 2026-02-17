@@ -1,8 +1,8 @@
 {
-  "version": "1.0.8",
+  "version": "1.1.0",
   "last_updated": "2026-01-31",
   "package": {
-    "wheel": "pulldb-1.0.8-py3-none-any.whl",
+    "wheel": "pulldb-1.1.0-py3-none-any.whl",
     "myloader": "myloader-0.21.1-1",
     "schema_files": 17,
     "systemd_units": 6,
@@ -537,6 +537,51 @@
     "backup_analysis": {
       "cli": "pulldb/cli/backup_commands.py",
       "commands": ["backups list", "backups search"]
+    }
+  },
+  "hca_remediation": {
+    "overlord_domain_models": {
+      "file": "pulldb/domain/overlord.py",
+      "hca_layer": "entities",
+      "exports": ["OverlordTrackingStatus", "OverlordTracking", "OverlordCompany", "OverlordError", "OverlordConnectionError", "OverlordNotEnabledError", "OverlordOwnershipError", "OverlordDuplicateError", "OverlordSyncError"],
+      "notes": "Extracted from pulldb/infra/overlord.py in Phase 4"
+    },
+    "overlord_routes": {
+      "file": "pulldb/web/features/admin/overlord_routes.py",
+      "hca_layer": "pages",
+      "routes": 9,
+      "helpers": ["_get_overlord_repos", "_text_filter_match", "_enrich_companies_with_tracking"],
+      "notes": "Extracted from admin/routes.py in Phase 2 (~700 lines)"
+    },
+    "enqueue_service": {
+      "file": "pulldb/domain/services/enqueue.py",
+      "hca_layer": "entities",
+      "error_subclasses": 10,
+      "notes": "Phase 3: typed error subclasses; Phase 5: database checks via HostRepository protocol"
+    },
+    "api_logic_wrapper": {
+      "file": "pulldb/api/logic.py",
+      "hca_layer": "pages",
+      "status": "thin wrapper",
+      "notes": "_ERROR_STATUS_MAP converts domain EnqueueError subclasses to HTTP status codes"
+    },
+    "domain_schemas": {
+      "file": "pulldb/domain/schemas.py",
+      "hca_layer": "entities",
+      "exports": ["JobRequest"],
+      "notes": "Job request schema used by enqueue service"
+    },
+    "request_scoped_cache": {
+      "file": "pulldb/web/dependencies.py",
+      "class": "CachedOverlordData",
+      "dependency": "OverlordCache",
+      "notes": "Phase 6b: request-scoped cache for overlord get_all() — avoids 3x DB calls per request"
+    },
+    "host_repo_protocol_additions": {
+      "file": "pulldb/domain/interfaces.py",
+      "methods_added": ["database_exists", "get_pulldb_metadata_owner"],
+      "implementation": "pulldb/infra/mysql_hosts.py",
+      "notes": "Phase 5: moved raw MySQL from enqueue.py to HostRepository protocol (mysql.py decomposed into sub-modules)"
     }
   },
   "myloader_resume_recovery": {
