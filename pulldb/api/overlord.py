@@ -547,7 +547,7 @@ def create_overlord_router(
             _optional_fields = [
                 "name", "dbHostRead", "dbServer",
                 "dbHostDynamicRead", "enableDynamicRead", "dbHostApiRead",
-                "company", "owner", "visible", "order",
+                "owner", "visible", "order",
                 "brandingPrefix", "brandingLogo", "logo", "branding",
                 "legacyBranding", "exclusiveDomain", "mascot",
                 "adminContact", "adminPhone", "adminEmail",
@@ -636,7 +636,7 @@ def create_overlord_router(
             _optional_fields = [
                 "name", "dbHostRead", "dbServer",
                 "dbHostDynamicRead", "enableDynamicRead", "dbHostApiRead",
-                "company", "owner", "visible", "order",
+                "owner", "visible", "order",
                 "brandingPrefix", "brandingLogo", "logo", "branding",
                 "legacyBranding", "exclusiveDomain", "mascot",
                 "adminContact", "adminPhone", "adminEmail",
