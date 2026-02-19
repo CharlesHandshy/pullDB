@@ -345,6 +345,35 @@ class OverlordRepository:
         _validate_table_name(table)
         self._conn = connection
         self._table = table
+        self._real_columns: frozenset[str] | None = None  # lazily discovered
+
+    def _get_real_columns(self) -> frozenset[str]:
+        """Discover actual column names from the external table.
+
+        Cached after the first call so we only run SHOW COLUMNS once
+        per OverlordRepository lifetime.
+        """
+        if self._real_columns is not None:
+            return self._real_columns
+
+        with self._conn.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"SHOW COLUMNS FROM {self._table}")
+            cols = frozenset(row[0] for row in cursor.fetchall())
+            cursor.close()
+
+        self._real_columns = cols
+        logger.debug("Discovered %d columns in %s: %s", len(cols), self._table, cols)
+        return cols
+
+    def _filter_to_real_columns(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Remove keys that don't exist as columns in the real table."""
+        real = self._get_real_columns()
+        filtered = {k: v for k, v in data.items() if k in real}
+        dropped = set(data.keys()) - set(filtered.keys())
+        if dropped:
+            logger.debug("Dropped non-existent columns: %s", dropped)
+        return filtered
     
     def get_by_database(self, database_name: str) -> OverlordCompany | None:
         """Get company record by database name.
@@ -423,6 +452,7 @@ class OverlordRepository:
         Raises:
             ValueError: If any column name is not in the allowlist
         """
+        data = self._filter_to_real_columns(data)
         columns = list(data.keys())
         _validate_column_names(columns)  # Security: validate before building SQL
         
@@ -453,6 +483,10 @@ class OverlordRepository:
         Raises:
             ValueError: If any column name is not in the allowlist
         """
+        if not data:
+            return False
+        
+        data = self._filter_to_real_columns(data)
         if not data:
             return False
         
@@ -618,6 +652,10 @@ class OverlordRepository:
         Raises:
             ValueError: If any column name is not in the allowlist
         """
+        if not data:
+            return False
+        
+        data = self._filter_to_real_columns(data)
         if not data:
             return False
         
