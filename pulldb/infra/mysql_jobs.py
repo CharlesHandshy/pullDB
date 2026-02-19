@@ -113,8 +113,8 @@ class JobRepository:
                     INSERT INTO jobs
                     (id, owner_user_id, owner_username, owner_user_code, target,
                      staging_name, dbhost, status, submitted_at, options_json,
-                     retry_count, custom_target)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(6), %s, %s, %s)
+                     retry_count, custom_target, origin)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(6), %s, %s, %s, %s)
                     """,
                     (
                         job_id,
@@ -128,6 +128,7 @@ class JobRepository:
                         json.dumps(job.options_json) if job.options_json else None,
                         job.retry_count,
                         1 if job.custom_target else 0,
+                        job.origin,
                     ),
                 )
                 conn.commit()
@@ -141,6 +142,105 @@ class JobRepository:
                         f"already has an active job"
                     ) from e
                 raise
+
+    def create_claimed_job(
+        self,
+        *,
+        job_id: str,
+        owner_user_id: str,
+        owner_username: str,
+        owner_user_code: str,
+        target: str,
+        dbhost: str,
+        origin: str,
+    ) -> str:
+        """Create a synthetic deployed job for an externally-managed database.
+
+        Used by Database Discovery to record that a database on a target host
+        is now tracked by pullDB, without going through the restore pipeline.
+        The job is inserted directly into 'deployed' status.
+
+        The staging_name is set to '{target}_claimed' as a sentinel value —
+        no staging database is ever created for claimed jobs.
+
+        Args:
+            job_id: Pre-generated UUID for the job.
+            owner_user_id: UUID of the user who owns this database.
+            owner_username: Username of the owner.
+            owner_user_code: 6-char user code of the owner.
+            target: Database name on the target host.
+            dbhost: Target MySQL host where the database lives.
+            origin: How the job was created ('claim' or 'assign').
+
+        Returns:
+            job_id of the created job.
+
+        Raises:
+            ValueError: If target already has a deployed job (atomic check),
+                or if origin is not 'claim' or 'assign'.
+        """
+        if origin not in ("claim", "assign"):
+            raise ValueError(f"origin must be 'claim' or 'assign', got '{origin}'")
+
+        retention_days = _SettingsRepo(self.pool).get_default_retention_days()
+        staging_name = f"{target}_claimed"
+
+        with self.pool.connection() as conn:
+            cursor = TypedTupleCursor(conn.cursor())
+            # Use INSERT ... SELECT with NOT EXISTS to atomically prevent
+            # duplicate deployed jobs for the same target+host. The
+            # active_target_key virtual column only covers queued/running/
+            # canceling status, so deployed jobs have no unique constraint.
+            # This atomic pattern eliminates the TOCTOU gap between the
+            # application-level has_any_deployed_job_for_target() check and
+            # the INSERT.
+            cursor.execute(
+                """
+                INSERT INTO jobs
+                (id, owner_user_id, owner_username, owner_user_code, target,
+                 staging_name, dbhost, status, submitted_at, completed_at,
+                 expires_at, options_json, retry_count, custom_target,
+                 can_cancel, origin)
+                SELECT %s, %s, %s, %s, %s, %s, %s, 'deployed',
+                    UTC_TIMESTAMP(6), UTC_TIMESTAMP(6),
+                    DATE_ADD(UTC_TIMESTAMP(6), INTERVAL %s DAY),
+                    NULL, 0, 0, FALSE, %s
+                FROM DUAL
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM jobs
+                    WHERE target = %s AND dbhost = %s
+                      AND status = 'deployed'
+                      AND superseded_at IS NULL
+                      AND db_dropped_at IS NULL
+                )
+                """,
+                (
+                    job_id,
+                    owner_user_id,
+                    owner_username,
+                    owner_user_code,
+                    target,
+                    staging_name,
+                    dbhost,
+                    retention_days,
+                    origin,
+                    target,
+                    dbhost,
+                ),
+            )
+            if cursor.rowcount == 0:
+                conn.rollback()
+                raise ValueError(
+                    f"Target '{target}' on host '{dbhost}' "
+                    f"already has a deployed job"
+                )
+            conn.commit()
+            self.append_job_event(
+                job_id,
+                "claimed" if origin == "claim" else "assigned",
+                f"Database tracked via discovery ({origin})",
+            )
+            return job_id
 
     def get_next_queued_job(self) -> Job | None:
         """Get next queued job in FIFO order.
@@ -221,7 +321,7 @@ class JobRepository:
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code, j.target,
                        j.staging_name, j.dbhost, j.status, j.submitted_at, j.started_at,
                        j.completed_at, j.options_json, j.retry_count, j.error_detail, j.worker_id,
-                       j.custom_target
+                       j.custom_target, j.origin
                 FROM jobs j
                 JOIN db_hosts h ON j.dbhost = h.hostname
                 WHERE j.status = 'queued'
@@ -285,6 +385,7 @@ class JobRepository:
                 error_detail=job.error_detail,
                 worker_id=worker_id,  # Reflect the worker that claimed this job
                 custom_target=job.custom_target,
+                origin=job.origin,
             )
 
     def get_job_by_id(self, job_id: str) -> Job | None:
@@ -305,7 +406,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail, worker_id,
                        staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE id = %s
                 """,
@@ -339,7 +440,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail, worker_id,
                        staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE id LIKE %s
                 ORDER BY submitted_at DESC
@@ -905,7 +1006,7 @@ class JobRepository:
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
                        j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
-                       j.error_detail, j.worker_id, j.custom_target
+                       j.error_detail, j.worker_id, j.custom_target, j.origin
                 FROM jobs j
                 WHERE j.status = 'deleting'
                   AND (j.started_at IS NULL 
@@ -982,6 +1083,7 @@ class JobRepository:
                 error_detail=job.error_detail,
                 worker_id=worker_id,
                 custom_target=job.custom_target,
+                origin=job.origin,
             )
 
     def mark_job_delete_failed(
@@ -1061,7 +1163,7 @@ class JobRepository:
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
                        j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
-                       j.error_detail, j.worker_id, j.custom_target
+                       j.error_detail, j.worker_id, j.custom_target, j.origin
                 FROM jobs j
                 WHERE j.status = 'deleting'
                   AND j.started_at < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL %s HOUR)
@@ -1189,7 +1291,7 @@ class JobRepository:
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
                        j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
-                       j.error_detail, j.worker_id, j.custom_target
+                       j.error_detail, j.worker_id, j.custom_target, j.origin
                 FROM jobs j
                 LEFT JOIN (
                     SELECT job_id, MAX(logged_at) AS last_logged_at
@@ -1653,7 +1755,7 @@ class JobRepository:
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
                        j.error_detail, j.expires_at, j.locked_at, j.locked_by,
                        j.db_dropped_at, j.superseded_at, j.superseded_by_job_id,
-                       j.can_cancel, j.cancel_requested_at, j.custom_target
+                       j.can_cancel, j.cancel_requested_at, j.custom_target, j.origin
                 FROM jobs j
                 WHERE (
                     j.status IN ('queued', 'running', 'canceling', 'deployed')
@@ -1723,7 +1825,7 @@ class JobRepository:
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
                        j.error_detail, j.expires_at, j.locked_at, j.locked_by,
                        j.db_dropped_at, j.superseded_at, j.superseded_by_job_id,
-                       j.can_cancel, j.cancel_requested_at, j.custom_target
+                       j.can_cancel, j.cancel_requested_at, j.custom_target, j.origin
                 FROM jobs j
                 WHERE j.status IN ('failed', 'canceled', 'deleted', 'deleting', 'expired', 'complete', 'superseded')
             """
@@ -1794,7 +1896,7 @@ class JobRepository:
                        can_cancel, cancel_requested_at,
                        expires_at, locked_at, locked_by, db_dropped_at,
                        superseded_at, superseded_by_job_id, staging_cleaned_at,
-                       custom_target
+                       custom_target, origin
                 FROM jobs
                 WHERE 1=1
             """
@@ -2786,6 +2888,8 @@ class JobRepository:
             can_cancel=row.get("can_cancel", True),
             # Custom target tracking
             custom_target=bool(row.get("custom_target", 0)),
+            # Job origin tracking (Database Discovery)
+            origin=row.get("origin", "restore"),
             # Retention & lifecycle fields
             expires_at=row.get("expires_at"),
             locked_at=row.get("locked_at"),
@@ -3037,7 +3141,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE dbhost = %s
                   AND status = 'deployed'
@@ -3075,7 +3179,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -3116,7 +3220,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -3155,7 +3259,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -3192,7 +3296,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -3231,7 +3335,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -3297,7 +3401,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -3337,7 +3441,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE owner_user_id = %s
                   AND status = 'deployed'
@@ -3392,7 +3496,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE status IN ('deployed', 'expired')
                   AND locked_at IS NULL
@@ -3432,7 +3536,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE status IN ('failed', 'canceled')
                   AND expires_at IS NOT NULL
@@ -3486,7 +3590,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE locked_at IS NOT NULL
                   AND db_dropped_at IS NULL
@@ -3516,7 +3620,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id, custom_target
+                       superseded_at, superseded_by_job_id, custom_target, origin
                 FROM jobs
                 WHERE owner_user_id = %s
                   AND status = 'complete'

@@ -51,468 +51,51 @@
 
         <!-- PANEL: overlord.companies -->
         <div id="overlord-panel-companies" class="overlord-top-panel overlord-top-panel--active">
-        <form id="overlord-form" onsubmit="return submitOverlordForm(event)">
-            <input type="hidden" id="overlord-job-id" name="job_id">
-            <input type="hidden" id="overlord-database" name="database">
-            
-            <div class="modal-body overlord-modal__body">
+            <input type="hidden" id="overlord-job-id">
+            <input type="hidden" id="overlord-database">
+
+            <!-- Shared datalist for host comboboxes (used by company edit card) -->
+            <datalist id="overlord-hosts-list"></datalist>
+
+            <div class="overlord-companies">
                 <!-- Status Banner -->
                 <div id="overlord-status-banner" class="overlord-banner js-hidden">
                     <span id="overlord-status-icon" class="overlord-banner__icon"></span>
                     <span id="overlord-status-message" class="overlord-banner__text"></span>
                 </div>
-                
-                <!-- ═══════════════════════════════════════════════════
-                     CORE: Identity & Routing (always visible)
-                     ═══════════════════════════════════════════════════ -->
-                
-                <!-- Row: companyID (readonly) + database (readonly) -->
-                <div class="overlord-field-row">
-                    <div class="overlord-field">
-                        <label class="overlord-field__label">
-                            Company ID
-                            <span class="overlord-tooltip" data-tooltip="Auto-increment primary key. Read-only.">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                            </span>
-                        </label>
-                        <div class="overlord-field__readonly" id="overlord-display-companyid">—</div>
-                    </div>
-                    <div class="overlord-field">
-                        <label class="overlord-field__label">
-                            Database
-                            <span class="overlord-tooltip" data-tooltip="Auto-set from the job target. Read-only.">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                            </span>
-                        </label>
-                        <div class="overlord-field__readonly" id="overlord-display-database">—</div>
-                    </div>
+
+                <!-- Toolbar: count + Add Company button -->
+                <div class="overlord-companies__toolbar">
+                    <span id="overlord-companies-count" class="overlord-companies__count">0 records</span>
+                    <button type="button" class="btn btn-sm btn-primary" onclick="startAddCompany()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Add Company
+                    </button>
                 </div>
 
-                <!-- Row: subdomain + company code -->
-                <div class="overlord-field-row">
-                    <div class="overlord-field">
-                        <label for="overlord-subdomain" class="overlord-field__label overlord-field__label--required">
-                            Subdomain
-                            <span class="overlord-tooltip" data-tooltip="DNS-safe routing subdomain (e.g. acme → acme.yourapp.com). Lowercase, numbers, hyphens. 1-30 chars.">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                            </span>
-                        </label>
-                        <input type="text" id="overlord-subdomain" name="subdomain" class="form-input"
-                               placeholder="company-name" required
-                               maxlength="30"
-                               pattern="[a-z0-9]([a-z0-9\-]{0,28}[a-z0-9])?"
-                               title="Lowercase letters, numbers, and hyphens (1-30 chars)">
-                    </div>
-                    <div class="overlord-field">
-                        <label for="overlord-company" class="overlord-field__label">
-                            Company Code
-                            <span class="overlord-tooltip" data-tooltip="Internal company code identifier.">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                            </span>
-                        </label>
-                        <input type="text" id="overlord-company" name="company" class="form-input"
-                               placeholder="Company code" maxlength="50">
-                    </div>
+                <!-- Loading state -->
+                <div id="overlord-companies-loading" class="overlord-companies__loading js-hidden">
+                    Loading companies&hellip;
                 </div>
 
-                <!-- Subdomain duplicate warning (hidden by default) -->
-                <div id="subdomain-duplicates-container" class="overlord-dupes js-hidden">
-                    <div class="overlord-dupes__header">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                        </svg>
-                        <strong>Subdomain conflict</strong> — shared by:
-                    </div>
-                    <table class="overlord-dupes__table">
-                        <thead><tr><th>ID</th><th>Database</th><th>Host</th></tr></thead>
-                        <tbody id="subdomain-duplicates-body"></tbody>
+                <!-- Company List Table -->
+                <div class="overlord-companies__table-wrap">
+                    <table class="overlord-companies__table" id="overlord-companies-table">
+                        <thead>
+                            <tr>
+                                <th class="co-col-id">ID</th>
+                                <th class="co-col-subdomain">Subdomain</th>
+                                <th class="co-col-name">Name</th>
+                                <th class="co-col-host">Primary Host</th>
+                                <th class="co-col-visible">Vis</th>
+                                <th class="co-col-actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="overlord-companies-tbody"></tbody>
                     </table>
                 </div>
 
-                <!-- Row: name + owner (auto-populated, read-only) -->
-                <div class="overlord-field-row">
-                    <div class="overlord-field">
-                        <label for="overlord-name" class="overlord-field__label">
-                            Display Name
-                            <span class="overlord-tooltip" data-tooltip="Human-readable company display name.">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                            </span>
-                        </label>
-                        <input type="text" id="overlord-name" name="name" class="form-input"
-                               placeholder="Company display name" maxlength="50">
-                    </div>
-                    <div class="overlord-field">
-                        <label class="overlord-field__label">
-                            Owner
-                            <span class="overlord-tooltip" data-tooltip="pullDB user who owns this record. Auto-set from your session.">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                            </span>
-                        </label>
-                        <div class="overlord-field__readonly" id="overlord-display-owner">—</div>
-                        <input type="hidden" id="overlord-owner" name="owner">
-                    </div>
-                </div>
-                
-                <!-- Row: dbHost + dbHostRead (combobox dropdowns) -->
-                <div class="overlord-field-row">
-                    <div class="overlord-field">
-                        <label for="overlord-dbhost" class="overlord-field__label overlord-field__label--required">
-                            Primary Host
-                            <span class="overlord-tooltip" data-tooltip="Write endpoint for database routing. Select a known host or type a custom hostname.">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                            </span>
-                        </label>
-                        <div class="overlord-combobox">
-                            <input type="text" id="overlord-dbhost" name="dbHost" class="form-input overlord-combobox__input"
-                                   list="overlord-hosts-list"
-                                   placeholder="Select or type host..." required
-                                   autocomplete="off">
-                            <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
-                        </div>
-                    </div>
-                    <div class="overlord-field">
-                        <label for="overlord-dbhost-read" class="overlord-field__label">
-                            Read Replica
-                            <span class="overlord-tooltip" data-tooltip="Read-only endpoint for reporting queries.">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                            </span>
-                        </label>
-                        <div class="overlord-combobox">
-                            <input type="text" id="overlord-dbhost-read" name="dbHostRead" class="form-input overlord-combobox__input"
-                                   list="overlord-hosts-list"
-                                   placeholder="Select or type host..."
-                                   autocomplete="off">
-                            <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Shared datalist for host comboboxes -->
-                <datalist id="overlord-hosts-list"></datalist>
-
-                <!-- ═══════════════════════════════════════════════════
-                     TAB CARDS: Extended fields in tabbed panels
-                     ═══════════════════════════════════════════════════ -->
-                <div class="overlord-tabs">
-                    <div class="overlord-tabs__bar" role="tablist">
-                        <button type="button" class="overlord-tabs__tab overlord-tabs__tab--active" 
-                                role="tab" aria-selected="true" aria-controls="overlord-tab-routing"
-                                onclick="switchOverlordTab(this, 'overlord-tab-routing')">
-                            Routing
-                        </button>
-                        <button type="button" class="overlord-tabs__tab"
-                                role="tab" aria-selected="false" aria-controls="overlord-tab-branding"
-                                onclick="switchOverlordTab(this, 'overlord-tab-branding')">
-                            Branding
-                        </button>
-                        <button type="button" class="overlord-tabs__tab"
-                                role="tab" aria-selected="false" aria-controls="overlord-tab-contact"
-                                onclick="switchOverlordTab(this, 'overlord-tab-contact')">
-                            Contact
-                        </button>
-                        <button type="button" class="overlord-tabs__tab"
-                                role="tab" aria-selected="false" aria-controls="overlord-tab-franchise"
-                                onclick="switchOverlordTab(this, 'overlord-tab-franchise')">
-                            Franchise
-                        </button>
-                    </div>
-
-                    <!-- TAB: Extended Routing -->
-                    <div id="overlord-tab-routing" class="overlord-tabs__panel overlord-tabs__panel--active" role="tabpanel">
-                        <!-- dbServer + dbHostApiRead -->
-                        <div class="overlord-field-row">
-                            <div class="overlord-field">
-                                <label for="overlord-dbserver" class="overlord-field__label">
-                                    DB Server
-                                    <span class="overlord-tooltip" data-tooltip="Legacy server identifier (varchar 20).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="text" id="overlord-dbserver" name="dbServer" class="form-input"
-                                       placeholder="Server name" maxlength="20">
-                            </div>
-                            <div class="overlord-field">
-                                <label for="overlord-dbhost-api-read" class="overlord-field__label">
-                                    API Read Host
-                                    <span class="overlord-tooltip" data-tooltip="Dedicated API read-only endpoint.">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <div class="overlord-combobox">
-                                    <input type="text" id="overlord-dbhost-api-read" name="dbHostApiRead" class="form-input overlord-combobox__input"
-                                           list="overlord-hosts-list" placeholder="Select or type host..." autocomplete="off">
-                                    <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- dbHostDynamicRead + enableDynamicRead -->
-                        <div class="overlord-field-row">
-                            <div class="overlord-field">
-                                <label for="overlord-dbhost-dynamic-read" class="overlord-field__label">
-                                    Dynamic Read Host
-                                    <span class="overlord-tooltip" data-tooltip="Dynamic read routing endpoint.">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <div class="overlord-combobox">
-                                    <input type="text" id="overlord-dbhost-dynamic-read" name="dbHostDynamicRead" class="form-input overlord-combobox__input"
-                                           list="overlord-hosts-list" placeholder="Select or type host..." autocomplete="off">
-                                    <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
-                                </div>
-                            </div>
-                            <div class="overlord-field">
-                                <label for="overlord-enable-dynamic-read" class="overlord-field__label">
-                                    Enable Dynamic Read
-                                    <span class="overlord-tooltip" data-tooltip="Toggle dynamic read routing (0=off, 1=on).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <select id="overlord-enable-dynamic-read" name="enableDynamicRead" class="form-select">
-                                    <option value="0">Disabled (0)</option>
-                                    <option value="1">Enabled (1)</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- TAB: Branding & Display -->
-                    <div id="overlord-tab-branding" class="overlord-tabs__panel" role="tabpanel">
-                        <!-- visible + order -->
-                        <div class="overlord-field-row">
-                            <div class="overlord-field">
-                                <label for="overlord-visible" class="overlord-field__label">
-                                    Visible
-                                    <span class="overlord-tooltip" data-tooltip="Company visibility flag (0=hidden, 1=visible).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <select id="overlord-visible" name="visible" class="form-select">
-                                    <option value="1">Visible (1)</option>
-                                    <option value="0">Hidden (0)</option>
-                                </select>
-                            </div>
-                            <div class="overlord-field">
-                                <label for="overlord-order" class="overlord-field__label">
-                                    Order
-                                    <span class="overlord-tooltip" data-tooltip="Sort order for display listing.">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="number" id="overlord-order" name="order" class="form-input" placeholder="0">
-                            </div>
-                        </div>
-                        <!-- brandingPrefix + brandingLogo -->
-                        <div class="overlord-field-row">
-                            <div class="overlord-field">
-                                <label for="overlord-branding-prefix" class="overlord-field__label">
-                                    Branding Prefix
-                                    <span class="overlord-tooltip" data-tooltip="Prefix used in branding templates.">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="text" id="overlord-branding-prefix" name="brandingPrefix" class="form-input" placeholder="Prefix">
-                            </div>
-                            <div class="overlord-field">
-                                <label for="overlord-branding-logo" class="overlord-field__label">
-                                    Branding Logo
-                                    <span class="overlord-tooltip" data-tooltip="Branding logo identifier (integer).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="number" id="overlord-branding-logo" name="brandingLogo" class="form-input" placeholder="0">
-                            </div>
-                        </div>
-                        <!-- logo + branding -->
-                        <div class="overlord-field-row">
-                            <div class="overlord-field">
-                                <label for="overlord-logo" class="overlord-field__label">
-                                    Logo
-                                    <span class="overlord-tooltip" data-tooltip="Logo filename or identifier (varchar 50).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="text" id="overlord-logo" name="logo" class="form-input" placeholder="Logo" maxlength="50">
-                            </div>
-                            <div class="overlord-field">
-                                <label for="overlord-branding" class="overlord-field__label">
-                                    Branding
-                                    <span class="overlord-tooltip" data-tooltip="Branding theme identifier (varchar 15).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="text" id="overlord-branding" name="branding" class="form-input" placeholder="Branding" maxlength="15">
-                            </div>
-                        </div>
-                        <!-- legacyBranding + exclusiveDomain -->
-                        <div class="overlord-field-row">
-                            <div class="overlord-field">
-                                <label for="overlord-legacy-branding" class="overlord-field__label">
-                                    Legacy Branding
-                                    <span class="overlord-tooltip" data-tooltip="Legacy branding flag (0=off, 1=on).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <select id="overlord-legacy-branding" name="legacyBranding" class="form-select">
-                                    <option value="0">Off (0)</option>
-                                    <option value="1">On (1)</option>
-                                </select>
-                            </div>
-                            <div class="overlord-field">
-                                <label for="overlord-exclusive-domain" class="overlord-field__label">
-                                    Exclusive Domain
-                                    <span class="overlord-tooltip" data-tooltip="Custom domain for this company (varchar 50).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="text" id="overlord-exclusive-domain" name="exclusiveDomain" class="form-input"
-                                       placeholder="custom.domain.com" maxlength="50">
-                            </div>
-                        </div>
-                        <!-- mascot (single) -->
-                        <div class="overlord-field-row overlord-field-row--single">
-                            <div class="overlord-field">
-                                <label for="overlord-mascot" class="overlord-field__label">
-                                    Mascot
-                                    <span class="overlord-tooltip" data-tooltip="Mascot identifier (varchar 40).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="text" id="overlord-mascot" name="mascot" class="form-input" placeholder="Mascot" maxlength="40">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- TAB: Contact & Billing -->
-                    <div id="overlord-tab-contact" class="overlord-tabs__panel" role="tabpanel">
-                        <!-- adminContact + adminPhone -->
-                        <div class="overlord-field-row">
-                            <div class="overlord-field">
-                                <label for="overlord-admin-contact" class="overlord-field__label">
-                                    Admin Contact
-                                    <span class="overlord-tooltip" data-tooltip="Primary admin contact name (varchar 40).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="text" id="overlord-admin-contact" name="adminContact" class="form-input"
-                                       placeholder="Contact name" maxlength="40">
-                            </div>
-                            <div class="overlord-field">
-                                <label for="overlord-admin-phone" class="overlord-field__label">
-                                    Admin Phone
-                                    <span class="overlord-tooltip" data-tooltip="Phone number (varchar 10).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="text" id="overlord-admin-phone" name="adminPhone" class="form-input"
-                                       placeholder="Phone" maxlength="10">
-                            </div>
-                        </div>
-                        <!-- adminEmail + billingEmail -->
-                        <div class="overlord-field-row">
-                            <div class="overlord-field">
-                                <label for="overlord-admin-email" class="overlord-field__label">
-                                    Admin Email
-                                    <span class="overlord-tooltip" data-tooltip="Admin email address (varchar 80).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="email" id="overlord-admin-email" name="adminEmail" class="form-input"
-                                       placeholder="admin@example.com" maxlength="80">
-                            </div>
-                            <div class="overlord-field">
-                                <label for="overlord-billing-email" class="overlord-field__label">
-                                    Billing Email
-                                    <span class="overlord-tooltip overlord-tooltip--left" data-tooltip="Billing contact email (varchar 100).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="email" id="overlord-billing-email" name="billingEmail" class="form-input"
-                                       placeholder="billing@example.com" maxlength="100">
-                            </div>
-                        </div>
-                        <!-- billingName + sendTRInvoice -->
-                        <div class="overlord-field-row">
-                            <div class="overlord-field">
-                                <label for="overlord-billing-name" class="overlord-field__label">
-                                    Billing Name
-                                    <span class="overlord-tooltip" data-tooltip="Billing contact name (varchar 30).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="text" id="overlord-billing-name" name="billingName" class="form-input"
-                                       placeholder="Billing name" maxlength="30">
-                            </div>
-                            <div class="overlord-field">
-                                <label for="overlord-send-tr-invoice" class="overlord-field__label">
-                                    Send TR Invoice
-                                    <span class="overlord-tooltip overlord-tooltip--left" data-tooltip="Whether to send TR invoices (0=no, 1=yes).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <select id="overlord-send-tr-invoice" name="sendTRInvoice" class="form-select">
-                                    <option value="0">No (0)</option>
-                                    <option value="1">Yes (1)</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- TAB: Franchise & Operations -->
-                    <div id="overlord-tab-franchise" class="overlord-tabs__panel" role="tabpanel">
-                        <!-- canFranchise + franchiseName -->
-                        <div class="overlord-field-row">
-                            <div class="overlord-field">
-                                <label for="overlord-can-franchise" class="overlord-field__label">
-                                    Can Franchise
-                                    <span class="overlord-tooltip" data-tooltip="Whether this company can be franchised (0=no, 1=yes).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <select id="overlord-can-franchise" name="canFranchise" class="form-select">
-                                    <option value="0">No (0)</option>
-                                    <option value="1">Yes (1)</option>
-                                </select>
-                            </div>
-                            <div class="overlord-field">
-                                <label for="overlord-franchise-name" class="overlord-field__label">
-                                    Franchise Name
-                                    <span class="overlord-tooltip" data-tooltip="Franchise display name (varchar 50).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="text" id="overlord-franchise-name" name="franchiseName" class="form-input"
-                                       placeholder="Franchise name" maxlength="50">
-                            </div>
-                        </div>
-                        <!-- franchiseLogo + blockPrtDate -->
-                        <div class="overlord-field-row">
-                            <div class="overlord-field">
-                                <label for="overlord-franchise-logo" class="overlord-field__label">
-                                    Franchise Logo
-                                    <span class="overlord-tooltip" data-tooltip="Franchise logo identifier (varchar 50).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="text" id="overlord-franchise-logo" name="franchiseLogo" class="form-input"
-                                       placeholder="Logo" maxlength="50">
-                            </div>
-                            <div class="overlord-field">
-                                <label for="overlord-block-prt-date" class="overlord-field__label">
-                                    Block PRT Date
-                                    <span class="overlord-tooltip overlord-tooltip--left" data-tooltip="Date to block print operations (YYYY-MM-DD format).">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    </span>
-                                </label>
-                                <input type="date" id="overlord-block-prt-date" name="blockPrtDate" class="form-input">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ═══════════════════════════════════════════════════
-                     Release Control (always visible)
-                     ═══════════════════════════════════════════════════ -->
+                <!-- Release Control (always visible below the list) -->
                 <div class="overlord-release-row">
                     <div class="overlord-field overlord-field--release">
                         <label for="overlord-release-action" class="overlord-field__label">
@@ -527,7 +110,6 @@
                             <option value="clear">Clear host fields only</option>
                         </select>
                     </div>
-                    <!-- Inline original values (shown for restore) -->
                     <div id="overlord-original-values" class="overlord-originals js-hidden">
                         <div class="overlord-originals__item">
                             <span class="overlord-originals__label">Was:</span>
@@ -540,19 +122,6 @@
                     </div>
                 </div>
             </div>
-            
-            <div class="modal-footer overlord-modal__footer">
-                <button type="button" class="btn btn-ghost" onclick="closeOverlordModal()">Cancel</button>
-                <button type="submit" id="overlord-submit-btn" class="btn btn-primary overlord-submit">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
-                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                        <polyline points="17 21 17 13 7 13 7 21"/>
-                        <polyline points="7 3 7 8 15 8"/>
-                    </svg>
-                    <span id="overlord-submit-text">Save</span>
-                </button>
-            </div>
-        </form>
         </div><!-- /overlord-panel-companies -->
 
         <!-- PANEL: [database].employees -->
@@ -610,6 +179,267 @@
         </div><!-- /overlord-panel-employees -->
 
     </div><!-- /modal-body -->
+
+    <!-- COMPANY EDIT CARD — slides over entire modal content -->
+    <div id="company-edit-card" class="emp-edit-card js-hidden">
+        <div class="emp-edit-card__header">
+            <button type="button" class="emp-edit-card__back" onclick="closeCompanyEditCard()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                Back to List
+            </button>
+            <div class="emp-edit-card__title">
+                <span id="company-edit-card-title">Edit Company</span>
+            </div>
+        </div>
+
+        <div class="emp-edit-card__body">
+            <!-- Tab bar inside the edit card -->
+            <div class="ecard-tabs" role="tablist">
+                <button type="button" class="ecard-tabs__tab ecard-tabs__tab--active"
+                        role="tab" aria-selected="true" aria-controls="co-panel-core"
+                        onclick="switchEcardTab(this, 'co-panel-core')">Core</button>
+                <button type="button" class="ecard-tabs__tab"
+                        role="tab" aria-selected="false" aria-controls="co-panel-routing"
+                        onclick="switchEcardTab(this, 'co-panel-routing')">Routing</button>
+                <button type="button" class="ecard-tabs__tab"
+                        role="tab" aria-selected="false" aria-controls="co-panel-branding"
+                        onclick="switchEcardTab(this, 'co-panel-branding')">Branding</button>
+                <button type="button" class="ecard-tabs__tab"
+                        role="tab" aria-selected="false" aria-controls="co-panel-contact"
+                        onclick="switchEcardTab(this, 'co-panel-contact')">Contact</button>
+                <button type="button" class="ecard-tabs__tab"
+                        role="tab" aria-selected="false" aria-controls="co-panel-franchise"
+                        onclick="switchEcardTab(this, 'co-panel-franchise')">Franchise</button>
+            </div>
+
+            <!-- ── CORE TAB ── -->
+            <div id="co-panel-core" class="ecard-tabs__panel ecard-tabs__panel--active" role="tabpanel">
+                <fieldset class="emp-edit-card__section">
+                    <legend>Identity</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="overlord-field">
+                            <label class="overlord-field__label">Company ID</label>
+                            <div class="overlord-field__readonly" id="co-edit-companyid">—</div>
+                            <input type="hidden" id="co-edit-companyid-val">
+                        </div>
+                        <div class="overlord-field">
+                            <label class="overlord-field__label">Database</label>
+                            <div class="overlord-field__readonly" id="co-edit-database">—</div>
+                        </div>
+                    </div>
+                </fieldset>
+                <fieldset class="emp-edit-card__section">
+                    <legend>Core Fields</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="overlord-field">
+                            <label for="co-edit-subdomain" class="overlord-field__label overlord-field__label--required">Subdomain</label>
+                            <input type="text" id="co-edit-subdomain" class="form-input" placeholder="company-name" required maxlength="30"
+                                   pattern="[a-z0-9]([a-z0-9\-]{0,28}[a-z0-9])?"
+                                   title="Lowercase letters, numbers, and hyphens (1-30 chars)">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-company" class="overlord-field__label">Company Code</label>
+                            <input type="text" id="co-edit-company" class="form-input" placeholder="Company code" maxlength="50">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-name" class="overlord-field__label">Display Name</label>
+                            <input type="text" id="co-edit-name" class="form-input" placeholder="Company display name" maxlength="50">
+                        </div>
+                        <div class="overlord-field">
+                            <label class="overlord-field__label">Owner</label>
+                            <div class="overlord-field__readonly" id="co-edit-owner">—</div>
+                        </div>
+                    </div>
+                </fieldset>
+                <fieldset class="emp-edit-card__section">
+                    <legend>Host Settings</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="overlord-field">
+                            <label for="co-edit-dbhost" class="overlord-field__label overlord-field__label--required">Primary Host</label>
+                            <div class="overlord-combobox">
+                                <input type="text" id="co-edit-dbhost" class="form-input overlord-combobox__input"
+                                       list="overlord-hosts-list" placeholder="Select or type host..." required autocomplete="off">
+                                <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-dbhost-read" class="overlord-field__label">Read Replica</label>
+                            <div class="overlord-combobox">
+                                <input type="text" id="co-edit-dbhost-read" class="form-input overlord-combobox__input"
+                                       list="overlord-hosts-list" placeholder="Select or type host..." autocomplete="off">
+                                <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- ── ROUTING TAB ── -->
+            <div id="co-panel-routing" class="ecard-tabs__panel" role="tabpanel">
+                <fieldset class="emp-edit-card__section">
+                    <legend>Extended Routing</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="overlord-field">
+                            <label for="co-edit-dbserver" class="overlord-field__label">DB Server</label>
+                            <input type="text" id="co-edit-dbserver" class="form-input" placeholder="Server name" maxlength="20">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-dbhost-api-read" class="overlord-field__label">API Read Host</label>
+                            <div class="overlord-combobox">
+                                <input type="text" id="co-edit-dbhost-api-read" class="form-input overlord-combobox__input"
+                                       list="overlord-hosts-list" placeholder="Select or type host..." autocomplete="off">
+                                <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-dbhost-dynamic-read" class="overlord-field__label">Dynamic Read Host</label>
+                            <div class="overlord-combobox">
+                                <input type="text" id="co-edit-dbhost-dynamic-read" class="form-input overlord-combobox__input"
+                                       list="overlord-hosts-list" placeholder="Select or type host..." autocomplete="off">
+                                <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-enable-dynamic-read" class="overlord-field__label">Enable Dynamic Read</label>
+                            <select id="co-edit-enable-dynamic-read" class="form-select">
+                                <option value="0">Disabled (0)</option>
+                                <option value="1">Enabled (1)</option>
+                            </select>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- ── BRANDING TAB ── -->
+            <div id="co-panel-branding" class="ecard-tabs__panel" role="tabpanel">
+                <fieldset class="emp-edit-card__section">
+                    <legend>Branding &amp; Display</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="overlord-field">
+                            <label for="co-edit-visible" class="overlord-field__label">Visible</label>
+                            <select id="co-edit-visible" class="form-select">
+                                <option value="1">Visible (1)</option>
+                                <option value="0">Hidden (0)</option>
+                            </select>
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-order" class="overlord-field__label">Order</label>
+                            <input type="number" id="co-edit-order" class="form-input" placeholder="0">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-branding-prefix" class="overlord-field__label">Branding Prefix</label>
+                            <input type="text" id="co-edit-branding-prefix" class="form-input" placeholder="Prefix">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-branding-logo" class="overlord-field__label">Branding Logo</label>
+                            <input type="number" id="co-edit-branding-logo" class="form-input" placeholder="0">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-logo" class="overlord-field__label">Logo</label>
+                            <input type="text" id="co-edit-logo" class="form-input" placeholder="Logo" maxlength="50">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-branding" class="overlord-field__label">Branding</label>
+                            <input type="text" id="co-edit-branding" class="form-input" placeholder="Branding" maxlength="15">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-legacy-branding" class="overlord-field__label">Legacy Branding</label>
+                            <select id="co-edit-legacy-branding" class="form-select">
+                                <option value="0">Off (0)</option>
+                                <option value="1">On (1)</option>
+                            </select>
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-exclusive-domain" class="overlord-field__label">Exclusive Domain</label>
+                            <input type="text" id="co-edit-exclusive-domain" class="form-input" placeholder="custom.domain.com" maxlength="50">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-mascot" class="overlord-field__label">Mascot</label>
+                            <input type="text" id="co-edit-mascot" class="form-input" placeholder="Mascot" maxlength="40">
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- ── CONTACT TAB ── -->
+            <div id="co-panel-contact" class="ecard-tabs__panel" role="tabpanel">
+                <fieldset class="emp-edit-card__section">
+                    <legend>Contact &amp; Billing</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="overlord-field">
+                            <label for="co-edit-admin-contact" class="overlord-field__label">Admin Contact</label>
+                            <input type="text" id="co-edit-admin-contact" class="form-input" placeholder="Contact name" maxlength="40">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-admin-phone" class="overlord-field__label">Admin Phone</label>
+                            <input type="text" id="co-edit-admin-phone" class="form-input" placeholder="Phone" maxlength="10">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-admin-email" class="overlord-field__label">Admin Email</label>
+                            <input type="email" id="co-edit-admin-email" class="form-input" placeholder="admin@example.com" maxlength="80">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-billing-email" class="overlord-field__label">Billing Email</label>
+                            <input type="email" id="co-edit-billing-email" class="form-input" placeholder="billing@example.com" maxlength="100">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-billing-name" class="overlord-field__label">Billing Name</label>
+                            <input type="text" id="co-edit-billing-name" class="form-input" placeholder="Billing name" maxlength="30">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-send-tr-invoice" class="overlord-field__label">Send TR Invoice</label>
+                            <select id="co-edit-send-tr-invoice" class="form-select">
+                                <option value="0">No (0)</option>
+                                <option value="1">Yes (1)</option>
+                            </select>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- ── FRANCHISE TAB ── -->
+            <div id="co-panel-franchise" class="ecard-tabs__panel" role="tabpanel">
+                <fieldset class="emp-edit-card__section">
+                    <legend>Franchise &amp; Operations</legend>
+                    <div class="emp-edit-card__grid">
+                        <div class="overlord-field">
+                            <label for="co-edit-can-franchise" class="overlord-field__label">Can Franchise</label>
+                            <select id="co-edit-can-franchise" class="form-select">
+                                <option value="0">No (0)</option>
+                                <option value="1">Yes (1)</option>
+                            </select>
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-franchise-name" class="overlord-field__label">Franchise Name</label>
+                            <input type="text" id="co-edit-franchise-name" class="form-input" placeholder="Franchise name" maxlength="50">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-franchise-logo" class="overlord-field__label">Franchise Logo</label>
+                            <input type="text" id="co-edit-franchise-logo" class="form-input" placeholder="Logo" maxlength="50">
+                        </div>
+                        <div class="overlord-field">
+                            <label for="co-edit-block-prt-date" class="overlord-field__label">Block PRT Date</label>
+                            <input type="date" id="co-edit-block-prt-date" class="form-input">
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+        </div>
+
+        <!-- Footer with Delete/Cancel/Save -->
+        <div class="emp-edit-card__footer">
+            <button type="button" class="btn btn-danger-ghost co-edit-delete-btn" id="co-edit-delete-btn" onclick="deleteCompanyRecord()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Delete
+            </button>
+            <div class="co-edit-footer-right">
+                <button type="button" class="emp-edit-card__cancel" onclick="closeCompanyEditCard()">Cancel</button>
+                <button type="button" class="emp-edit-card__save" id="co-edit-save-btn" onclick="saveCompanyCard()">
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div><!-- /company-edit-card -->
 
     <!-- EMPLOYEE EDIT CARD — slides over entire modal content -->
     <div id="emp-edit-card" class="emp-edit-card js-hidden">
@@ -1024,6 +854,113 @@
 }
 .overlord-top-panel--active {
     display: block;
+}
+
+/* =============================================================================
+   COMPANIES TAB — List View
+   ============================================================================= */
+.overlord-companies {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.overlord-companies__toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.overlord-companies__count {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    font-weight: var(--font-medium);
+    white-space: nowrap;
+}
+
+.overlord-companies__loading {
+    text-align: center;
+    padding: var(--space-6);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+}
+
+.overlord-companies__table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+}
+
+.overlord-companies__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-xs);
+}
+.overlord-companies__table th {
+    position: sticky;
+    top: 0;
+    background: var(--color-bg-subtle);
+    padding: var(--space-2) var(--space-2);
+    text-align: left;
+    font-size: 10px;
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid var(--color-border-light);
+    white-space: nowrap;
+}
+.overlord-companies__table td {
+    padding: var(--space-2) var(--space-2);
+    border-bottom: 1px solid var(--color-border-light);
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.overlord-companies__table tr:last-child td {
+    border-bottom: none;
+}
+.overlord-companies__table tr:hover td {
+    background: var(--color-bg-subtle);
+}
+
+/* Company column widths */
+.co-col-id { width: 55px; }
+.co-col-subdomain { min-width: 120px; }
+.co-col-name { min-width: 140px; }
+.co-col-host { min-width: 180px; }
+.co-col-visible { width: 45px; text-align: center; }
+.co-col-actions { width: 50px; text-align: center; }
+
+/* Company edit card footer adjustments */
+.co-edit-footer-right {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+}
+.btn-danger-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 6px 12px;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-danger, #dc2626);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+.btn-danger-ghost:hover {
+    background: var(--color-danger, #dc2626);
+    color: white;
+    border-color: var(--color-danger, #dc2626);
 }
 
 /* =============================================================================
@@ -1951,6 +1888,14 @@ let employeeState = {
     editingId: null,     // employeeID currently being edited inline
 };
 
+// Company list state
+let companyState = {
+    companies: [],       // all company rows from API
+    loaded: false,       // whether data has been loaded
+    editingId: null,     // companyID being edited in the slide-over card (null for new)
+    isNew: false,        // whether the edit card is for a new record
+};
+
 /**
  * Switch top-level tab (Companies / Employees)
  */
@@ -2070,17 +2015,11 @@ function populateHostDatalist(hosts) {
 }
 
 function resetOverlordForm() {
-    const form = document.getElementById('overlord-form');
-    form.reset();
-    
-    // Clear hidden fields and readonly displays
+    // Clear hidden fields
     document.getElementById('overlord-job-id').value = '';
     document.getElementById('overlord-database').value = '';
-    document.getElementById('overlord-display-companyid').textContent = '—';
-    document.getElementById('overlord-display-database').textContent = '—';
     document.getElementById('overlord-status-banner').classList.add('js-hidden');
     document.getElementById('overlord-original-values').classList.add('js-hidden');
-    document.getElementById('subdomain-duplicates-container').classList.add('js-hidden');
     
     // Reset header badge
     const badge = document.getElementById('overlord-header-badge');
@@ -2088,30 +2027,20 @@ function resetOverlordForm() {
     badge.className = 'overlord-badge overlord-badge--muted js-hidden';
     badge.textContent = '';
     
-    // Reset tabs to first tab (Routing)
-    document.querySelectorAll('.overlord-tabs__tab').forEach(t => {
-        t.classList.remove('overlord-tabs__tab--active');
-        t.setAttribute('aria-selected', 'false');
-    });
-    document.querySelectorAll('.overlord-tabs__panel').forEach(p => {
-        p.classList.remove('overlord-tabs__panel--active');
-    });
-    const firstTab = document.querySelector('.overlord-tabs__tab');
-    if (firstTab) {
-        firstTab.classList.add('overlord-tabs__tab--active');
-        firstTab.setAttribute('aria-selected', 'true');
-    }
-    const firstPanel = document.querySelector('.overlord-tabs__panel');
-    if (firstPanel) firstPanel.classList.add('overlord-tabs__panel--active');
-
-    // Clear owner readonly display
-    const ownerDisplay = document.getElementById('overlord-display-owner');
-    if (ownerDisplay) ownerDisplay.textContent = '—';
-    
     overlordState = {
         jobId: null, database: null, restoreHost: null,
         rowExistedBefore: false, previousDbHost: null, previousDbHostRead: null,
     };
+
+    // Reset company list state
+    companyState = { companies: [], loaded: false, editingId: null, isNew: false };
+    const coTbody = document.getElementById('overlord-companies-tbody');
+    if (coTbody) coTbody.innerHTML = '';
+    const coCount = document.getElementById('overlord-companies-count');
+    if (coCount) coCount.textContent = '0 records';
+    // Close company edit card if open
+    const coEditCard = document.getElementById('company-edit-card');
+    if (coEditCard) coEditCard.classList.add('js-hidden');
 
     // Reset employee state and switch back to companies tab
     employeeState = { employees: [], filtered: [], loaded: false, editingId: null };
@@ -2143,11 +2072,11 @@ function resetOverlordForm() {
 }
 
 /**
- * Populate form with API data (raw row dict with MySQL column names)
+ * Populate modal with API data — renders company list table
  */
 function populateOverlordForm(data) {
-    const { tracking, company, job } = data;
-    const isNewRecord = !company;
+    const { tracking, company, companies, job } = data;
+    const companyList = companies || (company ? [company] : []);
     
     overlordState.jobId = job.id;
     overlordState.database = job.target;
@@ -2160,7 +2089,6 @@ function populateOverlordForm(data) {
     // Hidden fields
     document.getElementById('overlord-job-id').value = job.id;
     document.getElementById('overlord-database').value = job.target;
-    document.getElementById('overlord-display-database').textContent = job.target;
     
     // Header badge
     const badge = document.getElementById('overlord-header-badge');
@@ -2168,8 +2096,8 @@ function populateOverlordForm(data) {
     const message = document.getElementById('overlord-status-message');
     const statusIcon = document.getElementById('overlord-status-icon');
     
-    if (isNewRecord) {
-        // New record — default values
+    if (companyList.length === 0) {
+        // No records
         badge.textContent = 'New';
         badge.className = 'overlord-badge overlord-badge--new';
         badge.classList.remove('js-hidden');
@@ -2177,67 +2105,7 @@ function populateOverlordForm(data) {
         banner.classList.remove('js-hidden');
         banner.className = 'overlord-banner overlord-banner--info';
         statusIcon.textContent = 'ℹ';
-        message.textContent = 'No existing record — fill in details to create one.';
-        
-        document.getElementById('overlord-display-companyid').textContent = '(auto)';
-        document.getElementById('overlord-subdomain').value = job.target
-            .replace(/_/g, '-').toLowerCase();
-        document.getElementById('overlord-name').value = '';
-        document.getElementById('overlord-dbhost').value = job.dbhost || '';
-        document.getElementById('overlord-dbhost-read').value = job.dbhost || '';
-
-        // Owner auto-set from session user
-        document.getElementById('overlord-owner').value = job.owner_username || '';
-        document.getElementById('overlord-display-owner').textContent = job.owner_username || '—';
-    } else {
-        // Existing record — populate all fields from raw row dict
-        // company is now a raw dict with MySQL column names as keys
-        const c = company;
-        
-        // READ-ONLY displays
-        document.getElementById('overlord-display-companyid').textContent = c.companyID || '—';
-        
-        // Core fields
-        _setVal('overlord-subdomain', c.subdomain);
-        _setVal('overlord-company', c.company);
-        _setVal('overlord-name', c.name);
-
-        // Owner: display existing owner, hidden input carries value
-        _setVal('overlord-owner', c.owner);
-        document.getElementById('overlord-display-owner').textContent = c.owner || job.owner_username || '—';
-        _setVal('overlord-dbhost', c.dbHost || job.dbhost || '');
-        _setVal('overlord-dbhost-read', c.dbHostRead || job.dbhost || '');
-        
-        // Extended routing
-        _setVal('overlord-dbserver', c.dbServer);
-        _setVal('overlord-dbhost-api-read', c.dbHostApiRead);
-        _setVal('overlord-dbhost-dynamic-read', c.dbHostDynamicRead);
-        _setSelect('overlord-enable-dynamic-read', c.enableDynamicRead);
-        
-        // Branding & display
-        _setSelect('overlord-visible', c.visible);
-        _setVal('overlord-order', c.order);
-        _setVal('overlord-branding-prefix', c.brandingPrefix);
-        _setVal('overlord-branding-logo', c.brandingLogo);
-        _setVal('overlord-logo', c.logo);
-        _setVal('overlord-branding', c.branding);
-        _setSelect('overlord-legacy-branding', c.legacyBranding);
-        _setVal('overlord-exclusive-domain', c.exclusiveDomain);
-        _setVal('overlord-mascot', c.mascot);
-        
-        // Contact & billing
-        _setVal('overlord-admin-contact', c.adminContact);
-        _setVal('overlord-admin-phone', c.adminPhone);
-        _setVal('overlord-admin-email', c.adminEmail);
-        _setVal('overlord-billing-email', c.billingEmail);
-        _setVal('overlord-billing-name', c.billingName);
-        _setSelect('overlord-send-tr-invoice', c.sendTRInvoice);
-        
-        // Franchise & operations
-        _setSelect('overlord-can-franchise', c.canFranchise);
-        _setVal('overlord-franchise-name', c.franchiseName);
-        _setVal('overlord-franchise-logo', c.franchiseLogo);
-        _setVal('overlord-block-prt-date', c.blockPrtDate);
+        message.textContent = 'No existing records — click "Add Company" to create one.';
     }
     
     // Tracking state
@@ -2261,10 +2129,10 @@ function populateOverlordForm(data) {
             badge.classList.remove('js-hidden');
             banner.className = 'overlord-banner overlord-banner--info';
             statusIcon.textContent = 'ℹ';
-            message.textContent = 'Claimed — save to activate routing';
+            message.textContent = 'Claimed — edit a company record and save to activate routing';
         }
         
-        // Original values
+        // Original values for release control
         if (tracking.row_existed_before && tracking.previous_dbhost) {
             document.getElementById('overlord-original-dbhost').textContent = tracking.previous_dbhost || '(empty)';
             document.getElementById('overlord-original-dbhost-read').textContent = tracking.previous_dbhost_read || '(empty)';
@@ -2273,15 +2141,54 @@ function populateOverlordForm(data) {
         updateReleaseHint();
     }
     
-    // Subdomain duplicates
-    if (data.subdomain_duplicates && data.subdomain_duplicates.length > 0) {
-        renderSubdomainDuplicates(data.subdomain_duplicates);
+    // Store company list and render table
+    companyState.companies = companyList;
+    companyState.loaded = true;
+    renderCompanyTable();
+}
+
+/**
+ * Render the company list table from companyState.companies
+ */
+function renderCompanyTable() {
+    const tbody = document.getElementById('overlord-companies-tbody');
+    const countEl = document.getElementById('overlord-companies-count');
+    
+    if (!tbody) return;
+    
+    const list = companyState.companies;
+    countEl.textContent = `${list.length} record${list.length !== 1 ? 's' : ''}`;
+    
+    if (list.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align:center; padding: var(--space-4); color: var(--color-text-muted); font-style: italic;">
+                    No company records. Click "Add Company" to create one.
+                </td>
+            </tr>
+        `;
+        return;
     }
     
-    const currentSubdomain = document.getElementById('overlord-subdomain').value;
-    if (currentSubdomain) {
-        checkSubdomainDuplicates(currentSubdomain);
-    }
+    tbody.innerHTML = list.map(c => {
+        const vis = String(c.visible) === '1'
+            ? '<span style="color:var(--color-success)">●</span>'
+            : '<span style="color:var(--color-text-muted)">○</span>';
+        return `
+            <tr>
+                <td class="co-col-id">${_escapeHtml(String(c.companyID))}</td>
+                <td class="co-col-subdomain"><strong>${_escapeHtml(c.subdomain || '')}</strong></td>
+                <td class="co-col-name">${_escapeHtml(c.name || c.company || '')}</td>
+                <td class="co-col-host">${_escapeHtml(c.dbHost || '')}</td>
+                <td class="co-col-visible">${vis}</td>
+                <td class="co-col-actions">
+                    <button type="button" class="emp-edit-btn" onclick="startEditCompany(${c.companyID})" title="Edit">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
 }
 
 /** Helper: set input value (handles null/undefined) */
@@ -2311,57 +2218,292 @@ function updateReleaseHint() {
 }
 
 /**
- * Form submission — collects ALL form fields
+ * Open the company edit card for an existing company
  */
-async function submitOverlordForm(event) {
-    event.preventDefault();
+function startEditCompany(companyId) {
+    const c = companyState.companies.find(co => co.companyID === companyId);
+    if (!c) return;
     
-    const form = document.getElementById('overlord-form');
-    const submitBtn = document.getElementById('overlord-submit-btn');
-    const submitText = document.getElementById('overlord-submit-text');
+    companyState.editingId = companyId;
+    companyState.isNew = false;
     
-    submitBtn.disabled = true;
-    submitText.textContent = 'Saving...';
+    // Populate edit card fields
+    document.getElementById('co-edit-companyid').textContent = c.companyID;
+    document.getElementById('co-edit-companyid-val').value = c.companyID;
+    document.getElementById('co-edit-database').textContent = overlordState.database;
+    
+    _setVal('co-edit-subdomain', c.subdomain);
+    _setVal('co-edit-company', c.company);
+    _setVal('co-edit-name', c.name);
+    document.getElementById('co-edit-owner').textContent = c.owner || '—';
+    
+    _setVal('co-edit-dbhost', c.dbHost || '');
+    _setVal('co-edit-dbhost-read', c.dbHostRead || '');
+    
+    // Routing
+    _setVal('co-edit-dbserver', c.dbServer);
+    _setVal('co-edit-dbhost-api-read', c.dbHostApiRead);
+    _setVal('co-edit-dbhost-dynamic-read', c.dbHostDynamicRead);
+    _setSelect('co-edit-enable-dynamic-read', c.enableDynamicRead);
+    
+    // Branding
+    _setSelect('co-edit-visible', c.visible);
+    _setVal('co-edit-order', c.order);
+    _setVal('co-edit-branding-prefix', c.brandingPrefix);
+    _setVal('co-edit-branding-logo', c.brandingLogo);
+    _setVal('co-edit-logo', c.logo);
+    _setVal('co-edit-branding', c.branding);
+    _setSelect('co-edit-legacy-branding', c.legacyBranding);
+    _setVal('co-edit-exclusive-domain', c.exclusiveDomain);
+    _setVal('co-edit-mascot', c.mascot);
+    
+    // Contact
+    _setVal('co-edit-admin-contact', c.adminContact);
+    _setVal('co-edit-admin-phone', c.adminPhone);
+    _setVal('co-edit-admin-email', c.adminEmail);
+    _setVal('co-edit-billing-email', c.billingEmail);
+    _setVal('co-edit-billing-name', c.billingName);
+    _setSelect('co-edit-send-tr-invoice', c.sendTRInvoice);
+    
+    // Franchise
+    _setSelect('co-edit-can-franchise', c.canFranchise);
+    _setVal('co-edit-franchise-name', c.franchiseName);
+    _setVal('co-edit-franchise-logo', c.franchiseLogo);
+    _setVal('co-edit-block-prt-date', c.blockPrtDate);
+    
+    // Set title and show delete button for existing records
+    document.getElementById('company-edit-card-title').textContent = `Edit Company #${c.companyID}`;
+    document.getElementById('co-edit-delete-btn').classList.remove('js-hidden');
+    
+    // Reset to first tab
+    const card = document.getElementById('company-edit-card');
+    card.querySelectorAll('.ecard-tabs__tab').forEach(t => {
+        t.classList.remove('ecard-tabs__tab--active');
+        t.setAttribute('aria-selected', 'false');
+    });
+    card.querySelectorAll('.ecard-tabs__panel').forEach(p => {
+        p.classList.remove('ecard-tabs__panel--active');
+    });
+    const firstTab = card.querySelector('.ecard-tabs__tab');
+    if (firstTab) { firstTab.classList.add('ecard-tabs__tab--active'); firstTab.setAttribute('aria-selected', 'true'); }
+    const firstPanel = card.querySelector('.ecard-tabs__panel');
+    if (firstPanel) firstPanel.classList.add('ecard-tabs__panel--active');
+    
+    // Show the card
+    card.classList.remove('js-hidden');
+    
+    // Snapshot for dirty-state tracking
+    companyState._originalSnapshot = _collectCompanyFields();
+}
+
+/**
+ * Open the company edit card for a new company record
+ */
+function startAddCompany() {
+    companyState.editingId = null;
+    companyState.isNew = true;
+    
+    // Default values from first existing company (if any) or from job
+    const template = companyState.companies.length > 0 ? companyState.companies[0] : null;
+    
+    document.getElementById('co-edit-companyid').textContent = '(auto)';
+    document.getElementById('co-edit-companyid-val').value = '';
+    document.getElementById('co-edit-database').textContent = overlordState.database;
+    
+    // Defaults
+    _setVal('co-edit-subdomain', overlordState.database ? overlordState.database.replace(/_/g, '-').toLowerCase() : '');
+    _setVal('co-edit-company', '');
+    _setVal('co-edit-name', '');
+    document.getElementById('co-edit-owner').textContent = '(auto)';
+    
+    _setVal('co-edit-dbhost', template ? (template.dbHost || '') : (overlordState.restoreHost || ''));
+    _setVal('co-edit-dbhost-read', template ? (template.dbHostRead || '') : (overlordState.restoreHost || ''));
+    
+    // Routing defaults
+    _setVal('co-edit-dbserver', template ? template.dbServer : '');
+    _setVal('co-edit-dbhost-api-read', template ? template.dbHostApiRead : '');
+    _setVal('co-edit-dbhost-dynamic-read', template ? template.dbHostDynamicRead : '');
+    _setSelect('co-edit-enable-dynamic-read', template ? template.enableDynamicRead : 0);
+    
+    // Branding defaults
+    _setSelect('co-edit-visible', 1);
+    _setVal('co-edit-order', 0);
+    _setVal('co-edit-branding-prefix', '');
+    _setVal('co-edit-branding-logo', '');
+    _setVal('co-edit-logo', '');
+    _setVal('co-edit-branding', '');
+    _setSelect('co-edit-legacy-branding', 0);
+    _setVal('co-edit-exclusive-domain', '');
+    _setVal('co-edit-mascot', '');
+    
+    // Contact defaults
+    _setVal('co-edit-admin-contact', '');
+    _setVal('co-edit-admin-phone', '');
+    _setVal('co-edit-admin-email', '');
+    _setVal('co-edit-billing-email', '');
+    _setVal('co-edit-billing-name', '');
+    _setSelect('co-edit-send-tr-invoice', 0);
+    
+    // Franchise defaults
+    _setSelect('co-edit-can-franchise', 0);
+    _setVal('co-edit-franchise-name', '');
+    _setVal('co-edit-franchise-logo', '');
+    _setVal('co-edit-block-prt-date', '');
+    
+    // Set title and hide delete button for new records
+    document.getElementById('company-edit-card-title').textContent = 'Add New Company';
+    document.getElementById('co-edit-delete-btn').classList.add('js-hidden');
+    
+    // Reset to first tab
+    const card = document.getElementById('company-edit-card');
+    card.querySelectorAll('.ecard-tabs__tab').forEach(t => {
+        t.classList.remove('ecard-tabs__tab--active');
+        t.setAttribute('aria-selected', 'false');
+    });
+    card.querySelectorAll('.ecard-tabs__panel').forEach(p => {
+        p.classList.remove('ecard-tabs__panel--active');
+    });
+    const firstTab = card.querySelector('.ecard-tabs__tab');
+    if (firstTab) { firstTab.classList.add('ecard-tabs__tab--active'); firstTab.setAttribute('aria-selected', 'true'); }
+    const firstPanel = card.querySelector('.ecard-tabs__panel');
+    if (firstPanel) firstPanel.classList.add('ecard-tabs__panel--active');
+    
+    // Show the card
+    card.classList.remove('js-hidden');
+    
+    // Snapshot for dirty-state tracking
+    companyState._originalSnapshot = _collectCompanyFields();
+}
+
+/**
+ * Close the company edit card (with dirty-state check)
+ */
+async function closeCompanyEditCard() {
+    // Check for unsaved changes before closing
+    if (companyState._originalSnapshot) {
+        const current = _collectCompanyFields();
+        const orig = companyState._originalSnapshot;
+        const isDirty = Object.keys(current).some(k => String(current[k] ?? '') !== String(orig[k] ?? ''));
+        if (isDirty) {
+            const discard = await showConfirm(
+                'You have unsaved changes.\n\nDiscard changes and close?',
+                { title: 'Unsaved Changes', type: 'warning', okText: 'Discard' }
+            );
+            if (!discard) return;
+        }
+    }
+    const card = document.getElementById('company-edit-card');
+    if (card) card.classList.add('js-hidden');
+    companyState.editingId = null;
+    companyState.isNew = false;
+    companyState._originalSnapshot = null;
+}
+
+/**
+ * Collect all field values from the company edit card
+ */
+function _collectCompanyFields() {
+    const fields = {};
+    
+    // Core — always send so empty string can clear a previously-set value
+    fields.subdomain = document.getElementById('co-edit-subdomain').value.trim();
+    fields.company = document.getElementById('co-edit-company').value.trim();
+    fields.name = document.getElementById('co-edit-name').value.trim();
+    
+    // Hosts
+    fields.dbHost = document.getElementById('co-edit-dbhost').value.trim();
+    fields.dbHostRead = document.getElementById('co-edit-dbhost-read').value.trim();
+    
+    // Routing
+    fields.dbServer = document.getElementById('co-edit-dbserver').value.trim();
+    fields.dbHostApiRead = document.getElementById('co-edit-dbhost-api-read').value.trim();
+    fields.dbHostDynamicRead = document.getElementById('co-edit-dbhost-dynamic-read').value.trim();
+    fields.enableDynamicRead = document.getElementById('co-edit-enable-dynamic-read').value;
+    
+    // Branding
+    fields.visible = document.getElementById('co-edit-visible').value;
+    const order = document.getElementById('co-edit-order').value;
+    if (order !== '') fields.order = order;
+    const brandingLogo = document.getElementById('co-edit-branding-logo').value;
+    if (brandingLogo !== '') fields.brandingLogo = brandingLogo;
+    fields.brandingPrefix = document.getElementById('co-edit-branding-prefix').value.trim();
+    fields.logo = document.getElementById('co-edit-logo').value.trim();
+    fields.branding = document.getElementById('co-edit-branding').value.trim();
+    fields.legacyBranding = document.getElementById('co-edit-legacy-branding').value;
+    fields.exclusiveDomain = document.getElementById('co-edit-exclusive-domain').value.trim();
+    fields.mascot = document.getElementById('co-edit-mascot').value.trim();
+    
+    // Contact
+    fields.adminContact = document.getElementById('co-edit-admin-contact').value.trim();
+    fields.adminPhone = document.getElementById('co-edit-admin-phone').value.trim();
+    fields.adminEmail = document.getElementById('co-edit-admin-email').value.trim();
+    fields.billingEmail = document.getElementById('co-edit-billing-email').value.trim();
+    fields.billingName = document.getElementById('co-edit-billing-name').value.trim();
+    fields.sendTRInvoice = document.getElementById('co-edit-send-tr-invoice').value;
+    
+    // Franchise
+    fields.canFranchise = document.getElementById('co-edit-can-franchise').value;
+    fields.franchiseName = document.getElementById('co-edit-franchise-name').value.trim();
+    fields.franchiseLogo = document.getElementById('co-edit-franchise-logo').value.trim();
+    fields.blockPrtDate = document.getElementById('co-edit-block-prt-date').value.trim();
+    
+    return fields;
+}
+
+/**
+ * Save the company card — updates existing or creates new
+ */
+async function saveCompanyCard() {
+    const saveBtn = document.getElementById('co-edit-save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
     
     try {
-        const formData = new FormData(form);
+        const fields = _collectCompanyFields();
         
-        // Build payload with ALL fields
-        const payload = {
-            job_id: formData.get('job_id'),
-            database: formData.get('database'),
-            release_action: formData.get('release_action'),
-        };
+        // Validate required fields
+        if (!fields.subdomain) {
+            showToast('Subdomain is required', 'error');
+            return;
+        }
+        if (!fields.dbHost) {
+            showToast('Primary Host is required', 'error');
+            return;
+        }
         
-        // All column fields — only include non-empty values
-        const allFields = [
-            // Core
-            'subdomain', 'name', 'company', 'owner',
-            'dbHost', 'dbHostRead',
-            // Extended routing
-            'dbServer', 'dbHostApiRead', 'dbHostDynamicRead', 'enableDynamicRead',
-            // Branding & display
-            'visible', 'order', 'brandingPrefix', 'brandingLogo',
-            'logo', 'branding', 'legacyBranding', 'exclusiveDomain', 'mascot',
-            // Contact & billing
-            'adminContact', 'adminPhone', 'adminEmail',
-            'billingEmail', 'billingName', 'sendTRInvoice',
-            // Franchise & operations
-            'canFranchise', 'franchiseName', 'franchiseLogo', 'blockPrtDate',
-        ];
+        const jobId = overlordState.jobId;
+        let response;
         
-        allFields.forEach(field => {
-            const val = formData.get(field);
-            if (val !== null && val !== '') {
-                payload[field] = val;
-            }
-        });
-        
-        const response = await fetch(`/api/v1/overlord/${payload.job_id}/sync`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
+        if (companyState.isNew) {
+            // CREATE — POST /api/v1/overlord/{jobId}/company
+            const payload = {
+                job_id: String(jobId),
+                ...fields,
+                database: overlordState.database,
+                release_action: document.getElementById('overlord-release-action').value,
+            };
+            
+            response = await fetch(`/api/v1/overlord/${jobId}/company`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+        } else {
+            // UPDATE — POST /api/v1/overlord/{jobId}/sync with company_id
+            const payload = {
+                job_id: jobId,
+                database: overlordState.database,
+                company_id: companyState.editingId,
+                release_action: document.getElementById('overlord-release-action').value,
+                ...fields,
+            };
+            
+            response = await fetch(`/api/v1/overlord/${jobId}/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+        }
         
         if (!response.ok) {
             const error = await response.json();
@@ -2374,15 +2516,87 @@ async function submitOverlordForm(event) {
             throw new Error(error.detail || 'Failed to save changes');
         }
         
-        showToast('Overlord record updated', 'success');
-        closeOverlordModal();
+        showToast(companyState.isNew ? 'Company record created' : 'Company record updated', 'success');
+        closeCompanyEditCard();
+        
+        // Refresh data
+        await refreshCompanyList();
         
     } catch (error) {
-        console.error('Failed to save overlord changes:', error);
+        console.error('Failed to save company:', error);
         showToast(error.message || 'Failed to save changes', 'error');
     } finally {
-        submitBtn.disabled = false;
-        submitText.textContent = 'Save';
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Changes';
+    }
+}
+
+/**
+ * Delete the company record currently being edited
+ */
+async function deleteCompanyRecord() {
+    if (!companyState.editingId) return;
+    
+    const companyId = companyState.editingId;
+    const confirmed = await showConfirm(
+        `Delete company record #${companyId}?\n\nThis will permanently remove this company record from overlord.companies.`,
+        { title: 'Delete Company', type: 'danger', okText: 'Delete' }
+    );
+    
+    if (!confirmed) return;
+    
+    const deleteBtn = document.getElementById('co-edit-delete-btn');
+    deleteBtn.disabled = true;
+    deleteBtn.textContent = 'Deleting...';
+    
+    try {
+        const response = await fetch(
+            `/api/v1/overlord/${overlordState.jobId}/company/${companyId}`,
+            { method: 'DELETE' }
+        );
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to delete company');
+        }
+        
+        showToast(`Company #${companyId} deleted`, 'success');
+        closeCompanyEditCard();
+        
+        // Refresh data
+        await refreshCompanyList();
+        
+    } catch (error) {
+        console.error('Failed to delete company:', error);
+        showToast(error.message || 'Failed to delete', 'error');
+    } finally {
+        deleteBtn.disabled = false;
+        deleteBtn.textContent = 'Delete';
+    }
+}
+
+/**
+ * Refresh the company list from the API
+ */
+async function refreshCompanyList() {
+    try {
+        const response = await fetch(`/api/v1/overlord/${overlordState.jobId}`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const companyList = data.companies || (data.company ? [data.company] : []);
+        companyState.companies = companyList;
+        renderCompanyTable();
+        
+        // Update badge if no companies remain
+        const badge = document.getElementById('overlord-header-badge');
+        if (companyList.length === 0 && badge) {
+            badge.textContent = 'New';
+            badge.className = 'overlord-badge overlord-badge--new';
+            badge.classList.remove('js-hidden');
+        }
+    } catch (error) {
+        console.error('Failed to refresh company list:', error);
     }
 }
 
@@ -2408,70 +2622,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (releaseSelect) {
         releaseSelect.addEventListener('change', updateReleaseHint);
     }
-    
-    // Subdomain auto-lowercase + debounced duplicate check
-    const subdomainInput = document.getElementById('overlord-subdomain');
-    if (subdomainInput) {
-        let subdomainCheckTimer = null;
-        
-        subdomainInput.addEventListener('input', function(e) {
-            const cleaned = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
-            if (cleaned !== e.target.value) e.target.value = cleaned;
-            
-            clearTimeout(subdomainCheckTimer);
-            const val = e.target.value.trim();
-            if (val.length >= 1) {
-                subdomainCheckTimer = setTimeout(() => checkSubdomainDuplicates(val), 400);
-            } else {
-                document.getElementById('subdomain-duplicates-container').classList.add('js-hidden');
-            }
-        });
-    }
 });
-
-/**
- * Check subdomain duplicates
- */
-async function checkSubdomainDuplicates(subdomain) {
-    if (!subdomain || !overlordState.database) return;
-    
-    try {
-        const params = new URLSearchParams({ exclude_database: overlordState.database });
-        const response = await fetch(
-            `/api/v1/overlord/subdomain-check/${encodeURIComponent(subdomain)}?${params}`
-        );
-        if (!response.ok) return;
-        
-        const data = await response.json();
-        if (data.duplicates && data.duplicates.length > 0) {
-            renderSubdomainDuplicates(data.duplicates);
-        } else {
-            document.getElementById('subdomain-duplicates-container').classList.add('js-hidden');
-        }
-    } catch (err) {
-        console.debug('Subdomain check failed:', err);
-    }
-}
-
-function renderSubdomainDuplicates(duplicates) {
-    const container = document.getElementById('subdomain-duplicates-container');
-    const tbody = document.getElementById('subdomain-duplicates-body');
-    
-    if (!duplicates || duplicates.length === 0) {
-        container.classList.add('js-hidden');
-        return;
-    }
-    
-    tbody.innerHTML = duplicates.map(d => `
-        <tr>
-            <td>${_escapeHtml(String(d.company_id))}</td>
-            <td>${_escapeHtml(d.database)}</td>
-            <td>${_escapeHtml(d.dbHost)}</td>
-        </tr>
-    `).join('');
-    
-    container.classList.remove('js-hidden');
-}
 
 function _escapeHtml(str) {
     const div = document.createElement('div');
@@ -2592,12 +2743,14 @@ function renderEmployeeTable() {
  * Switch between employee edit card tabs
  */
 function switchEcardTab(tabBtn, panelId) {
-    // Deactivate all tabs/panels
-    document.querySelectorAll('.ecard-tabs__tab').forEach(t => {
+    // Scope to the parent edit card to prevent cross-card interference
+    const card = tabBtn.closest('.emp-edit-card');
+    if (!card) return;
+    card.querySelectorAll('.ecard-tabs__tab').forEach(t => {
         t.classList.remove('ecard-tabs__tab--active');
         t.setAttribute('aria-selected', 'false');
     });
-    document.querySelectorAll('.ecard-tabs__panel').forEach(p => {
+    card.querySelectorAll('.ecard-tabs__panel').forEach(p => {
         p.classList.remove('ecard-tabs__panel--active');
     });
     // Activate clicked tab + target panel
@@ -2761,10 +2914,9 @@ async function saveEmployeeCard() {
     const pwEl = document.getElementById('ecard-password');
     const newPassword = pwEl ? pwEl.value.trim() : '';
     if (newPassword) {
-        const confirmed = confirm(
-            'Setting a new password will clear the existing passwordHash.\n\n' +
-            'This forces a password reset for this employee.\n\n' +
-            'Continue?'
+        const confirmed = await showConfirm(
+            'Reset employee password?\n\nSetting a new password will clear the existing passwordHash. This forces a password reset for this employee.',
+            { title: 'Reset Password', type: 'warning' }
         );
         if (!confirmed) return;
     }

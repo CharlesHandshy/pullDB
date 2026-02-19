@@ -373,9 +373,19 @@
             if (val === 'running' && row.cancel_requested_at) {
                 cls += ' badge-cancel-pending';
             }
-            // Show "Deployed" label for deployed jobs in Active view (database is live)
-            const label = (val === 'deployed') ? 'Deployed' : val;
-            return `<span class="badge ${cls}">${label}</span>`;
+            // Show "Claimed" or "Assigned" for non-restore deployed jobs, "Deployed" for normal deploys
+            let label = val;
+            if (val === 'deployed') {
+                if (row.origin === 'claim') {
+                    label = 'Claimed';
+                } else if (row.origin === 'assign') {
+                    label = 'Assigned';
+                } else {
+                    label = 'Deployed';
+                }
+            }
+            let html = `<span class="badge ${cls}">${label}</span>`;
+            return html;
         },
         
         date: (val) => {

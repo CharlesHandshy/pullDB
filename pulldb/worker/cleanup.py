@@ -3101,6 +3101,24 @@ def _drop_job_database(
         result: Result object to update.
         dry_run: If True, don't actually drop.
     """
+    # CLAIMED/ASSIGNED jobs: Never drop — databases weren't created by pullDB
+    if job.origin in ("claim", "assign"):
+        logger.info(
+            "Retention: skipping %s job %s (target=%s) — not created by pullDB",
+            job.origin,
+            job.id,
+            job.target,
+        )
+        # Mark db_dropped_at so the job stops appearing in cleanup candidates
+        job_repo.mark_db_dropped(job.id)
+        job_repo.append_job_event(
+            job.id,
+            "retention_skip",
+            f'{{"reason": "{job.origin}_job_not_owned_by_pulldb"}}',
+        )
+        result.databases_skipped += 1
+        return
+
     # The target name is the actual database name after rename
     db_name = job.target
 

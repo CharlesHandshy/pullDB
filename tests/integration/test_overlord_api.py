@@ -41,6 +41,7 @@ def mock_api_state() -> MagicMock:
     mock_job.dbhost = "test-host.example.com"
     mock_job.owner_user_code = "testuser"
     state.job_repo.get_job.return_value = mock_job
+    state.job_repo.get_job_by_id.return_value = mock_job
     
     # Mock overlord manager
     state.overlord_manager = MagicMock()
@@ -52,10 +53,12 @@ def mock_api_state() -> MagicMock:
 @pytest.fixture
 def mock_user() -> MagicMock:
     """Create mock authenticated user."""
+    from pulldb.domain.models import UserRole
+
     user = MagicMock()
     user.username = "testuser"
-    user.role = MagicMock()
-    user.role.name = "user"
+    user.user_code = "testuser"
+    user.role = UserRole.ADMIN
     return user
 
 
@@ -91,7 +94,7 @@ class TestGetOverlordState:
     ) -> None:
         """Get state returns job, tracking, and company data."""
         # Setup tracking mock
-        mock_tracking = MagicMock(spec=OverlordTracking)
+        mock_tracking = MagicMock()
         mock_tracking.id = 1
         mock_tracking.database_name = "test_database"
         mock_tracking.job_id = "test-job-id-123"
@@ -100,23 +103,28 @@ class TestGetOverlordState:
         mock_tracking.previous_dbhost = "old-host.example.com"
         mock_tracking.previous_dbhost_read = None
         mock_tracking.current_dbhost = "new-host.example.com"
+        mock_tracking.current_subdomain = "test"
         mock_tracking.company_id = 123
-        mock_tracking.claimed_at = None
-        mock_tracking.synced_at = None
+        mock_tracking.created_at = None
+        mock_tracking.updated_at = None
+        mock_tracking.released_at = None
         
-        # Setup company mock
-        mock_company = MagicMock(spec=OverlordCompany)
-        mock_company.company_id = 123
-        mock_company.database = "test_database"
-        mock_company.name = "Test Company"
-        mock_company.subdomain = "test"
-        mock_company.db_host = "new-host.example.com"
-        mock_company.db_host_read = None
+        # Setup company mock as raw dict (matches get_all_companies return)
+        mock_company_row = {
+            "companyID": 123,
+            "database": "test_database",
+            "name": "Test Company",
+            "subdomain": "test",
+            "dbHost": "new-host.example.com",
+            "dbHostRead": None,
+        }
         
         mock_api_state.overlord_manager.get_state.return_value = (
             mock_tracking,
-            mock_company,
+            mock_company_row,
         )
+        mock_api_state.overlord_manager.get_all_companies.return_value = [mock_company_row]
+        mock_api_state.overlord_manager.check_subdomain_duplicates.return_value = []
         
         response = client.get("/api/v1/overlord/test-job-id-123")
         
@@ -134,6 +142,7 @@ class TestGetOverlordState:
     ) -> None:
         """Get state returns null tracking when not claimed."""
         mock_api_state.overlord_manager.get_state.return_value = (None, None)
+        mock_api_state.overlord_manager.get_all_companies.return_value = []
         
         response = client.get("/api/v1/overlord/test-job-id-123")
         
@@ -162,7 +171,7 @@ class TestGetOverlordState:
         mock_api_state: MagicMock,
     ) -> None:
         """Get state returns 404 when job not found."""
-        mock_api_state.job_repo.get_job.return_value = None
+        mock_api_state.job_repo.get_job_by_id.return_value = None
         
         response = client.get("/api/v1/overlord/nonexistent-job")
         
@@ -184,7 +193,7 @@ class TestSyncOverlord:
     ) -> None:
         """Sync successfully updates overlord."""
         # Mock claim (auto-claim)
-        mock_tracking = MagicMock(spec=OverlordTracking)
+        mock_tracking = MagicMock()
         mock_tracking.id = 1
         mock_tracking.database_name = "test_database"
         mock_tracking.job_id = "test-job-id-123"
@@ -193,9 +202,11 @@ class TestSyncOverlord:
         mock_tracking.previous_dbhost = None
         mock_tracking.previous_dbhost_read = None
         mock_tracking.current_dbhost = "staging.example.com"
+        mock_tracking.current_subdomain = "test"
         mock_tracking.company_id = 999
-        mock_tracking.claimed_at = None
-        mock_tracking.synced_at = None
+        mock_tracking.created_at = None
+        mock_tracking.updated_at = None
+        mock_tracking.released_at = None
         
         mock_api_state.overlord_manager.get_tracking.side_effect = [None, mock_tracking]
         mock_api_state.overlord_manager.claim.return_value = mock_tracking
@@ -206,6 +217,7 @@ class TestSyncOverlord:
                 "job_id": "test-job-id-123",
                 "database": "test_database",
                 "dbHost": "staging.example.com",
+                "subdomain": "test",
             },
         )
         
@@ -228,6 +240,7 @@ class TestSyncOverlord:
                 "job_id": "test-job-id-123",
                 "database": "test_database",
                 "dbHost": "staging.example.com",
+                "subdomain": "test",
             },
         )
         
@@ -294,3 +307,166 @@ class TestReleaseOverlord:
         assert response.status_code == 200
         data = response.json()
         assert data["action_taken"] == "delete"
+
+
+# =============================================================================
+# Test: POST /api/v1/overlord/{job_id}/company (Add Company)
+# =============================================================================
+
+
+class TestAddCompany:
+    """Tests for POST /api/v1/overlord/{job_id}/company endpoint."""
+
+    def test_add_company_success(
+        self,
+        client: TestClient,
+        mock_api_state: MagicMock,
+    ) -> None:
+        """Add company creates a new record and returns success."""
+        mock_api_state.overlord_manager.add_company.return_value = 999
+        mock_tracking = MagicMock()
+        mock_tracking.id = 1
+        mock_tracking.database_name = "test_database"
+        mock_tracking.job_id = "test-job-id-123"
+        mock_tracking.status = OverlordTrackingStatus.CLAIMED
+        mock_tracking.row_existed_before = False
+        mock_tracking.previous_dbhost = None
+        mock_tracking.previous_dbhost_read = None
+        mock_tracking.current_dbhost = "staging.example.com"
+        mock_tracking.current_subdomain = "newco"
+        mock_tracking.company_id = None
+        mock_tracking.created_at = None
+        mock_tracking.updated_at = None
+        mock_tracking.released_at = None
+        mock_api_state.overlord_manager.get_tracking.return_value = mock_tracking
+
+        response = client.post(
+            "/api/v1/overlord/test-job-id-123/company",
+            json={
+                "job_id": "test-job-id-123",
+                "database": "test_database",
+                "dbHost": "staging.example.com",
+                "subdomain": "newco",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "999" in data["message"]
+
+    def test_add_company_disabled(
+        self,
+        client: TestClient,
+        mock_api_state: MagicMock,
+    ) -> None:
+        """Add company returns 400 when overlord disabled."""
+        mock_api_state.overlord_manager.is_enabled = False
+
+        response = client.post(
+            "/api/v1/overlord/test-job-id-123/company",
+            json={
+                "job_id": "test-job-id-123",
+                "database": "test_database",
+                "dbHost": "staging.example.com",
+                "subdomain": "newco",
+            },
+        )
+
+        assert response.status_code == 400
+
+    def test_add_company_requires_deployed_status(
+        self,
+        client: TestClient,
+        mock_api_state: MagicMock,
+    ) -> None:
+        """Add company rejects non-deployed jobs."""
+        mock_job = mock_api_state.job_repo.get_job.return_value
+        mock_job.status.value = "restoring"
+
+        response = client.post(
+            "/api/v1/overlord/test-job-id-123/company",
+            json={
+                "job_id": "test-job-id-123",
+                "database": "test_database",
+                "dbHost": "staging.example.com",
+                "subdomain": "newco",
+            },
+        )
+
+        assert response.status_code == 400
+        assert "restoring" in response.json()["detail"]
+
+
+# =============================================================================
+# Test: DELETE /api/v1/overlord/{job_id}/company/{company_id}
+# =============================================================================
+
+
+class TestDeleteCompany:
+    """Tests for DELETE /api/v1/overlord/{job_id}/company/{company_id} endpoint."""
+
+    def test_delete_company_success(
+        self,
+        client: TestClient,
+        mock_api_state: MagicMock,
+    ) -> None:
+        """Delete company removes the record."""
+        mock_api_state.overlord_manager.remove_company.return_value = True
+
+        response = client.delete(
+            "/api/v1/overlord/test-job-id-123/company/42",
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+    def test_delete_company_not_found(
+        self,
+        client: TestClient,
+        mock_api_state: MagicMock,
+    ) -> None:
+        """Delete company returns 404 when company doesn't exist."""
+        mock_api_state.overlord_manager.remove_company.return_value = False
+
+        response = client.delete(
+            "/api/v1/overlord/test-job-id-123/company/999",
+        )
+
+        assert response.status_code == 404
+
+    def test_delete_company_cross_database(
+        self,
+        client: TestClient,
+        mock_api_state: MagicMock,
+    ) -> None:
+        """Delete company returns 400 when row belongs to different database."""
+        from pulldb.domain.overlord import OverlordSafetyError
+
+        mock_api_state.overlord_manager.remove_company.side_effect = OverlordSafetyError(
+            "Company 42 belongs to 'other_db', not 'test_database'"
+        )
+
+        response = client.delete(
+            "/api/v1/overlord/test-job-id-123/company/42",
+        )
+
+        assert response.status_code == 400
+        assert "belongs to" in response.json()["detail"]
+
+    def test_delete_company_requires_deployed_status(
+        self,
+        client: TestClient,
+        mock_api_state: MagicMock,
+    ) -> None:
+        """Delete company rejects non-deployed jobs (6B fix)."""
+        mock_job = mock_api_state.job_repo.get_job.return_value
+        mock_job.status.value = "restoring"
+
+        response = client.delete(
+            "/api/v1/overlord/test-job-id-123/company/42",
+        )
+
+        assert response.status_code == 400
+        assert "restoring" in response.json()["detail"]

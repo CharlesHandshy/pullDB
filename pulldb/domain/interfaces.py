@@ -59,6 +59,36 @@ class JobRepository(Protocol):
         """
         ...
 
+    def create_claimed_job(
+        self,
+        *,
+        job_id: str,
+        owner_user_id: str,
+        owner_username: str,
+        owner_user_code: str,
+        target: str,
+        dbhost: str,
+        origin: str,
+    ) -> str:
+        """Create a synthetic deployed job for an externally-managed database.
+
+        Used by Database Discovery claim/assign. The job is inserted directly
+        into 'deployed' status without going through the restore pipeline.
+
+        Args:
+            job_id: Pre-generated UUID.
+            owner_user_id: UUID of the database owner.
+            owner_username: Owner's username.
+            owner_user_code: Owner's 6-char code.
+            target: Database name on the target host.
+            dbhost: Target MySQL host.
+            origin: 'claim' or 'assign'.
+
+        Returns:
+            job_id of the created job.
+        """
+        ...
+
     def claim_next_job(self, worker_id: str | None = None) -> Job | None:
         """Atomically claim next queued job for processing.
 

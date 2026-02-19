@@ -380,6 +380,10 @@ CREATE TABLE jobs (
     superseded_by_job_id CHAR(36) NULL 
         COMMENT 'Job ID that superseded this one',
     
+    -- Job origin tracking (Database Discovery)
+    origin ENUM('restore', 'claim', 'assign') NOT NULL DEFAULT 'restore'
+        COMMENT 'How this job entered pullDB tracking: restore (normal pipeline), claim (user self-claimed via discovery), assign (admin assigned via discovery)',
+    
     -- Virtual column for unique constraint enforcement (per-target exclusivity)
     active_target_key VARCHAR(520) GENERATED ALWAYS AS (
         CASE WHEN status IN ('queued','running','canceling') 

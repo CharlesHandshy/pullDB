@@ -178,7 +178,7 @@ class TestClaim:
         # No existing tracking
         manager._tracking_repo.get.return_value = None
         # No existing overlord row
-        manager._overlord_repo.get_row_snapshot.return_value = None
+        manager._overlord_repo.get_all_by_database.return_value = []
         # Return tracking after create
         mock_tracking = MagicMock(spec=OverlordTracking)
         manager._tracking_repo.get.side_effect = [None, mock_tracking]
@@ -197,13 +197,23 @@ class TestClaim:
         """Claim succeeds and backs up existing overlord row."""
         # No existing tracking
         manager._tracking_repo.get.return_value = None
-        # Existing overlord row
-        manager._overlord_repo.get_row_snapshot.return_value = {
-            "companyID": 123,
-            "database": "test_database",
-            "dbHost": "old-host.example.com",
-            "dbHostRead": "old-host-read.example.com",
-        }
+        # Existing overlord rows (multi-company snapshot)
+        manager._overlord_repo.get_all_by_database.return_value = [
+            {
+                "companyID": 123,
+                "database": "test_database",
+                "dbHost": "old-host.example.com",
+                "dbHostRead": "old-host-read.example.com",
+                "subdomain": "sub1",
+            },
+            {
+                "companyID": 456,
+                "database": "test_database",
+                "dbHost": "old-host.example.com",
+                "dbHostRead": "old-host-read.example.com",
+                "subdomain": "sub2",
+            },
+        ]
         # Return tracking after create
         mock_tracking = MagicMock(spec=OverlordTracking)
         manager._tracking_repo.get.side_effect = [None, mock_tracking]
@@ -217,6 +227,9 @@ class TestClaim:
         assert call_kwargs["previous_dbhost"] == "old-host.example.com"
         assert call_kwargs["previous_dbhost_read"] == "old-host-read.example.com"
         assert call_kwargs["company_id"] == 123
+        # Full snapshot stores all companies
+        assert "companies" in call_kwargs["previous_snapshot"]
+        assert len(call_kwargs["previous_snapshot"]["companies"]) == 2
 
     def test_claim_returns_existing_if_same_job(self, manager: OverlordManager) -> None:
         """Claim returns existing tracking if same job already claimed."""
@@ -324,7 +337,7 @@ class TestRelease:
     """Tests for release method."""
 
     def test_release_restore_success(self, manager: OverlordManager) -> None:
-        """Release with RESTORE action restores ALL original values from snapshot."""
+        """Release with RESTORE action restores routing-only fields from snapshot."""
         mock_tracking = MagicMock(spec=OverlordTracking)
         mock_tracking.job_id = "test-job-id"
         mock_tracking.database_name = "test_database"
@@ -335,12 +348,22 @@ class TestRelease:
         mock_tracking.previous_dbhost_read = "original-host-read.example.com"
         mock_tracking.current_dbhost = "staging-host.example.com"
         mock_tracking.current_subdomain = None
-        # Full snapshot includes all fields that should be restored
+        # Multi-company snapshot format
         mock_tracking.previous_snapshot = {
-            "dbHost": "original-host.example.com",
-            "dbHostRead": "original-host-read.example.com",
-            "subdomain": "original-subdomain",
-            "name": "Original Company Name",
+            "companies": [
+                {
+                    "dbHost": "original-host.example.com",
+                    "dbHostRead": "original-host-read.example.com",
+                    "subdomain": "original-subdomain",
+                    "name": "Original Company Name",
+                },
+                {
+                    "dbHost": "original-host.example.com",
+                    "dbHostRead": "original-host-read.example.com",
+                    "subdomain": "second-subdomain",
+                    "name": "Second Company",
+                },
+            ]
         }
         manager._tracking_repo.get.return_value = mock_tracking
         manager._overlord_repo.update.return_value = True
@@ -350,13 +373,13 @@ class TestRelease:
         assert result.success is True
         assert result.action_taken == ReleaseAction.RESTORE
         assert "Restored" in result.message
-        # Verify ALL fields from snapshot are restored, including subdomain
+        # Verify ONLY routing fields are restored (not subdomain/name)
         call_args = manager._overlord_repo.update.call_args
         update_data = call_args[0][1]
         assert update_data["dbHost"] == "original-host.example.com"
         assert update_data["dbHostRead"] == "original-host-read.example.com"
-        assert update_data["subdomain"] == "original-subdomain"
-        assert update_data["name"] == "Original Company Name"
+        assert "subdomain" not in update_data
+        assert "name" not in update_data
         manager._tracking_repo.update_released.assert_called_once()
 
     def test_release_restore_fails_no_previous(self, manager: OverlordManager) -> None:
@@ -481,9 +504,13 @@ class TestRelease:
         mock_tracking.current_dbhost = "staging.example.com"
         mock_tracking.current_subdomain = None
         mock_tracking.previous_snapshot = {
-            "dbHost": "original.example.com",
-            "dbHostRead": "original-read.example.com",
-            "subdomain": "original-subdomain",
+            "companies": [
+                {
+                    "dbHost": "original.example.com",
+                    "dbHostRead": "original-read.example.com",
+                    "subdomain": "original-subdomain",
+                },
+            ]
         }
         manager._tracking_repo.get.return_value = mock_tracking
         
@@ -558,9 +585,13 @@ class TestRelease:
         mock_tracking.current_dbhost = "staging.example.com"  # We set this
         mock_tracking.current_subdomain = None
         mock_tracking.previous_snapshot = {
-            "dbHost": "original.example.com",
-            "dbHostRead": "original-read.example.com",
-            "subdomain": "original-subdomain",
+            "companies": [
+                {
+                    "dbHost": "original.example.com",
+                    "dbHostRead": "original-read.example.com",
+                    "subdomain": "original-subdomain",
+                },
+            ]
         }
         manager._tracking_repo.get.return_value = mock_tracking
         
@@ -575,11 +606,11 @@ class TestRelease:
         # Should succeed but flag external change
         assert result.success is True
         assert result.external_change_detected is True
-        # Should restore ALL fields from snapshot including subdomain
+        # Should restore routing-only fields (not subdomain)
         call_args = manager._overlord_repo.update.call_args
         update_data = call_args[0][1]
         assert update_data["dbHost"] == "original.example.com"
-        assert update_data["subdomain"] == "original-subdomain"
+        assert "subdomain" not in update_data
 
     def test_release_update_fails_race_condition(self, manager: OverlordManager) -> None:
         """Release RESTORE fails when UPDATE returns 0 rows (race condition)."""
@@ -594,9 +625,13 @@ class TestRelease:
         mock_tracking.current_dbhost = "staging.example.com"
         mock_tracking.current_subdomain = None
         mock_tracking.previous_snapshot = {
-            "dbHost": "original.example.com",
-            "dbHostRead": "original-read.example.com",
-            "subdomain": "original-subdomain",
+            "companies": [
+                {
+                    "dbHost": "original.example.com",
+                    "dbHostRead": "original-read.example.com",
+                    "subdomain": "original-subdomain",
+                },
+            ]
         }
         manager._tracking_repo.get.return_value = mock_tracking
         
@@ -646,7 +681,7 @@ class TestCleanupOnJobDelete:
         assert result.action_taken == ReleaseAction.DELETE
 
     def test_cleanup_restores_if_existed_before(self, manager: OverlordManager) -> None:
-        """Cleanup restores ALL original values if row existed before."""
+        """Cleanup restores routing-only fields if row existed before."""
         mock_tracking = MagicMock(spec=OverlordTracking)
         mock_tracking.job_id = "test-job-id"
         mock_tracking.database_name = "test_database"
@@ -658,10 +693,14 @@ class TestCleanupOnJobDelete:
         mock_tracking.current_dbhost = "staging.example.com"
         mock_tracking.current_subdomain = None
         mock_tracking.previous_snapshot = {
-            "dbHost": "original.example.com",
-            "dbHostRead": "original-read.example.com",
-            "subdomain": "original-subdomain",
-            "name": "Original Company Name",
+            "companies": [
+                {
+                    "dbHost": "original.example.com",
+                    "dbHostRead": "original-read.example.com",
+                    "subdomain": "original-subdomain",
+                    "name": "Original Company Name",
+                },
+            ]
         }
         manager._tracking_repo.get_by_job_id.return_value = mock_tracking
         manager._tracking_repo.get.return_value = mock_tracking
@@ -676,10 +715,13 @@ class TestCleanupOnJobDelete:
         
         assert result is not None
         assert result.action_taken == ReleaseAction.RESTORE
-        # Verify all fields including subdomain are restored
+        # Verify only routing fields are restored (not subdomain/name)
         call_args = manager._overlord_repo.update.call_args
         update_data = call_args[0][1]
-        assert update_data["subdomain"] == "original-subdomain"
+        assert update_data["dbHost"] == "original.example.com"
+        assert update_data["dbHostRead"] == "original-read.example.com"
+        assert "subdomain" not in update_data
+        assert "name" not in update_data
 
     def test_cleanup_returns_none_if_no_tracking(self, manager: OverlordManager) -> None:
         """Cleanup returns None if no tracking record exists."""
@@ -688,3 +730,182 @@ class TestCleanupOnJobDelete:
         result = manager.cleanup_on_job_delete("test-job-id")
         
         assert result is None
+
+
+# =============================================================================
+# Test: Multi-Company Operations
+# =============================================================================
+
+
+class TestMultiCompany:
+    """Tests for multi-company support (get_all, add, remove, sync by ID)."""
+
+    def test_get_all_companies(self, manager: OverlordManager) -> None:
+        """get_all_companies returns list from repository."""
+        manager._overlord_repo.get_all_by_database.return_value = [
+            {"companyID": 1, "database": "test_db", "subdomain": "sub1"},
+            {"companyID": 2, "database": "test_db", "subdomain": "sub2"},
+        ]
+
+        result = manager.get_all_companies("test_db")
+
+        assert len(result) == 2
+        assert result[0]["companyID"] == 1
+        assert result[1]["subdomain"] == "sub2"
+        manager._overlord_repo.get_all_by_database.assert_called_once_with("test_db")
+
+    def test_get_all_companies_empty(self, manager: OverlordManager) -> None:
+        """get_all_companies returns empty list when no rows."""
+        manager._overlord_repo.get_all_by_database.return_value = []
+
+        result = manager.get_all_companies("test_db")
+
+        assert result == []
+
+    def test_add_company_enforces_claim(self, manager: OverlordManager) -> None:
+        """add_company raises OwnershipError without active claim."""
+        manager._tracking_repo.get.return_value = None
+
+        with pytest.raises(OverlordOwnershipError, match="No active claim"):
+            manager.add_company("test_db", "test-job-id", {"subdomain": "new"})
+
+    def test_add_company_forces_database_field(self, manager: OverlordManager) -> None:
+        """add_company always sets data['database'] to database_name."""
+        mock_tracking = MagicMock(spec=OverlordTracking)
+        mock_tracking.job_id = "test-job-id"
+        mock_tracking.status = OverlordTrackingStatus.SYNCED
+        mock_tracking.created_by = "user123"
+        manager._tracking_repo.get.return_value = mock_tracking
+        manager._overlord_repo.insert.return_value = 999
+
+        manager.add_company("test_db", "test-job-id", {"subdomain": "new", "database": "hacked"})
+
+        call_args = manager._overlord_repo.insert.call_args[0][0]
+        assert call_args["database"] == "test_db"  # forced, not "hacked"
+
+    def test_add_company_wrong_job(self, manager: OverlordManager) -> None:
+        """add_company raises OwnershipError when claim is from different job."""
+        mock_tracking = MagicMock(spec=OverlordTracking)
+        mock_tracking.job_id = "other-job-id"
+        mock_tracking.status = OverlordTrackingStatus.CLAIMED
+        manager._tracking_repo.get.return_value = mock_tracking
+
+        with pytest.raises(OverlordOwnershipError, match="owned by job"):
+            manager.add_company("test_db", "test-job-id", {"subdomain": "new"})
+
+    def test_remove_company_success(self, manager: OverlordManager) -> None:
+        """remove_company deletes the correct row."""
+        mock_tracking = MagicMock(spec=OverlordTracking)
+        mock_tracking.job_id = "test-job-id"
+        mock_tracking.status = OverlordTrackingStatus.SYNCED
+        mock_tracking.created_by = "user123"
+        manager._tracking_repo.get.return_value = mock_tracking
+        manager._overlord_repo.get_by_id.return_value = {"database": "test_db", "companyID": 5}
+        manager._overlord_repo.delete_by_id.return_value = True
+
+        result = manager.remove_company("test_db", "test-job-id", 5)
+
+        assert result is True
+        manager._overlord_repo.delete_by_id.assert_called_once_with(5)
+
+    def test_remove_company_cross_database_check(self, manager: OverlordManager) -> None:
+        """remove_company rejects if company belongs to different database."""
+        mock_tracking = MagicMock(spec=OverlordTracking)
+        mock_tracking.job_id = "test-job-id"
+        mock_tracking.status = OverlordTrackingStatus.SYNCED
+        mock_tracking.created_by = "user123"
+        manager._tracking_repo.get.return_value = mock_tracking
+        # Row belongs to a different database
+        manager._overlord_repo.get_by_id.return_value = {"database": "other_db", "companyID": 5}
+
+        with pytest.raises(OverlordSafetyError, match="belongs to"):
+            manager.remove_company("test_db", "test-job-id", 5)
+
+    def test_remove_company_not_found(self, manager: OverlordManager) -> None:
+        """remove_company returns False when company doesn't exist."""
+        mock_tracking = MagicMock(spec=OverlordTracking)
+        mock_tracking.job_id = "test-job-id"
+        mock_tracking.status = OverlordTrackingStatus.SYNCED
+        mock_tracking.created_by = "user123"
+        manager._tracking_repo.get.return_value = mock_tracking
+        manager._overlord_repo.get_by_id.return_value = None
+
+        result = manager.remove_company("test_db", "test-job-id", 999)
+
+        assert result is False
+
+    def test_sync_with_company_id(self, manager: OverlordManager) -> None:
+        """sync with company_id uses update_by_id (PK-safe path)."""
+        mock_tracking = MagicMock(spec=OverlordTracking)
+        mock_tracking.job_id = "test-job-id"
+        mock_tracking.status = OverlordTrackingStatus.SYNCED
+        mock_tracking.created_by = "user123"
+        manager._tracking_repo.get.return_value = mock_tracking
+        # Existing company with that ID
+        manager._overlord_repo.get_by_id.return_value = {"companyID": 42, "database": "test_db"}
+
+        result = manager.sync(
+            "test_db", "test-job-id",
+            {"dbHost": "new-host.example.com"},
+            company_id=42,
+        )
+
+        assert result is True
+        manager._overlord_repo.update_by_id.assert_called_once()
+        manager._overlord_repo.update.assert_not_called()
+        manager._overlord_repo.insert.assert_not_called()
+
+    def test_sync_with_company_id_not_found_inserts(self, manager: OverlordManager) -> None:
+        """sync with company_id inserts when PK doesn't exist."""
+        mock_tracking = MagicMock(spec=OverlordTracking)
+        mock_tracking.job_id = "test-job-id"
+        mock_tracking.status = OverlordTrackingStatus.SYNCED
+        mock_tracking.created_by = "user123"
+        manager._tracking_repo.get.return_value = mock_tracking
+        manager._overlord_repo.get_by_id.return_value = None
+        manager._overlord_repo.insert.return_value = 100
+
+        result = manager.sync(
+            "test_db", "test-job-id",
+            {"dbHost": "new-host.example.com"},
+            company_id=999,
+        )
+
+        assert result is True
+        manager._overlord_repo.insert.assert_called_once()
+        manager._overlord_repo.update_by_id.assert_not_called()
+
+    def test_release_restore_legacy_single_row_snapshot(self, manager: OverlordManager) -> None:
+        """Release restore works with legacy single-row snapshot format."""
+        mock_tracking = MagicMock(spec=OverlordTracking)
+        mock_tracking.job_id = "test-job-id"
+        mock_tracking.database_name = "test_database"
+        mock_tracking.created_by = "user123"
+        mock_tracking.status = OverlordTrackingStatus.SYNCED
+        mock_tracking.row_existed_before = True
+        mock_tracking.previous_dbhost = "original.example.com"
+        mock_tracking.previous_dbhost_read = "original-read.example.com"
+        mock_tracking.current_dbhost = "staging.example.com"
+        mock_tracking.current_subdomain = None
+        # Legacy format: single row dict (no "companies" key)
+        mock_tracking.previous_snapshot = {
+            "dbHost": "original.example.com",
+            "dbHostRead": "original-read.example.com",
+            "subdomain": "legacy-subdomain",
+        }
+        manager._tracking_repo.get.return_value = mock_tracking
+        manager._overlord_repo.update.return_value = True
+
+        # Mock overlord row exists
+        mock_company = MagicMock(spec=OverlordCompany)
+        mock_company.db_host = "staging.example.com"
+        manager._overlord_repo.get_by_database.return_value = mock_company
+
+        result = manager.release("test_database", "test-job-id", ReleaseAction.RESTORE)
+
+        assert result.success is True
+        call_args = manager._overlord_repo.update.call_args
+        update_data = call_args[0][1]
+        assert update_data["dbHost"] == "original.example.com"
+        assert update_data["dbHostRead"] == "original-read.example.com"
+        assert "subdomain" not in update_data

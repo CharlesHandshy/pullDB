@@ -288,8 +288,10 @@ class OverlordManager:
             # Already claimed by this job - return existing
             return existing
         
-        # Get current overlord state (if exists)
-        current = self._overlord_repo.get_row_snapshot(database_name)
+        # Get current overlord state (if exists) — snapshot ALL companies
+        all_companies = self._overlord_repo.get_all_by_database(database_name)
+        current = all_companies[0] if all_companies else None
+        full_snapshot = {"companies": all_companies} if all_companies else None
         
         # Create tracking record
         self._tracking_repo.create(
@@ -300,7 +302,7 @@ class OverlordManager:
             row_existed_before=current is not None,
             previous_dbhost=current.get("dbHost") if current else None,
             previous_dbhost_read=current.get("dbHostRead") if current else None,
-            previous_snapshot=current,
+            previous_snapshot=full_snapshot,
             company_id=current.get("companyID") if current else None,
         )
         
@@ -354,6 +356,24 @@ class OverlordManager:
         if not self._overlord_repo:
             return None
         return self._overlord_repo.get_row_snapshot(database_name)
+
+    def get_all_companies(self, database_name: str) -> list[dict[str, Any]]:
+        """Get ALL company records for a database as raw dicts.
+
+        Databases may have multiple rows in overlord.companies (different
+        subdomains sharing the same ``database`` column).  This method
+        returns every matching row ordered by companyID.
+
+        Args:
+            database_name: Database name (job.target)
+
+        Returns:
+            List of raw row dicts.  Empty list if overlord is disabled
+            or no rows match.
+        """
+        if not self._overlord_repo:
+            return []
+        return self._overlord_repo.get_all_by_database(database_name)
     
     def get_tracking(self, database_name: str) -> OverlordTracking | None:
         """Get tracking record for a database.
@@ -476,15 +496,22 @@ class OverlordManager:
         database_name: str,
         job_id: str,
         data: dict[str, Any],
+        company_id: int | None = None,
     ) -> bool:
         """Sync changes to overlord.companies.
         
         Creates or updates the overlord row. Requires existing claim.
+
+        When *company_id* is supplied the update targets that specific row
+        via ``UPDATE … WHERE companyID = %s`` (safe for multi-company
+        databases).  When omitted, the legacy ``WHERE database = %s``
+        path is used for backward compatibility.
         
         Args:
             database_name: Database name
             job_id: Job UUID (for ownership verification)
             data: Column values to write (e.g., dbHost, name, subdomain)
+            company_id: If provided, update this specific company row by PK.
             
         Returns:
             True if sync successful
@@ -510,16 +537,21 @@ class OverlordManager:
         # Ensure database field is set
         data["database"] = database_name
         
-        # Check if row exists
-        existing = self._overlord_repo.get_by_database(database_name)
-        
-        if existing:
-            # Update existing row
-            self._overlord_repo.update(database_name, data)
-            company_id = existing.company_id
+        if company_id is not None:
+            # ── Per-company update (multi-company safe) ──
+            existing = self._overlord_repo.get_by_id(company_id)
+            if existing:
+                self._overlord_repo.update_by_id(company_id, data)
+            else:
+                company_id = self._overlord_repo.insert(data)
         else:
-            # Insert new row
-            company_id = self._overlord_repo.insert(data)
+            # ── Legacy path: single-company databases ──
+            existing = self._overlord_repo.get_by_database(database_name)
+            if existing:
+                self._overlord_repo.update(database_name, data)
+                company_id = existing.company_id
+            else:
+                company_id = self._overlord_repo.insert(data)
         
         # Update tracking
         self._tracking_repo.update_synced(
@@ -538,6 +570,7 @@ class OverlordManager:
             context={
                 "database_name": database_name,
                 "job_id": job_id,
+                "company_id": company_id,
                 "action": "update" if existing else "insert",
                 "dbHost": data.get("dbHost"),
             }
@@ -546,6 +579,130 @@ class OverlordManager:
         logger.info(f"Synced overlord for {database_name}: {'update' if existing else 'insert'}")
         return True
     
+    # -------------------------------------------------------------------------
+    # Add / Remove Individual Company Records
+    # -------------------------------------------------------------------------
+
+    def add_company(
+        self,
+        database_name: str,
+        job_id: str,
+        data: dict[str, Any],
+    ) -> int:
+        """Insert a new company record for this database.
+
+        Requires an active claim.  The ``database`` column is forced to
+        *database_name* so the row is linked to the correct job.
+
+        Args:
+            database_name: Database name (job.target)
+            job_id: Job UUID (for ownership verification)
+            data: Column values for the new row
+
+        Returns:
+            The new companyID
+
+        Raises:
+            OverlordOwnershipError: If not claimed or wrong job
+        """
+        if not self.is_enabled:
+            raise OverlordOwnershipError("Overlord integration is disabled")
+
+        tracking = self._tracking_repo.get(database_name)
+        if not tracking or tracking.status == OverlordTrackingStatus.RELEASED:
+            raise OverlordOwnershipError(
+                f"No active claim for '{database_name}' - call claim() first"
+            )
+        if tracking.job_id != job_id:
+            raise OverlordOwnershipError(
+                f"Claim is owned by job {tracking.job_id}, not {job_id}"
+            )
+
+        data["database"] = database_name
+        company_id = self._overlord_repo.insert(data)
+
+        self._audit_repo.log_action(
+            actor_user_id=tracking.created_by,
+            action="overlord_add_company",
+            detail=f"Added company record for '{database_name}'",
+            context={
+                "database_name": database_name,
+                "job_id": job_id,
+                "company_id": company_id,
+                "subdomain": data.get("subdomain"),
+            },
+        )
+
+        logger.info(
+            "Added overlord company for %s: companyID=%d", database_name, company_id
+        )
+        return company_id
+
+    def remove_company(
+        self,
+        database_name: str,
+        job_id: str,
+        company_id: int,
+    ) -> bool:
+        """Delete a single company record by companyID.
+
+        Requires an active claim.  Validates that the row belongs to
+        *database_name* before deleting.
+
+        Args:
+            database_name: Database name (job.target)
+            job_id: Job UUID (for ownership verification)
+            company_id: companyID to delete
+
+        Returns:
+            True if deleted, False if row not found
+
+        Raises:
+            OverlordOwnershipError: If not claimed or wrong job
+            OverlordSafetyError: If row belongs to a different database
+        """
+        if not self.is_enabled:
+            raise OverlordOwnershipError("Overlord integration is disabled")
+
+        tracking = self._tracking_repo.get(database_name)
+        if not tracking or tracking.status == OverlordTrackingStatus.RELEASED:
+            raise OverlordOwnershipError(
+                f"No active claim for '{database_name}' - call claim() first"
+            )
+        if tracking.job_id != job_id:
+            raise OverlordOwnershipError(
+                f"Claim is owned by job {tracking.job_id}, not {job_id}"
+            )
+
+        # Safety: verify the row belongs to this database
+        row = self._overlord_repo.get_by_id(company_id)
+        if not row:
+            return False
+        if row.get("database") != database_name:
+            raise OverlordSafetyError(
+                f"Company {company_id} belongs to '{row.get('database')}', "
+                f"not '{database_name}'"
+            )
+
+        deleted = self._overlord_repo.delete_by_id(company_id)
+
+        if deleted:
+            self._audit_repo.log_action(
+                actor_user_id=tracking.created_by,
+                action="overlord_remove_company",
+                detail=f"Removed company record {company_id} from '{database_name}'",
+                context={
+                    "database_name": database_name,
+                    "job_id": job_id,
+                    "company_id": company_id,
+                },
+            )
+            logger.info(
+                "Removed overlord company %d from %s", company_id, database_name
+            )
+
+        return deleted
+
     # -------------------------------------------------------------------------
     # Release Operation
     # -------------------------------------------------------------------------
@@ -681,11 +838,12 @@ class OverlordManager:
         return result
     
     def _release_restore(self, database_name: str, tracking: OverlordTracking) -> ReleaseResult:
-        """Restore ALL original values from previous_snapshot.
+        """Restore original routing values from previous_snapshot.
         
-        Uses the full JSON snapshot to restore all fields that may have been
-        modified (dbHost, dbHostRead, subdomain, name, etc.), not just the
-        host fields.
+        Only restores routing fields (dbHost, dbHostRead) — NOT identity
+        fields like subdomain or name.  This is multi-company safe because
+        all companies for a database share the same routing and the
+        ``WHERE database = %s`` update applies to all of them.
         """
         if not tracking.row_existed_before:
             return ReleaseResult(
@@ -694,33 +852,33 @@ class OverlordManager:
                 message="Cannot restore - row was created by pullDB (no previous values)"
             )
         
-        # Build restore data from previous_snapshot (full restore) or fall back to individual fields
-        if tracking.previous_snapshot:
-            # Full restore from JSON snapshot - restore all modifiable fields
+        # Extract the snapshot to read from.  Newer claims store
+        # {"companies": [row, ...]} while legacy claims store a single row dict.
+        snapshot = tracking.previous_snapshot
+        if snapshot and "companies" in snapshot:
+            # Multi-company snapshot — routing is shared, use first company
+            snapshot = snapshot["companies"][0] if snapshot["companies"] else None
+        
+        # Build restore data from snapshot (routing-only) or fall back to individual fields
+        if snapshot:
             restore_data: dict[str, Any] = {}
             
-            # Routing fields (the critical ones)
-            if "dbHost" in tracking.previous_snapshot:
-                restore_data["dbHost"] = tracking.previous_snapshot["dbHost"] or ""
-            if "dbHostRead" in tracking.previous_snapshot:
-                restore_data["dbHostRead"] = tracking.previous_snapshot["dbHostRead"] or ""
-            if "subdomain" in tracking.previous_snapshot:
-                restore_data["subdomain"] = tracking.previous_snapshot["subdomain"] or ""
-            
-            # Company info fields
-            if "name" in tracking.previous_snapshot:
-                restore_data["name"] = tracking.previous_snapshot["name"] or ""
+            # Routing fields only — safe for multi-company (WHERE database)
+            if "dbHost" in snapshot:
+                restore_data["dbHost"] = snapshot["dbHost"] or ""
+            if "dbHostRead" in snapshot:
+                restore_data["dbHostRead"] = snapshot["dbHostRead"] or ""
             
             if not restore_data:
                 return ReleaseResult(
                     success=False,
                     action_taken=ReleaseAction.RESTORE,
-                    message="Cannot restore - previous_snapshot contains no restorable fields"
+                    message="Cannot restore - previous_snapshot contains no routing fields"
                 )
             
             logger.info(
-                f"Restoring {len(restore_data)} fields for {database_name} from snapshot: "
-                f"{list(restore_data.keys())}"
+                f"Restoring {len(restore_data)} routing fields for {database_name} "
+                f"from snapshot: {list(restore_data.keys())}"
             )
         else:
             # Fallback to individual tracking fields (legacy behavior)

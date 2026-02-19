@@ -96,13 +96,20 @@
     // ==========================================================================
 
     function renderStatus(val, row) {
+        let badge = '';
         if (row.locked) {
-            return `<span class="badge-managed locked">${icons.locked} Locked</span>`;
+            badge = `<span class="badge-managed locked">${icons.locked} Locked</span>`;
+        } else if (row.managed) {
+            badge = `<span class="badge-managed managed">${icons.managed} Managed</span>`;
+        } else {
+            badge = `<span class="badge-managed unmanaged">${icons.unmanaged} Unmanaged</span>`;
         }
-        if (row.managed) {
-            return `<span class="badge-managed managed">${icons.managed} Managed</span>`;
+        // Show origin badge for claimed/assigned databases
+        if (row.origin && row.origin !== 'restore') {
+            const originLabel = row.origin === 'claim' ? 'Claimed' : 'Assigned';
+            badge += ` <span class="badge-origin-${row.origin}" title="Tracked via Database Discovery (${row.origin})">${originLabel}</span>`;
         }
-        return `<span class="badge-managed unmanaged">${icons.unmanaged} Unmanaged</span>`;
+        return badge;
     }
 
     function renderDatabaseName(val, row) {
@@ -363,7 +370,12 @@
     // ==========================================================================
 
     async function handleClaim(dbName) {
-        if (!confirm(`Claim database "${dbName}" for yourself?`)) return;
+        const confirmed = await showConfirm(`Claim database "${dbName}" for yourself?`, {
+            title: 'Claim Database',
+            okText: 'Claim',
+            type: 'default'
+        });
+        if (!confirmed) return;
 
         try {
             const resp = await fetch('/web/admin/api/database-discovery/claim', {
@@ -498,7 +510,12 @@
     // ==========================================================================
 
     async function handleRemove(dbName) {
-        if (!confirm(`Remove database "${dbName}" from pullDB management?`)) return;
+        const confirmed = await showConfirm(`Remove database "${dbName}" from pullDB management?\n\nThis only removes tracking — the database itself is not affected.`, {
+            title: 'Remove from pullDB',
+            okText: 'Remove',
+            type: 'warning'
+        });
+        if (!confirmed) return;
 
         try {
             const resp = await fetch('/web/admin/api/database-discovery/remove', {

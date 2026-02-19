@@ -532,6 +532,28 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
     if hasattr(state.job_repo, "get_deployed_job_for_target"):
         existing_deployed = state.job_repo.get_deployed_job_for_target(target, dbhost, user.user_id)
         if existing_deployed:
+            # Claimed/assigned databases cannot be superseded by a restore.
+            # They represent externally-managed databases that pullDB tracks
+            # but does NOT own. Superseding would orphan the tracking record
+            # because the downstream DatabaseProtectionError (no pullDB
+            # metadata table) would block the new restore anyway.
+            if getattr(existing_deployed, "origin", "restore") in ("claim", "assign"):
+                origin_label = "claimed" if existing_deployed.origin == "claim" else "assigned"
+                emit_event(
+                    "job_enqueue_blocked",
+                    f"Restore blocked: database '{target}' on '{dbhost}' is "
+                    f"{origin_label} (job {existing_deployed.id[:8]})",
+                    labels=MetricLabels(
+                        target=target,
+                        phase="enqueue",
+                        status="blocked_claimed",
+                    ),
+                )
+                raise DatabaseProtectionError(
+                    f"Database '{target}' on '{dbhost}' is {origin_label} and tracked "
+                    f"by pullDB (job {existing_deployed.id[:8]}). Remove the {origin_label} "
+                    f"database from Database Discovery before restoring to this target.",
+                )
             if not req.overwrite:
                 emit_event(
                     "job_enqueue_blocked",

@@ -967,12 +967,21 @@ class AdminTaskExecutor:
                     skip_database_deletion = (
                         job.status == JobStatus.SUPERSEDED or job.is_superseded
                     )
+
+                    # CLAIMED/ASSIGNED jobs: Skip database drops
+                    # These databases were NOT created by pullDB — they existed
+                    # before being claimed via Database Discovery.
+                    skip_claimed_assigned = job.origin in ("claim", "assign")
                     
-                    if skip_database_deletion:
+                    if skip_database_deletion or skip_claimed_assigned:
                         # Log skip event
+                        if skip_claimed_assigned:
+                            reason = f"{job.origin}_job_not_owned_by_pulldb"
+                        else:
+                            reason = "superseded_job_no_databases_owned"
                         self.job_repo.append_job_event(
                             job_id, "delete_skipped",
-                            '{"reason": "superseded_job_no_databases_owned"}'
+                            f'{{"reason": "{reason}"}}'
                         )
                         # Create dummy result for tracking
                         from pulldb.worker.cleanup import JobDeleteResult

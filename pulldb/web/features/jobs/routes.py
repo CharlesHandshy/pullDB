@@ -1595,7 +1595,13 @@ async def delete_job_database(
         job.status == JobStatus.SUPERSEDED or job.is_superseded
     )
 
-    if skip_database_deletion:
+    # CLAIMED/ASSIGNED jobs: Skip database drops
+    # These databases were NOT created by pullDB — they existed before being
+    # claimed via Database Discovery. We must never drop them; only the
+    # synthetic job record should be removed.
+    skip_claimed_assigned = job.origin in ("claim", "assign")
+
+    if skip_database_deletion or skip_claimed_assigned:
         # Create a dummy result for audit logging
         from pulldb.worker.cleanup import JobDeleteResult
         result = JobDeleteResult(
@@ -1607,9 +1613,13 @@ async def delete_job_database(
         result.staging_existed = False
         result.target_existed = False
         # Log that we skipped deletion
+        if skip_claimed_assigned:
+            reason = f"{job.origin}_job_not_owned_by_pulldb"
+        else:
+            reason = "superseded_job_no_databases_owned"
         state.job_repo.append_job_event(
-            job_id, "delete_skipped", 
-            '{"reason": "superseded_job_no_databases_owned"}'
+            job_id, "delete_skipped",
+            f'{{"reason": "{reason}"}}'
         )
     else:
         # Mark job as deleting FIRST (enables worker recovery if request times out)
@@ -1827,6 +1837,8 @@ async def api_jobs_paginated(
             "superseded_at": (sup := getattr(j, "superseded_at", None)) and sup.isoformat(),
             # Overlord tracking status
             "has_overlord_tracking": j.id in overlord_tracking_job_ids,
+            # Origin: 'restore' (normal), 'claim', or 'assign' (discovery)
+            "origin": getattr(j, "origin", "restore"),
         })
     
     total_count = len(all_rows)

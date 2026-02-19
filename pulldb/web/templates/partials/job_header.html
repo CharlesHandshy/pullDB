@@ -84,6 +84,14 @@
             <span class="details-header-label">Owner</span>
             <span class="details-header-value">{{ job.owner_username }}</span>
         </div>
+        {% if job.origin and job.origin != 'restore' %}
+        <div class="details-header-item">
+            <span class="details-header-label">Origin</span>
+            <span class="details-header-value">
+                <span class="badge badge-info badge-sm">{{ job.origin | capitalize }}</span>
+            </span>
+        </div>
+        {% endif %}
         <div class="details-header-item">
             <span class="details-header-label">Submitted</span>
             <span class="details-header-value">

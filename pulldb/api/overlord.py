@@ -49,6 +49,12 @@ class OverlordSyncRequest(BaseModel):
     """
     
     job_id: str
+    company_id: int | None = Field(
+        default=None,
+        description="Target companyID for multi-company databases. "
+                    "When provided, updates that specific row via PK. "
+                    "When omitted, falls back to WHERE database = %s.",
+    )
     database: str
     subdomain: str = Field(
         ...,
@@ -121,7 +127,8 @@ class OverlordStateResponse(BaseModel):
     
     job: dict[str, Any]
     tracking: dict[str, Any] | None
-    company: dict[str, Any] | None
+    company: dict[str, Any] | None  # Backward compat: first company or None
+    companies: list[dict[str, Any]] = Field(default_factory=list)
     enabled: bool
     subdomain_duplicates: list[SubdomainDuplicateEntry] | None = None
     available_hosts: list[AvailableHost] | None = None
@@ -316,8 +323,10 @@ def create_overlord_router(
         # Get current state (handle errors gracefully - Security Rule 6: Error Differentiation)
         try:
             tracking, _company_model = overlord_manager.get_state(job.target)
-            # Get full row dict for complete column coverage in the modal
-            company_row = overlord_manager.get_full_row(job.target)
+            # Get all company rows for multi-company support
+            all_companies = overlord_manager.get_all_companies(job.target)
+            # Backward compat: single company for legacy callers
+            company_row = all_companies[0] if all_companies else None
         except OverlordConnectionError as e:
             logger.warning(f"Overlord connection failed for job {job_id}: {e}")
             raise HTTPException(
@@ -346,15 +355,34 @@ def create_overlord_router(
                     detail=f"Error retrieving overlord data: {error_str}"
                 ) from e
         
-        # Check for subdomain duplicates if company has a subdomain
+        # Check for subdomain duplicates across all company records
         subdomain_duplicates = None
-        subdomain_val = company_row.get("subdomain") if company_row else None
-        if subdomain_val:
+        subdomains_to_check: set[str] = set()
+        for cr in all_companies:
+            sd = cr.get("subdomain")
+            if sd:
+                subdomains_to_check.add(sd)
+        # Also check single company_row for backward compat
+        if company_row and company_row.get("subdomain"):
+            subdomains_to_check.add(company_row["subdomain"])
+
+        if subdomains_to_check:
             try:
-                dupes = overlord_manager.check_subdomain_duplicates(
-                    subdomain_val, exclude_database=job.target
-                )
-                if dupes:
+                all_dupes: list[dict[str, Any]] = []
+                for subdomain_val in subdomains_to_check:
+                    dupes = overlord_manager.check_subdomain_duplicates(
+                        subdomain_val, exclude_database=job.target
+                    )
+                    all_dupes.extend(dupes)
+                # Deduplicate by companyID
+                seen_ids: set[int] = set()
+                unique_dupes: list[dict[str, Any]] = []
+                for d in all_dupes:
+                    cid = d["companyID"]
+                    if cid not in seen_ids:
+                        seen_ids.add(cid)
+                        unique_dupes.append(d)
+                if unique_dupes:
                     subdomain_duplicates = [
                         SubdomainDuplicateEntry(
                             company_id=d["companyID"],
@@ -362,7 +390,7 @@ def create_overlord_router(
                             subdomain=d["subdomain"],
                             dbHost=_shorten_host(d.get("dbHost", "")),
                         )
-                        for d in dupes
+                        for d in unique_dupes
                     ]
             except Exception:
                 logger.debug("Subdomain duplicate check failed (non-critical)", exc_info=True)
@@ -393,6 +421,7 @@ def create_overlord_router(
             },
             tracking=_tracking_to_dict(tracking) if tracking else None,
             company=_company_to_dict(company_row) if company_row else None,
+            companies=[_company_to_dict(c) for c in all_companies],
             enabled=True,
             subdomain_duplicates=subdomain_duplicates,
             available_hosts=available_hosts_list,
@@ -535,6 +564,7 @@ def create_overlord_router(
                 database_name=job.target,
                 job_id=job_id,
                 data=data,
+                company_id=request.company_id,
             )
             
             # Get updated tracking
@@ -560,6 +590,130 @@ def create_overlord_router(
                 status_code=500,
                 detail="An internal error occurred. Check server logs for details.",
             ) from e
+
+    # ── Add / Delete individual company records ──────────────────────────
+
+    @router.post("/{job_id}/company", response_model=OverlordSyncResponse)
+    async def add_company(
+        job_id: str,
+        request: OverlordSyncRequest,
+        state: Any = Depends(get_api_state),
+        user: Any = Depends(require_auth),
+    ) -> OverlordSyncResponse:
+        """Add a new company record for this database.
+
+        Inserts a new row into overlord.companies with ``database``
+        forced to the job's target.  Returns the new companyID.
+        """
+        overlord_manager = getattr(state, "overlord_manager", None)
+        if not overlord_manager or not overlord_manager.is_enabled:
+            raise HTTPException(status_code=400, detail="Overlord integration is not enabled")
+
+        job = state.job_repo.get_job_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        if job.status.value not in ("deployed", "expiring"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job is '{job.status.value}', must be 'deployed' or 'expiring'"
+            )
+        if not _can_manage_overlord(user, job):
+            raise HTTPException(status_code=403, detail="Permission denied")
+
+        try:
+            # Auto-claim if needed
+            tracking = overlord_manager.get_tracking(job.target)
+            if not tracking:
+                tracking = overlord_manager.claim(
+                    database_name=job.target, job_id=job_id, created_by=user.username,
+                )
+
+            data: dict[str, Any] = {
+                "database": job.target,
+                "subdomain": request.subdomain,
+                "dbHost": request.dbHost,
+            }
+            _optional_fields = [
+                "name", "dbHostRead", "dbServer",
+                "dbHostDynamicRead", "enableDynamicRead", "dbHostApiRead",
+                "company", "owner", "visible", "order",
+                "brandingPrefix", "brandingLogo", "logo", "branding",
+                "legacyBranding", "exclusiveDomain", "mascot",
+                "adminContact", "adminPhone", "adminEmail",
+                "billingEmail", "billingName", "sendTRInvoice",
+                "canFranchise", "franchiseName", "franchiseLogo",
+                "blockPrtDate",
+            ]
+            for field in _optional_fields:
+                value = getattr(request, field, None)
+                if value is not None:
+                    data[field] = value
+
+            new_id = overlord_manager.add_company(
+                database_name=job.target, job_id=job_id, data=data,
+            )
+            tracking = overlord_manager.get_tracking(job.target)
+
+            return OverlordSyncResponse(
+                success=True,
+                message=f"Company record created (ID: {new_id})",
+                tracking=_tracking_to_dict(tracking),
+            )
+
+        except (OverlordOwnershipError, OverlordAlreadyClaimedError, OverlordSafetyError) as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except OverlordConnectionError as e:
+            logger.error(f"Overlord connection failed during add-company for job {job_id}: {e}")
+            raise HTTPException(status_code=503, detail="Unable to connect to overlord database.") from e
+        except Exception as e:
+            logger.exception(f"Failed to add company for job {job_id}")
+            raise HTTPException(status_code=500, detail="Internal error. Check server logs.") from e
+
+    @router.delete("/{job_id}/company/{company_id}")
+    async def delete_company(
+        job_id: str,
+        company_id: int,
+        state: Any = Depends(get_api_state),
+        user: Any = Depends(require_auth),
+    ) -> dict[str, Any]:
+        """Delete a single company record by companyID.
+
+        Validates that the row belongs to the job's database before deleting.
+        """
+        overlord_manager = getattr(state, "overlord_manager", None)
+        if not overlord_manager or not overlord_manager.is_enabled:
+            raise HTTPException(status_code=400, detail="Overlord integration is not enabled")
+
+        job = state.job_repo.get_job_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        if not _can_manage_overlord(user, job):
+            raise HTTPException(status_code=403, detail="Permission denied")
+        if job.status.value not in ("deployed", "expiring"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job is '{job.status.value}', must be 'deployed' or 'expiring'"
+            )
+
+        try:
+            deleted = overlord_manager.remove_company(
+                database_name=job.target, job_id=job_id, company_id=company_id,
+            )
+            if not deleted:
+                raise HTTPException(status_code=404, detail=f"Company {company_id} not found")
+
+            return {"success": True, "message": f"Company {company_id} deleted"}
+
+        except (OverlordOwnershipError, OverlordSafetyError) as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except OverlordConnectionError as e:
+            logger.error(f"Overlord connection failed during delete-company for job {job_id}: {e}")
+            raise HTTPException(status_code=503, detail="Unable to connect to overlord database.") from e
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.exception(f"Failed to delete company {company_id} for job {job_id}")
+            raise HTTPException(status_code=500, detail="Internal error. Check server logs.") from e
     
     @router.post("/{job_id}/release", response_model=OverlordReleaseResponse)
     async def release_overlord(

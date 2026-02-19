@@ -93,14 +93,16 @@ for i in $(seq 1 "$NUM_WORKERS"); do
     fi
 done
 
-# Verify HTTPS endpoints (retry up to 5 times with 2s delay)
+# Verify HTTPS endpoints (retry up to 8 times with 2s delay)
+# Initial 3s pause lets services resolve AWS secrets and finish startup
 echo ""
 echo "=== Verifying HTTPS ==="
+sleep 3
 API_STATUS="000"
 WEB_STATUS="000"
-for attempt in 1 2 3 4 5; do
-    [ "$API_STATUS" = "000" ] && API_STATUS=$(curl -sk -o /dev/null -w "%{http_code}" https://localhost:8080/api/health 2>/dev/null || echo "000")
-    [ "$WEB_STATUS" = "000" ] && WEB_STATUS=$(curl -sk -o /dev/null -w "%{http_code}" https://localhost:8000/web/login 2>/dev/null || echo "000")
+for attempt in 1 2 3 4 5 6 7 8; do
+    [ "$API_STATUS" = "000" ] && API_STATUS=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 https://localhost:8080/api/health 2>/dev/null || echo "000")
+    [ "$WEB_STATUS" = "000" ] && WEB_STATUS=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 https://localhost:8000/web/login 2>/dev/null || echo "000")
     [ "$API_STATUS" != "000" ] && [ "$WEB_STATUS" != "000" ] && break
     sleep 2
 done

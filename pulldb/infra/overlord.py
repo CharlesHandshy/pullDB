@@ -368,6 +368,30 @@ class OverlordRepository:
                 return None
             return OverlordCompany.from_row(row)
     
+    def get_all_by_database(self, database_name: str) -> list[dict[str, Any]]:
+        """Get ALL company records for a database name.
+
+        Unlike get_by_database() which returns only the first match,
+        this returns every row where ``database = %s``, supporting
+        databases with multiple company/subdomain records.
+
+        Args:
+            database_name: The database field value (matches job.target)
+
+        Returns:
+            List of all matching rows as dicts, ordered by companyID ASC.
+            Empty list if none found.
+        """
+        with self._conn.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                f"SELECT * FROM {self._table} WHERE `database` = %s ORDER BY `companyID` ASC",
+                (database_name,),
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+            return [dict(r) for r in rows]
+
     def get_row_snapshot(self, database_name: str) -> dict[str, Any] | None:
         """Get full row as dictionary for backup purposes.
         

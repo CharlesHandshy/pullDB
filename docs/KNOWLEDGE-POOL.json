@@ -885,6 +885,55 @@
       ],
       "notes": "Extracted from pulldb/infra/overlord.py in Phase 4"
     },
+    "overlord_repository": {
+      "file": "pulldb/infra/overlord.py",
+      "hca_layer": "shared",
+      "key_methods": [
+        "get_by_database",
+        "get_all_by_database",
+        "get_by_id",
+        "get_row_snapshot",
+        "insert",
+        "update",
+        "update_by_id",
+        "delete",
+        "delete_by_id"
+      ],
+      "notes": "Multi-company: get_all_by_database returns all rows for a database; PK-based methods for safe per-company ops"
+    },
+    "overlord_manager": {
+      "file": "pulldb/worker/overlord_manager.py",
+      "hca_layer": "features",
+      "key_methods": [
+        "claim",
+        "sync",
+        "release",
+        "get_all_companies",
+        "add_company",
+        "remove_company",
+        "get_state",
+        "verify_external_state"
+      ],
+      "notes": "Multi-company: claim snapshots all companies; sync supports company_id for PK updates; release restores routing-only fields"
+    },
+    "overlord_api": {
+      "file": "pulldb/api/overlord.py",
+      "hca_layer": "pages",
+      "endpoints": [
+        "GET /{job_id} - state (returns companies[] list)",
+        "POST /{job_id}/claim",
+        "POST /{job_id}/sync - accepts company_id param",
+        "POST /{job_id}/release",
+        "POST /{job_id}/company - add new company",
+        "DELETE /{job_id}/company/{company_id} - delete specific company"
+      ],
+      "response_models": [
+        "OverlordStateResponse (includes companies: list[dict])",
+        "OverlordSyncRequest (includes company_id: int | None)",
+        "OverlordReleaseResponse"
+      ],
+      "notes": "Multi-company CRUD endpoints added in Phase 3"
+    },
     "overlord_routes": {
       "file": "pulldb/web/features/admin/overlord_routes.py",
       "hca_layer": "pages",

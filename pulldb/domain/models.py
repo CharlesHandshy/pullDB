@@ -264,6 +264,10 @@ class Job:
     can_cancel: bool = True
     # Custom target tracking (Phase: Custom Target Feature)
     custom_target: bool = False
+    # Job origin tracking (Phase: Database Discovery)
+    # How this job entered pullDB: 'restore' (normal pipeline), 'claim' (user
+    # self-claimed via discovery), 'assign' (admin assigned via discovery).
+    origin: str = "restore"
     # Retention & lifecycle fields (Phase: Database Retention)
     expires_at: datetime | None = None
     locked_at: datetime | None = None

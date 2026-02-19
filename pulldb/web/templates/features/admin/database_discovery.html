@@ -205,6 +205,28 @@
         white-space: nowrap;
     }
 
+    /* Origin badges for claimed/assigned databases */
+    .badge-origin-claim,
+    .badge-origin-assign {
+        display: inline-flex;
+        align-items: center;
+        padding: 1px 6px;
+        border-radius: var(--radius-sm, 4px);
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+    }
+    .badge-origin-claim {
+        background: var(--info-bg, rgba(59, 130, 246, 0.1));
+        color: var(--accent-primary, #3b82f6);
+    }
+    .badge-origin-assign {
+        background: var(--primary-50, rgba(139, 92, 246, 0.1));
+        color: var(--primary-700, #7c3aed);
+    }
+
     /* Staging row subtle tint */
     .staging-row {
         background: var(--info-bg, rgba(59, 130, 246, 0.03));

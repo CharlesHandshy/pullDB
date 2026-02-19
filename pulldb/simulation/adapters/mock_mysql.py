@@ -65,6 +65,61 @@ class SimulatedJobRepository:
             )
             return job.id
 
+    def create_claimed_job(
+        self,
+        *,
+        job_id: str,
+        owner_user_id: str,
+        owner_username: str,
+        owner_user_code: str,
+        target: str,
+        dbhost: str,
+        origin: str,
+    ) -> str:
+        """Create a synthetic deployed job for an externally-managed database."""
+        if origin not in ("claim", "assign"):
+            raise ValueError(f"origin must be 'claim' or 'assign', got '{origin}'")
+
+        from pulldb.domain.models import Job, JobStatus
+
+        # Atomic check-and-insert: reject if a deployed job already exists
+        # for this target+host (mirrors the SQL INSERT ... SELECT pattern).
+        with self.state.lock:
+            for existing in self.state.jobs.values():
+                if (
+                    existing.target == target
+                    and existing.dbhost == dbhost
+                    and existing.status == JobStatus.DEPLOYED
+                    and not getattr(existing, "superseded_at", None)
+                    and not getattr(existing, "db_dropped_at", None)
+                ):
+                    raise ValueError(
+                        f"Target '{target}' on host '{dbhost}' "
+                        f"already has a deployed job"
+                    )
+
+            now = datetime.now(UTC).replace(tzinfo=None)
+            job = Job(
+                id=job_id,
+                owner_user_id=owner_user_id,
+                owner_username=owner_username,
+                owner_user_code=owner_user_code,
+                target=target,
+                staging_name=f"{target}_claimed",
+                dbhost=dbhost,
+                status=JobStatus.DEPLOYED,
+                submitted_at=now,
+                completed_at=now,
+                can_cancel=False,
+                origin=origin,
+            )
+            self.state.jobs[job_id] = job
+            event_type = "claimed" if origin == "claim" else "assigned"
+            self.append_job_event(
+                job_id, event_type, f"Database tracked via discovery ({origin})",
+            )
+        return job_id
+
     def claim_next_job(self, worker_id: str | None = None) -> Job | None:
         """Atomically claim next queued job for processing."""
         with self.state.lock:

@@ -7,16 +7,18 @@ Provides a host-scoped database discovery view that:
 - Identifies which are managed by pullDB (deployed jobs)
 - Allows claiming unmanaged databases for the current user
 - Allows assigning databases to other users
-- Placeholder for removing databases from management
+- Allows removing claimed/assigned databases from tracking
 
 This enables users who restore databases outside of pullDB
-to bring them into the system.
+to bring them into the system via synthetic job records
+(origin='claim' or origin='assign').
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import uuid
 from fnmatch import fnmatch as _fnmatch
 from typing import Any
 
@@ -132,6 +134,7 @@ def _get_enriched_databases(
                 "locked": job.is_locked,
                 "owner_count": owner_count_map.get(db_name, 1),
                 "is_staging": is_staging,
+                "origin": job.origin,
             })
         else:
             rows.append({
@@ -146,6 +149,7 @@ def _get_enriched_databases(
                 "locked": False,
                 "owner_count": 0,
                 "is_staging": is_staging,
+                "origin": None,
             })
 
     stats = {
@@ -404,8 +408,9 @@ async def api_claim_database(
 ) -> dict:
     """Claim an unmanaged database for the current user.
 
-    This is a placeholder that will eventually create a tracking record
-    linking the external database to the current user in pullDB.
+    Creates a synthetic deployed job with origin='claim' to track the database
+    in pullDB without going through the restore pipeline. The actual database
+    is NOT modified — only a tracking record is created.
 
     Request body:
         {
@@ -444,12 +449,25 @@ async def api_claim_database(
                 ),
             }
 
+        # Create synthetic deployed job to track this database
+        job_id = str(uuid.uuid4())
+        state.job_repo.create_claimed_job(
+            job_id=job_id,
+            owner_user_id=user.user_id,
+            owner_username=user.username,
+            owner_user_code=user.user_code,
+            target=database,
+            dbhost=hostname,
+            origin="claim",
+        )
+
         logger.info(
-            "User %s (%s) claimed database '%s' on host '%s'",
+            "User %s (%s) claimed database '%s' on host '%s' (job %s)",
             user.username,
             user.user_code,
             database,
             hostname,
+            job_id[:12],
         )
 
         # Audit log
@@ -457,16 +475,13 @@ async def api_claim_database(
             state.audit_repo.log_action(
                 actor_user_id=user.user_id,
                 action="database_discovery_claim",
-                detail=f"Claimed database '{database}' on host '{hostname}'",
-                context={"hostname": hostname, "database": database},
+                detail=f"Claimed database '{database}' on host '{hostname}' (job {job_id[:12]})",
+                context={"hostname": hostname, "database": database, "job_id": job_id},
             )
 
         return {
             "success": True,
-            "message": (
-                f"Database '{database}' claim recorded for {user.username}. "
-                f"Note: Full claim integration with job tracking is pending implementation."
-            ),
+            "message": f"Database '{database}' is now tracked under your account.",
         }
 
     except Exception as exc:
@@ -482,8 +497,8 @@ async def api_assign_database(
 ) -> dict:
     """Assign an unmanaged database to a specific user.
 
-    This is a placeholder that will eventually create a tracking record
-    linking the external database to the specified user in pullDB.
+    Creates a synthetic deployed job with origin='assign' to track the database
+    under the specified user. Admin-only. The actual database is NOT modified.
 
     Request body:
         {
@@ -532,13 +547,26 @@ async def api_assign_database(
                 ),
             }
 
+        # Create synthetic deployed job assigned to the target user
+        job_id = str(uuid.uuid4())
+        state.job_repo.create_claimed_job(
+            job_id=job_id,
+            owner_user_id=target_user.user_id,
+            owner_username=target_user.username,
+            owner_user_code=target_user.user_code,
+            target=database,
+            dbhost=hostname,
+            origin="assign",
+        )
+
         logger.info(
-            "Admin %s assigned database '%s' on '%s' to user %s (%s)",
+            "Admin %s assigned database '%s' on '%s' to user %s (%s) (job %s)",
             user.username,
             database,
             hostname,
             target_user.username,
             target_user.user_code,
+            job_id[:12],
         )
 
         # Audit log
@@ -549,21 +577,21 @@ async def api_assign_database(
                 target_user_id=target_user.user_id,
                 detail=(
                     f"Assigned database '{database}' on host '{hostname}' "
-                    f"to {target_user.username} ({target_user.user_code})"
+                    f"to {target_user.username} ({target_user.user_code}) (job {job_id[:12]})"
                 ),
                 context={
                     "hostname": hostname,
                     "database": database,
                     "target_user_id": target_user.user_id,
+                    "job_id": job_id,
                 },
             )
 
         return {
             "success": True,
             "message": (
-                f"Database '{database}' assignment to {target_user.username} "
-                f"({target_user.user_code}) recorded. "
-                f"Note: Full assignment integration with job tracking is pending implementation."
+                f"Database '{database}' is now tracked under "
+                f"{target_user.username} ({target_user.user_code})."
             ),
         }
 
@@ -578,9 +606,14 @@ async def api_remove_database(
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> dict:
-    """Remove a database from pullDB management (placeholder).
+    """Remove a claimed/assigned database from pullDB management.
 
-    This endpoint is a placeholder for future implementation.
+    Only removes tracking for databases with origin 'claim' or 'assign'.
+    Databases restored through the normal pipeline (origin='restore') cannot
+    be removed via this endpoint — use the standard job delete flow instead.
+
+    The actual database on the target host is NOT dropped; only the synthetic
+    job record is hard-deleted.
 
     Request body:
         {
@@ -593,28 +626,64 @@ async def api_remove_database(
         hostname = body.get("hostname", "").strip()
         database = body.get("database", "").strip()
 
+        if not hostname or not database:
+            return {"success": False, "message": "hostname and database are required"}
+
+        # Find the deployed job for this database
+        job = state.job_repo.has_any_deployed_job_for_target(database, hostname)
+        if not job:
+            return {
+                "success": False,
+                "message": f"Database '{database}' is not currently managed by pullDB",
+            }
+
+        # Only allow removal of claimed/assigned databases
+        if job.origin not in ("claim", "assign"):
+            return {
+                "success": False,
+                "message": (
+                    f"Database '{database}' was restored through the normal pipeline. "
+                    f"Use the job delete flow instead (job {job.id[:12]})."
+                ),
+            }
+
+        # Hard-delete the synthetic job record (no database drops)
+        # Note: We don't append a job_event here because hard_delete_job
+        # removes all events. The audit_repo log below captures the action.
+        state.job_repo.hard_delete_job(job.id)
+
         logger.info(
-            "Admin %s requested removal of database '%s' from '%s' (placeholder)",
+            "Admin %s removed %s database '%s' on '%s' (job %s, owner %s)",
             user.username,
-            database or "(empty)",
-            hostname or "(empty)",
+            job.origin,
+            database,
+            hostname,
+            job.id[:12],
+            job.owner_username,
         )
 
         # Audit log
         if hasattr(state, "audit_repo") and state.audit_repo:
             state.audit_repo.log_action(
                 actor_user_id=user.user_id,
-                action="database_discovery_remove_attempt",
-                detail=f"Attempted remove of '{database}' on '{hostname}' (not implemented)",
-                context={"hostname": hostname, "database": database},
+                action="database_discovery_remove",
+                target_user_id=job.owner_user_id,
+                detail=(
+                    f"Removed {job.origin} tracking of '{database}' on '{hostname}' "
+                    f"(was owned by {job.owner_username}, job {job.id[:12]})"
+                ),
+                context={
+                    "hostname": hostname,
+                    "database": database,
+                    "job_id": job.id,
+                    "origin": job.origin,
+                    "previous_owner": job.owner_username,
+                },
             )
 
         return {
-            "success": False,
-            "message": (
-                "Remove functionality is not yet implemented. "
-                "This is a placeholder for future development."
-            ),
+            "success": True,
+            "message": f"Database '{database}' removed from pullDB tracking.",
         }
 
     except Exception as exc:

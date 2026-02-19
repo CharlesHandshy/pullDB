@@ -672,3 +672,328 @@ class TestDatabaseDiscoveryJavaScript:
         assert "table.refresh()" in content
         assert "table.setFetchUrl" in content
         assert "table.clearAllFilters" in content
+
+
+# =============================================================================
+# Origin (claim/assign) tests
+# =============================================================================
+
+
+class TestOriginInEnrichedData:
+    """Tests that _get_enriched_databases includes origin field."""
+
+    def test_managed_database_has_origin_restore(self) -> None:
+        from pulldb.web.features.admin.database_discovery_routes import (
+            _get_enriched_databases,
+        )
+
+        job = _make_job(target="mydb")
+        state = _mock_state(databases=["mydb"], deployed_jobs=[job])
+        rows, _ = _get_enriched_databases(state, "db-host-01")
+
+        assert rows[0]["origin"] == "restore"
+
+    def test_claimed_database_has_origin_claim(self) -> None:
+        from pulldb.web.features.admin.database_discovery_routes import (
+            _get_enriched_databases,
+        )
+
+        job = _make_job(target="external_db")
+        # Simulate a claimed job by setting origin
+        object.__setattr__(job, "origin", "claim")
+        state = _mock_state(databases=["external_db"], deployed_jobs=[job])
+        rows, _ = _get_enriched_databases(state, "db-host-01")
+
+        assert rows[0]["origin"] == "claim"
+
+    def test_assigned_database_has_origin_assign(self) -> None:
+        from pulldb.web.features.admin.database_discovery_routes import (
+            _get_enriched_databases,
+        )
+
+        job = _make_job(target="assigned_db")
+        object.__setattr__(job, "origin", "assign")
+        state = _mock_state(databases=["assigned_db"], deployed_jobs=[job])
+        rows, _ = _get_enriched_databases(state, "db-host-01")
+
+        assert rows[0]["origin"] == "assign"
+
+    def test_unmanaged_database_has_null_origin(self) -> None:
+        from pulldb.web.features.admin.database_discovery_routes import (
+            _get_enriched_databases,
+        )
+
+        state = _mock_state(databases=["orphan_db"])
+        rows, _ = _get_enriched_databases(state, "db-host-01")
+
+        assert rows[0]["origin"] is None
+
+
+class TestOriginBadgeInUI:
+    """Tests that origin badge appears in JavaScript renderers."""
+
+    def test_discovery_js_has_origin_badge_rendering(self) -> None:
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/web/static/js/pages/admin-database-discovery.js"
+        ).read_text()
+        assert "badge-origin-" in content
+        assert "row.origin" in content
+        assert "Claimed" in content
+        assert "Assigned" in content
+
+    def test_discovery_css_has_origin_badge_styles(self) -> None:
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/web/templates/features/admin/database_discovery.html"
+        ).read_text()
+        assert ".badge-origin-claim" in content
+        assert ".badge-origin-assign" in content
+
+    def test_job_header_shows_origin_for_nonrestore(self) -> None:
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/web/templates/partials/job_header.html"
+        ).read_text()
+        assert "job.origin" in content
+        assert "Origin" in content
+
+    def test_jobs_list_active_status_shows_origin_badge(self) -> None:
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/web/templates/features/jobs/jobs.html"
+        ).read_text()
+        assert "row.origin" in content
+        assert "Claimed" in content
+        assert "Assigned" in content
+
+
+class TestClaimEndpointLogic:
+    """Tests for the claim endpoint wiring."""
+
+    def test_claim_endpoint_uses_create_claimed_job(self) -> None:
+        """Verify claim endpoint calls create_claimed_job, not just logs."""
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/web/features/admin/database_discovery_routes.py"
+        ).read_text()
+        assert 'create_claimed_job(' in content
+        assert 'origin="claim"' in content
+        assert 'origin="assign"' in content
+
+    def test_remove_endpoint_checks_origin(self) -> None:
+        """Verify remove endpoint only allows claim/assign removal."""
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/web/features/admin/database_discovery_routes.py"
+        ).read_text()
+        assert 'job.origin not in ("claim", "assign")' in content
+        assert "hard_delete_job" in content
+
+    def test_remove_endpoint_not_placeholder(self) -> None:
+        """Verify remove endpoint is no longer a placeholder."""
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/web/features/admin/database_discovery_routes.py"
+        ).read_text()
+        assert "not yet implemented" not in content
+        assert "placeholder" not in content.lower().split("class")[0]  # Only check route code, not class docs
+
+
+class TestDeleteFlowOriginSafety:
+    """Tests that delete flow respects origin for claimed/assigned jobs."""
+
+    def test_single_delete_skips_db_drops_for_claimed(self) -> None:
+        """Verify delete route skips database drops for claimed jobs."""
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/web/features/jobs/routes.py"
+        ).read_text()
+        assert 'job.origin in ("claim", "assign")' in content
+        assert "skip_claimed_assigned" in content
+        assert "_job_not_owned_by_pulldb" in content
+
+    def test_bulk_delete_skips_db_drops_for_claimed(self) -> None:
+        """Verify bulk delete handler skips database drops for claimed jobs."""
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/worker/admin_tasks.py"
+        ).read_text()
+        assert 'job.origin in ("claim", "assign")' in content
+        assert "skip_claimed_assigned" in content
+
+
+class TestCreateClaimedJobMethod:
+    """Tests for create_claimed_job in the Job model/interface."""
+
+    def test_job_model_has_origin_field(self) -> None:
+        """Job dataclass includes origin field with default 'restore'."""
+        job = Job(
+            id="test-001",
+            owner_user_id="u1",
+            owner_username="tester",
+            owner_user_code="TST",
+            target="mydb",
+            staging_name="mydb_stg",
+            dbhost="localhost",
+            status=JobStatus.DEPLOYED,
+            submitted_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )
+        assert job.origin == "restore"
+
+    def test_job_model_accepts_claim_origin(self) -> None:
+        """Job dataclass accepts origin='claim'."""
+        job = Job(
+            id="test-002",
+            owner_user_id="u1",
+            owner_username="tester",
+            owner_user_code="TST",
+            target="mydb",
+            staging_name="mydb_claimed",
+            dbhost="localhost",
+            status=JobStatus.DEPLOYED,
+            submitted_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            origin="claim",
+        )
+        assert job.origin == "claim"
+
+    def test_interface_has_create_claimed_job(self) -> None:
+        """Protocol interface includes create_claimed_job method."""
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/domain/interfaces.py"
+        ).read_text()
+        assert "def create_claimed_job(" in content
+
+    def test_mock_has_create_claimed_job(self) -> None:
+        """Mock adapter implements create_claimed_job."""
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/simulation/adapters/mock_mysql.py"
+        ).read_text()
+        assert "def create_claimed_job(" in content
+
+    def test_migration_exists(self) -> None:
+        """Migration script for origin column exists."""
+        from pathlib import Path
+
+        migration = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/schema/migrations/012_add_origin_column.sql"
+        )
+        assert migration.exists()
+        content = migration.read_text()
+        assert "origin" in content
+        assert "ENUM" in content
+        assert "'restore'" in content
+        assert "'claim'" in content
+        assert "'assign'" in content
+
+
+class TestSupersedeProtection:
+    """Tests that claimed/assigned jobs cannot be superseded by restores."""
+
+    def test_enqueue_blocks_supersede_of_claimed_job(self) -> None:
+        """Enqueue service blocks superseding claimed jobs before the overwrite check."""
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/domain/services/enqueue.py"
+        ).read_text()
+        # Must check origin BEFORE allowing supersede
+        assert 'origin", "restore") in ("claim", "assign")' in content
+        assert "DatabaseProtectionError" in content
+        assert "claimed" in content.lower()
+
+    def test_enqueue_origin_check_before_overwrite_check(self) -> None:
+        """Origin check must appear before the overwrite/supersede logic."""
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/domain/services/enqueue.py"
+        ).read_text()
+        # The origin check must come before supersede_job call
+        origin_pos = content.index('("claim", "assign")')
+        supersede_pos = content.index("supersede_job")
+        assert origin_pos < supersede_pos, (
+            "Origin check must precede supersede_job to prevent orphaning claimed jobs"
+        )
+
+    def test_create_claimed_job_uses_atomic_insert(self) -> None:
+        """create_claimed_job uses INSERT ... SELECT with NOT EXISTS for atomicity."""
+        from pathlib import Path
+
+        content = Path(
+            "/home/charleshandshy/Projects/pullDB"
+            "/pulldb/infra/mysql_jobs.py"
+        ).read_text()
+        # Find the create_claimed_job method area
+        start = content.index("def create_claimed_job(")
+        # Look within 4000 chars of the method signature
+        method_area = content[start : start + 4000]
+        assert "NOT EXISTS" in method_area, (
+            "create_claimed_job must use INSERT ... SELECT with NOT EXISTS "
+            "for atomic duplicate prevention"
+        )
+        assert "cursor.rowcount == 0" in method_area, (
+            "create_claimed_job must check rowcount to detect the race condition"
+        )
+
+    def test_mock_create_claimed_job_rejects_duplicate(self) -> None:
+        """Mock create_claimed_job rejects duplicate deployed jobs for same target."""
+        from pulldb.simulation.adapters.mock_mysql import SimulatedJobRepository
+        from pulldb.simulation.core.state import SimulationState
+        from pulldb.simulation.core.bus import SimulationEventBus
+
+        repo = SimulatedJobRepository.__new__(SimulatedJobRepository)
+        repo.state = SimulationState()
+        repo._bus = SimulationEventBus()
+
+        # First claim succeeds
+        repo.create_claimed_job(
+            job_id="job-1",
+            owner_user_id="u1",
+            owner_username="tester",
+            owner_user_code="TST",
+            target="mydb",
+            dbhost="host-01",
+            origin="claim",
+        )
+
+        # Second claim to same target+host should fail
+        import pytest
+
+        with pytest.raises(ValueError, match="already has a deployed job"):
+            repo.create_claimed_job(
+                job_id="job-2",
+                owner_user_id="u2",
+                owner_username="other",
+                owner_user_code="OTH",
+                target="mydb",
+                dbhost="host-01",
+                origin="assign",
+            )
