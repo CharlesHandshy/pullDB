@@ -394,3 +394,165 @@ async def assign_team_member_temp_password(
         "temp_password": temp_password,
         "username": target_user.username,
     }
+
+
+# =============================================================================
+# Team Member Host Assignment Routes
+# =============================================================================
+
+
+def _get_managed_user_ids(state: Any, manager_user_id: str) -> set[str]:
+    """Get set of user IDs managed by this manager."""
+    managed_users = []
+    if hasattr(state.user_repo, "get_users_managed_by"):
+        managed_users = state.user_repo.get_users_managed_by(manager_user_id)
+    return {u.user_id for u in managed_users}
+
+
+@router.get("/api/hosts")
+async def api_manager_hosts_list(
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_manager_or_above),
+) -> dict:
+    """Get database hosts available to this manager.
+
+    Managers can only assign hosts they themselves are authorized to use.
+    This prevents privilege escalation.
+    """
+    hosts = []
+    if hasattr(state, "host_repo") and state.host_repo and hasattr(state.host_repo, "list_hosts"):
+        all_hosts = state.host_repo.list_hosts()
+        # Filter to only hosts the manager can use
+        manager_allowed = set(user.allowed_hosts or [])
+        hosts = [
+            h for h in all_hosts
+            if h.hostname in manager_allowed
+        ]
+
+    return {
+        "success": True,
+        "hosts": [
+            {
+                "id": str(h.id),
+                "hostname": h.hostname,
+                "host_alias": getattr(h, "host_alias", None),
+                "display_name": getattr(h, "host_alias", None) or h.hostname,
+                "enabled": getattr(h, "enabled", True),
+            }
+            for h in hosts
+        ],
+    }
+
+
+@router.get("/my-team/{user_id}/hosts")
+async def get_team_member_hosts(
+    user_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_manager_or_above),
+) -> dict:
+    """Get database hosts assigned to a managed team member."""
+    # Verify user is managed by this manager
+    managed_user_ids = _get_managed_user_ids(state, user.user_id)
+    if user_id not in managed_user_ids:
+        return {"success": False, "message": "User is not managed by you"}
+
+    if not hasattr(state.auth_repo, "get_user_hosts"):
+        return {"success": False, "message": "Host assignment not supported"}
+
+    try:
+        hosts = state.auth_repo.get_user_hosts(user_id)
+        host_ids = [h[0] for h in hosts]
+        default_host_id = None
+        for h in hosts:
+            if h[2]:  # is_default
+                default_host_id = h[0]
+                break
+
+        return {
+            "success": True,
+            "host_ids": host_ids,
+            "default_host_id": default_host_id,
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@router.post("/my-team/{user_id}/hosts")
+async def set_team_member_hosts(
+    user_id: str,
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_manager_or_above),
+) -> dict:
+    """Set database hosts for a managed team member.
+
+    Managers can only assign hosts they themselves are authorized to use.
+    """
+    # Verify user is managed by this manager
+    managed_user_ids = _get_managed_user_ids(state, user.user_id)
+    if user_id not in managed_user_ids:
+        return {"success": False, "message": "User is not managed by you"}
+
+    if not hasattr(state.auth_repo, "set_user_hosts"):
+        return {"success": False, "message": "Host assignment not supported"}
+
+    try:
+        body = await request.json()
+        host_ids: list[str] = body.get("host_ids", [])
+        default_host_id: str | None = body.get("default_host_id")
+
+        # Validate default is in host_ids if provided
+        if default_host_id and default_host_id not in host_ids:
+            return {"success": False, "message": "Default host must be in assigned hosts"}
+
+        # Validate all hosts exist, are enabled, AND the manager is authorized
+        if host_ids and hasattr(state, "host_repo") and state.host_repo:
+            all_hosts = state.host_repo.list_hosts()
+            host_map = {str(h.id): h for h in all_hosts}
+            manager_allowed = set(user.allowed_hosts or [])
+
+            for host_id in host_ids:
+                host = host_map.get(host_id)
+                if not host:
+                    return {"success": False, "message": f"Host '{host_id}' not found"}
+                if not host.enabled:
+                    display = getattr(host, "host_alias", None) or host.hostname
+                    return {"success": False, "message": f"Cannot assign inactive host '{display}'"}
+                if host.hostname not in manager_allowed:
+                    display = getattr(host, "host_alias", None) or host.hostname
+                    return {"success": False, "message": f"You are not authorized to assign host '{display}'"}
+
+            # Validate default host is enabled if provided
+            if default_host_id:
+                default_host = host_map.get(default_host_id)
+                if default_host and not default_host.enabled:
+                    display = getattr(default_host, "host_alias", None) or default_host.hostname
+                    return {"success": False, "message": f"Cannot set inactive host '{display}' as default"}
+
+        state.auth_repo.set_user_hosts(
+            user_id=user_id,
+            host_ids=host_ids,
+            default_host_id=default_host_id,
+            assigned_by=user.user_id,
+        )
+
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            target_user = None
+            if hasattr(state.user_repo, "get_user_by_id"):
+                target_user = state.user_repo.get_user_by_id(user_id)
+
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="team_hosts_updated",
+                target_user_id=user_id,
+                detail=f"Manager updated host assignments for {target_user.username if target_user else user_id[:12]}",
+                context={
+                    "host_ids": host_ids,
+                    "default_host_id": default_host_id,
+                },
+            )
+
+        return {"success": True, "message": "Host assignments updated"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}

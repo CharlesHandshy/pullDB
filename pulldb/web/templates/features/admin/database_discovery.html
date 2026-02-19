@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+{% from "partials/icons/_index.html" import icon %}
+
+{% block title %}Database Discovery - pullDB Admin{% endblock %}
+
+{% block page_id %}admin-database-discovery{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/pages/admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
+<style>
+    .discovery-page .page-header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .discovery-page .page-header-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .discovery-page .page-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0;
+    }
+    .discovery-page .page-title .icon-sm {
+        width: 22px;
+        height: 22px;
+        opacity: 0.7;
+    }
+
+    /* Host selector */
+    .host-selector-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+    .host-selector-row label {
+        font-weight: 500;
+        font-size: 0.875rem;
+        color: var(--text-secondary, #94a3b8);
+        white-space: nowrap;
+    }
+    .host-selector-row select {
+        flex: 1;
+        max-width: 400px;
+        padding: 8px 12px;
+        border: 1px solid var(--border-color, #334155);
+        border-radius: var(--radius-md, 6px);
+        background: var(--bg-surface, #1e293b);
+        color: var(--text-primary, #e2e8f0);
+        font-size: 0.875rem;
+        cursor: pointer;
+    }
+    .host-selector-row select:focus {
+        outline: none;
+        border-color: var(--accent-primary, #3b82f6);
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+
+    /* Empty state (before host selected) */
+    .discovery-empty {
+        padding: 48px 24px;
+        text-align: center;
+        color: var(--text-muted, #94a3b8);
+    }
+    .discovery-empty h3 { margin: 0 0 8px; font-size: 1rem; }
+    .discovery-empty p { margin: 0; font-size: 0.875rem; }
+
+    /* Managed row accent (LazyTable rows) */
+    .lazy-table-content tr[data-managed="true"] {
+        border-left: 3px solid var(--accent-primary, #3b82f6);
+    }
+    .lazy-table-content tr[data-managed="false"] {
+        opacity: 0.85;
+    }
+    /* Prevent cell content wrapping */
+    #db-table-container .lazy-table-td {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    #db-table-container .host-cell {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Status badge */
+    .badge-managed {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+    .badge-managed.managed {
+        background: var(--success-bg, rgba(34, 197, 94, 0.1));
+        color: var(--success-text, #22c55e);
+    }
+    .badge-managed.unmanaged {
+        background: var(--muted-bg, rgba(148, 163, 184, 0.1));
+        color: var(--text-muted, #94a3b8);
+    }
+    .badge-managed.locked {
+        background: var(--warning-bg, rgba(251, 191, 36, 0.1));
+        color: var(--warning-text, #f59e0b);
+    }
+
+    /* User code pill */
+    .user-code {
+        font-family: var(--font-mono, monospace);
+        font-size: 0.7rem;
+        background: var(--bg-muted, rgba(148, 163, 184, 0.1));
+        padding: 2px 6px;
+        border-radius: var(--radius-sm, 4px);
+    }
+
+    /* Action buttons in table */
+    .cell-actions {
+        display: flex;
+        gap: 4px;
+        justify-content: flex-end;
+    }
+    .cell-actions .action-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: var(--radius-sm, 4px);
+        border: 1px solid var(--border-color, #334155);
+        background: transparent;
+        color: var(--text-secondary, #94a3b8);
+        cursor: pointer;
+        transition: all 0.15s;
+        padding: 0;
+    }
+    .cell-actions .action-btn:hover {
+        background: var(--bg-hover, rgba(59, 130, 246, 0.1));
+        color: var(--accent-primary, #3b82f6);
+        border-color: var(--accent-primary, #3b82f6);
+    }
+    .cell-actions .action-btn svg {
+        width: 14px;
+        height: 14px;
+    }
+    .cell-actions .action-btn.action-btn-claim:hover {
+        background: var(--success-bg, rgba(34, 197, 94, 0.1));
+        color: var(--success-text, #22c55e);
+        border-color: var(--success-text, #22c55e);
+    }
+    .cell-actions .action-btn.action-btn-assign:hover {
+        background: var(--info-bg, rgba(59, 130, 246, 0.1));
+        color: var(--accent-primary, #3b82f6);
+        border-color: var(--accent-primary, #3b82f6);
+    }
+    .cell-actions .action-btn.action-btn-remove {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+    .cell-actions .action-btn.action-btn-remove:hover {
+        background: var(--error-bg, rgba(239, 68, 68, 0.1));
+        color: var(--error-text, #ef4444);
+        border-color: var(--error-text, #ef4444);
+        opacity: 0.6;
+    }
+
+
+
+    /* Staging database badge */
+    .badge-staging {
+        display: inline-flex;
+        align-items: center;
+        padding: 1px 6px;
+        border-radius: var(--radius-sm, 4px);
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        background: var(--info-bg, rgba(59, 130, 246, 0.1));
+        color: var(--accent-primary, #3b82f6);
+        white-space: nowrap;
+    }
+
+    /* Multi-owner badge */
+    .badge-multi-owner {
+        display: inline-flex;
+        align-items: center;
+        padding: 1px 6px;
+        border-radius: var(--radius-sm, 4px);
+        font-size: 0.65rem;
+        font-weight: 600;
+        background: var(--warning-bg, rgba(251, 191, 36, 0.1));
+        color: var(--warning-text, #f59e0b);
+        white-space: nowrap;
+    }
+
+    /* Staging row subtle tint */
+    .staging-row {
+        background: var(--info-bg, rgba(59, 130, 246, 0.03));
+    }
+</style>
+{% endblock %}
+
+{% block header_title %}Database Discovery{% endblock %}
+{% block header_subtitle %}Discover and manage databases across hosts{% endblock %}
+
+{% block header_actions %}{% endblock %}
+
+{% block content %}
+<div class="discovery-page">
+    <!-- Page Header with Stats -->
+    <div class="page-header-row mb-4">
+        <div class="page-header-left">
+            <h1 class="page-title">
+                {{ icon('database', size='22', class='icon-sm') }}
+                Database Discovery
+            </h1>
+        </div>
+        <div class="status-bar">
+            <span class="status-item" title="Total Databases" id="stats-section" style="display: none;">
+                {{ icon('database', size='16') }}
+                <span class="status-count" id="stat-total">0</span>
+            </span>
+            <span class="status-divider" id="stats-divider" style="display: none;"></span>
+            <span class="status-item status-enabled" title="Managed by pullDB" id="stats-managed-section" style="display: none;">
+                {{ icon('check', size='16') }}
+                <span class="status-count" id="stat-managed">0</span>
+            </span>
+            <span class="status-item status-disabled" title="Unmanaged" id="stats-unmanaged-section" style="display: none;">
+                {{ icon('ban', size='16') }}
+                <span class="status-count" id="stat-unmanaged">0</span>
+            </span>
+        </div>
+    </div>
+
+    <!-- Host Selector -->
+    <div class="host-selector-row">
+        <label for="host-select">Target Host:</label>
+        <select id="host-select" onchange="onHostSelected(this.value)">
+            <option value="">— Select a host —</option>
+            {% for host in hosts %}
+            <option value="{{ host.hostname }}">{{ host.alias }} ({{ host.hostname }})</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Empty State (before host selected) -->
+    <div id="db-empty-state" class="card">
+        <div class="discovery-empty">
+            <h3>Select a Host</h3>
+            <p>Choose a database host from the dropdown above to discover databases.</p>
+        </div>
+    </div>
+
+    <!-- LazyTable Card -->
+    <div class="card lazy-table-height-viewport" id="db-table-card" style="display: none;">
+        <div id="db-table-container" class="h-full"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block modals %}
+<!-- Assign Database Modal -->
+<div id="assign-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-header">
+            <h3 class="modal-title">Assign Database</h3>
+            <button type="button" class="modal-close" onclick="hideAssignModal()" aria-label="Close dialog">
+                {{ icon('x', size='20') }}
+            </button>
+        </div>
+        
+        <form id="assign-form" onsubmit="submitAssignment(event)">
+            <div class="modal-body">
+                <div class="form-section">
+                    <p style="margin: 0 0 12px; color: var(--text-secondary); font-size: 0.875rem;">
+                        Assign <strong id="assign-db-name"></strong> on 
+                        <code id="assign-host-name" style="font-size: 0.8rem;"></code>
+                        to a user:
+                    </p>
+                    <div class="form-group">
+                        <label for="assign-user-select" class="form-label required">User</label>
+                        <select id="assign-user-select" class="form-input" required>
+                            <option value="">Loading users...</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="hideAssignModal()">Cancel</button>
+                <button type="submit" id="assign-btn" class="btn btn-primary">
+                    {{ icon('user-plus', size='16') }}
+                    <span id="assign-btn-text">Assign</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=8"></script>
+<script src="{{ url_for('static', path='js/pages/admin-database-discovery.js') }}?v=2"></script>
+{% endblock %}

@@ -13,6 +13,7 @@ from typing import Any
 
 import mysql.connector
 
+from pulldb.domain.constants import PROTECTED_DATABASES
 from pulldb.domain.models import DBHost
 from pulldb.infra.mysql_pool import (
     MySQLPool,
@@ -199,6 +200,43 @@ class HostRepository:
         """
         return self.get_all_hosts()
 
+    def list_databases(self, hostname: str) -> list[str]:
+        """List all non-system databases on the specified host.
+
+        Opens a direct MySQL connection and runs ``SHOW DATABASES``,
+        filtering out MySQL system databases (mysql, information_schema,
+        performance_schema, sys) and pullDB service databases.
+
+        Args:
+            hostname: Database host to enumerate.
+
+        Returns:
+            Sorted list of database names (excluding system databases).
+
+        Raises:
+            ValueError: If hostname not found or disabled.
+            Exception: If the connection to the host fails.
+        """
+        creds = self.get_host_credentials(hostname)
+        conn = mysql.connector.connect(
+            host=creds.host,
+            port=creds.port,
+            user=creds.username,
+            password=creds.password,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
+        )
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SHOW DATABASES")
+            rows = cursor.fetchall()
+            cursor.close()
+            all_dbs = [str(row[0]) for row in rows]  # type: ignore[index]
+            return sorted(
+                db for db in all_dbs if db.lower() not in PROTECTED_DATABASES
+            )
+        finally:
+            conn.close()
+
     def database_exists(self, hostname: str, db_name: str) -> bool:
         """Check if a database exists on the specified host.
 
@@ -229,6 +267,70 @@ class HostRepository:
             exists = cursor.fetchone() is not None
             cursor.close()
             return exists
+        finally:
+            conn.close()
+
+    def get_database_created_dates(
+        self, hostname: str, databases: list[str] | None = None,
+    ) -> dict[str, str]:
+        """Get the earliest table creation time for each database on a host.
+
+        Queries ``information_schema.TABLES`` and takes the minimum
+        ``CREATE_TIME`` per ``TABLE_SCHEMA`` as a proxy for when each
+        database was first created/populated.
+
+        Args:
+            hostname: Database host to query.
+            databases: Optional list of database names to filter.
+                If ``None``, returns dates for all non-system databases.
+
+        Returns:
+            Dict mapping database name to ISO-8601 datetime string of
+            the earliest table creation time. Databases with no tables
+            are omitted.
+        """
+        creds = self.get_host_credentials(hostname)
+        conn = mysql.connector.connect(
+            host=creds.host,
+            port=creds.port,
+            user=creds.username,
+            password=creds.password,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
+        )
+        try:
+            cursor = conn.cursor()
+            if databases:
+                placeholders = ", ".join(["%s"] * len(databases))
+                cursor.execute(
+                    f"""
+                    SELECT TABLE_SCHEMA, MIN(CREATE_TIME) AS earliest_create
+                    FROM information_schema.TABLES
+                    WHERE TABLE_SCHEMA IN ({placeholders})
+                      AND CREATE_TIME IS NOT NULL
+                    GROUP BY TABLE_SCHEMA
+                    """,
+                    tuple(databases),
+                )
+            else:
+                placeholders = ", ".join(["%s"] * len(PROTECTED_DATABASES))
+                cursor.execute(
+                    f"""
+                    SELECT TABLE_SCHEMA, MIN(CREATE_TIME) AS earliest_create
+                    FROM information_schema.TABLES
+                    WHERE TABLE_SCHEMA NOT IN ({placeholders})
+                      AND CREATE_TIME IS NOT NULL
+                    GROUP BY TABLE_SCHEMA
+                    """,
+                    tuple(PROTECTED_DATABASES),
+                )
+            result: dict[str, str] = {}
+            for row in cursor.fetchall():
+                schema_name = str(row[0])  # type: ignore[index]
+                create_time = row[1]  # type: ignore[index]
+                if create_time is not None:
+                    result[schema_name] = create_time.isoformat()
+            cursor.close()
+            return result
         finally:
             conn.close()
 

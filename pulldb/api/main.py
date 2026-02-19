@@ -4420,7 +4420,22 @@ def main(argv: list[str] | None = None) -> int:
         port = int(port_str)
     except ValueError:
         port = 8080
-    uvicorn.run(app, host=host, port=port)
+    ssl_certfile = os.getenv("PULLDB_TLS_CERT")
+    ssl_keyfile = os.getenv("PULLDB_TLS_KEY")
+    ssl_kwargs: dict[str, str] = {}
+    if ssl_certfile and ssl_keyfile:
+        ssl_kwargs["ssl_certfile"] = ssl_certfile
+        ssl_kwargs["ssl_keyfile"] = ssl_keyfile
+        logger.info("TLS enabled: cert=%s key=%s", ssl_certfile, ssl_keyfile)
+    else:
+        logger.error(
+            "PULLDB_TLS_CERT and PULLDB_TLS_KEY are required. "
+            "pullDB only supports HTTPS. Generate a certificate with: "
+            "openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 "
+            "-nodes -keyout key.pem -out cert.pem -days 3650"
+        )
+        return 1
+    uvicorn.run(app, host=host, port=port, **ssl_kwargs)  # type: ignore[arg-type]
     return 0
 
 
@@ -4519,7 +4534,22 @@ def main_web(argv: list[str] | None = None) -> int:
         port = int(port_str)
     except ValueError:
         port = 8000
-    uvicorn.run(web_app, host=host, port=port)
+    ssl_certfile = os.getenv("PULLDB_TLS_CERT")
+    ssl_keyfile = os.getenv("PULLDB_TLS_KEY")
+    ssl_kwargs: dict[str, str] = {}
+    if ssl_certfile and ssl_keyfile:
+        ssl_kwargs["ssl_certfile"] = ssl_certfile
+        ssl_kwargs["ssl_keyfile"] = ssl_keyfile
+        logger.info("TLS enabled: cert=%s key=%s", ssl_certfile, ssl_keyfile)
+    else:
+        logger.error(
+            "PULLDB_TLS_CERT and PULLDB_TLS_KEY are required. "
+            "pullDB only supports HTTPS. Generate a certificate with: "
+            "openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 "
+            "-nodes -keyout key.pem -out cert.pem -days 3650"
+        )
+        return 1
+    uvicorn.run(web_app, host=host, port=port, **ssl_kwargs)  # type: ignore[arg-type]
     return 0
 
 

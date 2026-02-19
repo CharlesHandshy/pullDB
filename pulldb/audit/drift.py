@@ -259,10 +259,17 @@ class DriftDetector:
                 if (self.base_path / normalized).exists():
                     continue
 
-            if not normalized.endswith(".py") and not normalized.endswith(".sql"):
-                normalized += ".py"  # Assume Python if no extension
+            # Recognized extensions tracked by inventory or valid as static assets
+            _known_extensions = (".py", ".sql", ".html", ".css", ".js", ".json", ".yaml", ".yml")
+            if not any(normalized.endswith(ext) for ext in _known_extensions):
+                normalized += ".py"  # Assume Python if no recognized extension
 
             if normalized not in actual_paths:
+                # For static assets not tracked by inventory (JSON, YAML, etc.),
+                # verify existence on disk before flagging
+                if (self.base_path / normalized).exists():
+                    continue
+
                 # Check for similar paths (might be renamed)
                 similar = self._find_similar_path(normalized, actual_paths)
 

@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 import mysql.connector
 
+from pulldb.domain.constants import PROTECTED_DATABASES
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_gauge
 from pulldb.infra.mysql_utils import quote_identifier
@@ -54,16 +55,7 @@ DEFAULT_RETENTION_DAYS = 7
 # Pattern for staging database names: {target}_{hex12}
 STAGING_PATTERN = re.compile(r"^(.+)_([0-9a-f]{12})$")
 
-# Protected databases that must NEVER be dropped, regardless of name matching.
-# This is a defense-in-depth measure to prevent catastrophic mistakes.
-PROTECTED_DATABASES = frozenset({
-    "mysql",
-    "information_schema",
-    "performance_schema",
-    "sys",
-    "pulldb",
-    "pulldb_service",
-})
+# PROTECTED_DATABASES imported from pulldb.domain.constants
 
 
 # =============================================================================
@@ -2793,6 +2785,124 @@ class RetentionCleanupResult:
     dropped_jobs: list[str] = field(default_factory=list)
 
 
+# =============================================================================
+# Terminal Job Cleanup (Failed/Canceled Record Purge)
+# =============================================================================
+
+
+@dataclass
+class TerminalJobCleanupResult:
+    """Result of terminal job record cleanup (failed/canceled purge)."""
+
+    started_at: datetime
+    completed_at: datetime | None = None
+    grace_days: int = 7
+    candidates_found: int = 0
+    jobs_purged: int = 0
+    jobs_skipped: int = 0
+    errors: list[str] = field(default_factory=list)
+    purged_job_ids: list[str] = field(default_factory=list)
+
+
+def run_terminal_job_cleanup(
+    job_repo: "JobRepository",
+    settings_repo: "SettingsRepository",
+    dry_run: bool = False,
+) -> TerminalJobCleanupResult:
+    """Run cleanup of expired failed/canceled job records.
+
+    Finds terminal jobs (failed, canceled) that are past their
+    expiration date + grace period and marks them as 'deleted' so
+    they no longer appear in the active History view.
+
+    Unlike retention cleanup, this does NOT drop any databases —
+    failed/canceled jobs never had a live database to begin with.
+
+    Args:
+        job_repo: Job repository.
+        settings_repo: Settings repository for grace_days config.
+        dry_run: If True, don't actually purge records.
+
+    Returns:
+        TerminalJobCleanupResult with counts and details.
+    """
+    started_at = datetime.now(UTC)
+    grace_days = settings_repo.get_cleanup_grace_days()
+
+    result = TerminalJobCleanupResult(
+        started_at=started_at,
+        grace_days=grace_days,
+    )
+
+    candidates = job_repo.get_expired_terminal_job_candidates(grace_days)
+    result.candidates_found = len(candidates)
+
+    if not candidates:
+        logger.info(
+            "No terminal job cleanup candidates found (grace_days=%d)",
+            grace_days,
+        )
+        result.completed_at = datetime.now(UTC)
+        return result
+
+    logger.info(
+        "Starting terminal job cleanup: candidates=%d, grace_days=%d, dry_run=%s",
+        len(candidates),
+        grace_days,
+        dry_run,
+    )
+
+    for job in candidates:
+        try:
+            if dry_run:
+                logger.info(
+                    "DRY RUN: Would purge %s job %s (target=%s, owner=%s, expired=%s)",
+                    job.status.value,
+                    job.id,
+                    job.target,
+                    job.owner_username,
+                    job.expires_at,
+                )
+                result.jobs_purged += 1
+                result.purged_job_ids.append(job.id)
+            else:
+                job_repo.purge_terminal_job(job.id)
+                result.jobs_purged += 1
+                result.purged_job_ids.append(job.id)
+                logger.info(
+                    "Purged %s job %s (target=%s, owner=%s)",
+                    job.status.value,
+                    job.id,
+                    job.target,
+                    job.owner_username,
+                )
+        except Exception as e:
+            error_msg = f"Error purging job {job.id}: {e}"
+            logger.exception(error_msg)
+            result.errors.append(error_msg)
+            result.jobs_skipped += 1
+
+    result.completed_at = datetime.now(UTC)
+
+    duration = (result.completed_at - result.started_at).total_seconds()
+    logger.info(
+        "Terminal job cleanup complete: candidates=%d, purged=%d, skipped=%d, "
+        "errors=%d, duration=%.2fs",
+        result.candidates_found,
+        result.jobs_purged,
+        result.jobs_skipped,
+        len(result.errors),
+        duration,
+    )
+
+    return result
+
+
+# =============================================================================
+# Retention-Based Database Cleanup
+# =============================================================================
+
+
 def run_retention_cleanup(
     job_repo: "JobRepository",
     host_repo: "HostRepository",
@@ -2827,6 +2937,22 @@ def run_retention_cleanup(
         started_at=started_at,
         grace_days=grace_days,
     )
+
+    # SAFETY: Abort if any restore jobs are currently running or queued.
+    # We never want to drop databases while active work is happening.
+    if not dry_run:
+        active_count = job_repo.count_all_active_jobs()
+        if active_count > 0:
+            logger.info(
+                "Retention cleanup SKIPPED: %d active job(s) running. "
+                "Cleanup will retry on next scheduled run.",
+                active_count,
+            )
+            result.completed_at = datetime.now(UTC)
+            result.errors.append(
+                f"Skipped: {active_count} active job(s) running"
+            )
+            return result
 
     # Get all cleanup candidates
     candidates = job_repo.get_expired_cleanup_candidates(grace_days)

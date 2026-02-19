@@ -1,10 +1,10 @@
 {
   "version": "1.1.0",
-  "last_updated": "2026-01-31",
+  "last_updated": "2026-02-18",
   "package": {
     "wheel": "pulldb-1.1.0-py3-none-any.whl",
     "myloader": "myloader-0.21.1-1",
-    "schema_files": 17,
+    "schema_files": 28,
     "systemd_units": 6,
     "after_sql_templates": 12
   },
@@ -20,22 +20,42 @@
     "rest_api": {
       "doc": "docs/api/REST-API.md",
       "port": 8080,
-      "endpoint_count": 53,
+      "endpoint_count": 63,
       "authentication": "HMAC signature (X-API-Key, X-Timestamp, X-Signature)",
-      "source": "pulldb/api/main.py",
-      "categories": ["health", "auth", "users", "hosts", "jobs", "lifecycle", "manager", "admin", "dropdown", "backups", "feature-requests"]
+      "source": [
+        "pulldb/api/main.py",
+        "pulldb/api/overlord.py"
+      ],
+      "categories": [
+        "health",
+        "auth",
+        "users",
+        "hosts",
+        "jobs",
+        "lifecycle",
+        "manager",
+        "admin",
+        "dropdown",
+        "backups",
+        "feature-requests",
+        "overlord"
+      ]
     },
     "web_api": {
       "doc": "docs/api/WEB-API.md",
       "port": 8000,
-      "route_count": 150,
+      "route_count": 166,
       "authentication": "session cookie (session_token)",
       "source_dir": "pulldb/web/features/"
     },
     "standard_template": {
       "doc": "docs/api/API-DOCUMENTATION-STANDARD.md",
       "purpose": "Template for documenting API endpoints",
-      "includes": ["endpoint format", "multi-language examples", "error documentation"]
+      "includes": [
+        "endpoint format",
+        "multi-language examples",
+        "error documentation"
+      ]
     },
     "admin_endpoints": {
       "bulk_cancel": "POST /api/admin/jobs/bulk-cancel",
@@ -68,8 +88,25 @@
       "scope": "user-facing, own work only",
       "entry_point": "pulldb.cli.main:main",
       "command_count": 11,
-      "commands": ["restore", "status", "search", "list", "cancel", "history", "events", "profile", "hosts", "register", "setpass"],
-      "excluded": ["orphan-report", "cleanup-staging", "delete-orphans", "system-wide operations"],
+      "commands": [
+        "restore",
+        "status",
+        "search",
+        "list",
+        "cancel",
+        "history",
+        "events",
+        "profile",
+        "hosts",
+        "register",
+        "setpass"
+      ],
+      "excluded": [
+        "orphan-report",
+        "cleanup-staging",
+        "delete-orphans",
+        "system-wide operations"
+      ],
       "key_features": {
         "status_rt": "--rt flag for realtime event streaming",
         "search_patterns": "wildcards: action*, *pest",
@@ -82,19 +119,64 @@
       "command_groups": 10,
       "subcommand_count": 39,
       "groups": {
-        "settings": ["list", "get", "set", "reset", "export", "diff", "pull", "push"],
-        "secrets": ["list", "get", "set", "delete", "test", "rotate-host"],
-        "jobs": ["list", "cancel"],
-        "backups": ["list", "search"],
+        "settings": [
+          "list",
+          "get",
+          "set",
+          "reset",
+          "export",
+          "diff",
+          "pull",
+          "push"
+        ],
+        "secrets": [
+          "list",
+          "get",
+          "set",
+          "delete",
+          "test",
+          "rotate-host"
+        ],
+        "jobs": [
+          "list",
+          "cancel"
+        ],
+        "backups": [
+          "list",
+          "search"
+        ],
         "cleanup": null,
         "run-retention-cleanup": null,
-        "hosts": ["list", "add", "provision", "test", "enable", "disable", "remove", "cred"],
-        "users": ["list", "show", "enable", "disable"],
-        "keys": ["pending", "approve", "revoke", "list"],
-        "disallow": ["list", "add", "remove"]
+        "hosts": [
+          "list",
+          "add",
+          "provision",
+          "test",
+          "enable",
+          "disable",
+          "remove",
+          "cred"
+        ],
+        "users": [
+          "list",
+          "show",
+          "enable",
+          "disable"
+        ],
+        "keys": [
+          "pending",
+          "approve",
+          "revoke",
+          "list"
+        ],
+        "disallow": [
+          "list",
+          "add",
+          "remove"
+        ]
       }
     },
-    "flow": "CLI → API Service → Worker Service",
+    "flow": "CLI \u2192 API Service \u2192 Worker Service",
     "source_files": [
       "pulldb/cli/main.py",
       "pulldb/cli/admin.py",
@@ -159,17 +241,32 @@
     "canonical_doc": "docs/hca/entities/mysql-schema.md",
     "database": "pulldb_service",
     "schema_dir": "schema/pulldb_service/",
-    "schema_file_count": 24,
+    "schema_file_count": 25,
     "hosts_table": "db_hosts",
     "tables": [
-      "auth_users", "auth_credentials", "sessions", "api_keys",
-      "db_hosts", "user_hosts", "jobs", "job_events", "job_history_summary",
-      "locks", "settings", "admin_tasks", "audit_logs",
-      "procedure_deployments", "disallowed_users", 
-      "feature_requests", "feature_request_votes", "feature_request_notes",
+      "auth_users",
+      "auth_credentials",
+      "sessions",
+      "api_keys",
+      "db_hosts",
+      "user_hosts",
+      "jobs",
+      "job_events",
+      "job_history_summary",
+      "locks",
+      "settings",
+      "admin_tasks",
+      "audit_logs",
+      "procedure_deployments",
+      "disallowed_users",
+      "feature_requests",
+      "feature_request_votes",
+      "feature_request_notes",
       "schema_migrations"
     ],
-    "views": ["active_jobs"]
+    "views": [
+      "active_jobs"
+    ]
   },
   "mysql_users": {
     "api": "pulldb_api",
@@ -194,9 +291,10 @@
     "admin_credentials": "/opt/pulldb.service/ADMIN_CREDENTIALS.txt"
   },
   "binaries": {
-    "myloader_path": "/opt/pulldb.service/bin/",
-    "myloader_binary": "myloader-0.21.1-1",
-    "myloader_source": "pulldb/binaries/"
+    "package": "pulldb/binaries/",
+    "hca_layer": "plugins",
+    "init": "pulldb/binaries/__init__.py",
+    "purpose": "myloader binary distribution"
   },
   "lessons_learned": [
     {
@@ -246,8 +344,8 @@
     "verify_command": "mysql -e \"SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at\""
   },
   "settings_sync": {
-    "pull": "db → .env (download settings from database)",
-    "push": ".env → db (upload settings to database)",
+    "pull": "db \u2192 .env (download settings from database)",
+    "push": ".env \u2192 db (upload settings to database)",
     "diff": "compare db vs .env for differences"
   },
   "web_ui": {
@@ -287,7 +385,11 @@
       }
     },
     "responsive_table": {
-      "key_classes": [".app-body", ".main-content", ".content-body"],
+      "key_classes": [
+        ".app-body",
+        ".main-content",
+        ".content-body"
+      ],
       "layout": {
         "app_body": "display: flex; min-height: 0; overflow: hidden",
         "main_content": "flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden",
@@ -296,46 +398,170 @@
     },
     "virtual_scroller": {
       "pattern": "3-window",
-      "windows": ["before viewport", "visible viewport", "after viewport"],
+      "windows": [
+        "before viewport",
+        "visible viewport",
+        "after viewport"
+      ],
       "each_window_size": "viewport height worth of rows",
       "overscan_default": 10,
       "requires": "fixed row height"
     },
     "hca_structure": {
-      "shared": "web/shared/",
-      "entities": "web/entities/",
-      "features": "web/features/",
-      "widgets": "web/widgets/",
-      "pages": "web/pages/"
+      "shared": "pulldb/web/shared/",
+      "entities": "pulldb/web/entities/",
+      "features": "pulldb/web/features/",
+      "widgets": "pulldb/web/widgets/",
+      "pages": "pulldb/web/pages/"
     },
     "packages": {
       "features": {
-        "auth": {"files": 2, "routes": 12, "purpose": "login/logout/password/profile"},
-        "dashboard": {"files": 2, "routes": 1, "purpose": "role-specific dashboard"},
-        "jobs": {"files": 2, "routes": 16, "purpose": "job list/details/cancel"},
-        "restore": {"files": 2, "routes": 4, "purpose": "new restore submission"},
-        "admin": {"files": 3, "routes": 88, "purpose": "admin panels: users/hosts/settings/keys"},
-        "manager": {"files": 2, "routes": 7, "purpose": "team management"},
-        "audit": {"files": 2, "routes": 3, "purpose": "audit log viewer"},
-        "requests": {"files": 2, "routes": 10, "purpose": "feature request board"},
-        "mockup": {"files": 2, "routes": 1, "purpose": "development mockup pages"}
+        "auth": {
+          "files": 2,
+          "routes": 12,
+          "purpose": "login/logout/password/profile"
+        },
+        "dashboard": {
+          "files": 2,
+          "routes": 1,
+          "purpose": "role-specific dashboard"
+        },
+        "jobs": {
+          "files": 2,
+          "routes": 21,
+          "purpose": "job list/details/cancel"
+        },
+        "restore": {
+          "files": 2,
+          "routes": 4,
+          "purpose": "new restore submission"
+        },
+        "admin": {
+          "files": 4,
+          "routes": 107,
+          "purpose": "admin panels: users/hosts/settings/keys/overlord"
+        },
+        "manager": {
+          "files": 2,
+          "routes": 7,
+          "purpose": "team management"
+        },
+        "audit": {
+          "files": 2,
+          "routes": 3,
+          "purpose": "audit log viewer"
+        },
+        "requests": {
+          "files": 2,
+          "routes": 10,
+          "purpose": "feature request board"
+        },
+        "mockup": {
+          "files": 2,
+          "routes": 1,
+          "purpose": "development mockup pages"
+        }
       },
       "widgets": {
-        "sidebar": {"files": 2, "purpose": "collapsible navigation sidebar"},
-        "virtual_table": {"files": 2, "purpose": "virtualized table with infinite scroll"},
-        "virtual_log": {"files": 1, "purpose": "virtualized log viewer"},
-        "lazy_table": {"files": 1, "purpose": "lazy-loading table"},
-        "filter_bar": {"files": 1, "purpose": "search/filter controls"},
-        "bulk_actions": {"files": 1, "purpose": "bulk selection controls"},
-        "searchable_dropdown": {"files": 1, "purpose": "autocomplete dropdown"}
+        "sidebar": {
+          "files": 2,
+          "purpose": "collapsible navigation sidebar"
+        },
+        "virtual_table": {
+          "files": 2,
+          "purpose": "virtualized table with infinite scroll"
+        },
+        "virtual_log": {
+          "files": 1,
+          "purpose": "virtualized log viewer"
+        },
+        "lazy_table": {
+          "files": 1,
+          "purpose": "lazy-loading table"
+        },
+        "filter_bar": {
+          "files": 1,
+          "purpose": "search/filter controls"
+        },
+        "bulk_actions": {
+          "files": 1,
+          "purpose": "bulk selection controls"
+        },
+        "searchable_dropdown": {
+          "files": 1,
+          "purpose": "autocomplete dropdown"
+        }
       },
       "shared": {
-        "layouts": {"files": 4, "purpose": "base.html, app_layout.html, _skeleton.html"},
-        "contracts": {"files": 3, "purpose": "service_contracts.py, page_contracts.py"},
-        "ui": {"files": 1, "purpose": "reusable UI components"},
-        "utils": {"files": 1, "purpose": "utility functions"}
+        "layouts": {
+          "files": 4,
+          "purpose": "base.html, app_layout.html, _skeleton.html"
+        },
+        "contracts": {
+          "files": 3,
+          "purpose": "service_contracts.py, page_contracts.py"
+        },
+        "ui": {
+          "files": 1,
+          "purpose": "reusable UI components"
+        },
+        "utils": {
+          "files": 1,
+          "purpose": "utility functions"
+        }
       },
-      "entities": {"files": 1, "purpose": "HTML component templates"}
+      "entities": {
+        "files": 1,
+        "purpose": "HTML component templates"
+      }
+    },
+    "package_files": {
+      "entities": {
+        "init": "pulldb/web/entities/__init__.py"
+      },
+      "features": {
+        "init": "pulldb/web/features/__init__.py",
+        "admin_init": "pulldb/web/features/admin/__init__.py",
+        "admin_routes": "pulldb/web/features/admin/routes.py",
+        "admin_overlord_routes": "pulldb/web/features/admin/overlord_routes.py",
+        "admin_theme_generator": "pulldb/web/features/admin/theme_generator.py",
+        "audit_init": "pulldb/web/features/audit/__init__.py",
+        "audit_routes": "pulldb/web/features/audit/routes.py",
+        "auth_init": "pulldb/web/features/auth/__init__.py",
+        "auth_routes": "pulldb/web/features/auth/routes.py",
+        "dashboard_init": "pulldb/web/features/dashboard/__init__.py",
+        "dashboard_routes": "pulldb/web/features/dashboard/routes.py",
+        "jobs_init": "pulldb/web/features/jobs/__init__.py",
+        "jobs_routes": "pulldb/web/features/jobs/routes.py",
+        "manager_init": "pulldb/web/features/manager/__init__.py",
+        "manager_routes": "pulldb/web/features/manager/routes.py",
+        "mockup_init": "pulldb/web/features/mockup/__init__.py",
+        "mockup_routes": "pulldb/web/features/mockup/routes.py",
+        "requests_init": "pulldb/web/features/requests/__init__.py",
+        "requests_routes": "pulldb/web/features/requests/routes.py",
+        "restore_init": "pulldb/web/features/restore/__init__.py",
+        "restore_routes": "pulldb/web/features/restore/routes.py"
+      },
+      "shared": {
+        "init": "pulldb/web/shared/__init__.py",
+        "contracts_init": "pulldb/web/shared/contracts/__init__.py",
+        "service_contracts": "pulldb/web/shared/contracts/service_contracts.py",
+        "page_contracts": "pulldb/web/shared/contracts/page_contracts.py",
+        "layouts_init": "pulldb/web/shared/layouts/__init__.py",
+        "ui_init": "pulldb/web/shared/ui/__init__.py",
+        "utils_init": "pulldb/web/shared/utils/__init__.py"
+      },
+      "widgets": {
+        "init": "pulldb/web/widgets/__init__.py",
+        "breadcrumbs_init": "pulldb/web/widgets/breadcrumbs/__init__.py",
+        "bulk_actions_init": "pulldb/web/widgets/bulk_actions/__init__.py",
+        "filter_bar_init": "pulldb/web/widgets/filter_bar/__init__.py",
+        "lazy_table_init": "pulldb/web/widgets/lazy_table/__init__.py",
+        "searchable_dropdown_init": "pulldb/web/widgets/searchable_dropdown/__init__.py",
+        "sidebar_init": "pulldb/web/widgets/sidebar/__init__.py",
+        "virtual_log_init": "pulldb/web/widgets/virtual_log/__init__.py",
+        "virtual_table_init": "pulldb/web/widgets/virtual_table/__init__.py"
+      }
     }
   },
   "auth": {
@@ -358,7 +584,12 @@
     }
   },
   "rbac": {
-    "roles": ["USER", "MANAGER", "ADMIN", "SERVICE"],
+    "roles": [
+      "USER",
+      "MANAGER",
+      "ADMIN",
+      "SERVICE"
+    ],
     "permission_functions": {
       "can_view_job": "Check if user can view a specific job",
       "can_cancel_job": "Check if user can cancel a specific job",
@@ -381,34 +612,82 @@
     "manager_relationship": "auth_users.manager_id column (FK to self)"
   },
   "job_statuses": {
-    "all": ["queued", "running", "canceling", "deployed", "expired", "failed", "complete", "canceled", "deleting", "deleted", "superseded"],
-    "active": ["queued", "running", "canceling", "deployed"],
-    "terminal": ["complete", "failed", "canceled", "deleted", "expired"],
-    "deletable": ["deployed", "expired", "failed", "complete", "canceled", "superseded"]
+    "all": [
+      "queued",
+      "running",
+      "canceling",
+      "deployed",
+      "expired",
+      "failed",
+      "complete",
+      "canceled",
+      "deleting",
+      "deleted",
+      "superseded"
+    ],
+    "active": [
+      "queued",
+      "running",
+      "canceling",
+      "deployed"
+    ],
+    "terminal": [
+      "complete",
+      "failed",
+      "canceled",
+      "deleted",
+      "expired"
+    ],
+    "deletable": [
+      "deployed",
+      "expired",
+      "failed",
+      "complete",
+      "canceled",
+      "superseded"
+    ]
   },
-  "admin_task_types": ["force_delete_user", "scan_user_orphans", "bulk_delete_jobs", "retention_cleanup"],
+  "admin_task_types": [
+    "force_delete_user",
+    "scan_user_orphans",
+    "bulk_delete_jobs",
+    "retention_cleanup"
+  ],
   "simulation": {
     "package": "pulldb/simulation/",
     "hca_layer": "features",
     "packages": {
-      "root": {"files": 1, "purpose": "package exports via __init__.py"},
-      "api": {"files": 2, "purpose": "simulation control API router"},
-      "core": {"files": 7, "purpose": "engine.py, bus.py, state.py, seeding.py, queue_runner.py, scenarios.py"},
-      "adapters": {"files": 4, "purpose": "mock_mysql.py, mock_s3.py, mock_exec.py"}
+      "root": {
+        "files": 1,
+        "purpose": "package exports via __init__.py"
+      },
+      "api": {
+        "files": 2,
+        "purpose": "simulation control API router"
+      },
+      "core": {
+        "files": 7,
+        "purpose": "engine.py, bus.py, state.py, seeding.py, queue_runner.py, scenarios.py"
+      },
+      "adapters": {
+        "files": 4,
+        "purpose": "mock_mysql.py, mock_s3.py, mock_exec.py"
+      }
     },
     "components": {
-      "api": "simulation/api/router.py",
-      "engine": "simulation/core/engine.py",
-      "bus": "simulation/core/bus.py",
-      "state": "simulation/core/state.py",
-      "runner": "simulation/core/queue_runner.py",
-      "seeding": "simulation/core/seeding.py",
-      "scenarios": "simulation/core/scenarios.py"
+      "api": "pulldb/simulation/api/router.py",
+      "engine": "pulldb/simulation/core/engine.py",
+      "bus": "pulldb/simulation/core/bus.py",
+      "state": "pulldb/simulation/core/state.py",
+      "runner": "pulldb/simulation/core/queue_runner.py",
+      "seeding": "pulldb/simulation/core/seeding.py",
+      "scenarios": "pulldb/simulation/core/scenarios.py",
+      "init": "pulldb/simulation/__init__.py"
     },
     "adapters": {
-      "mock_mysql": "simulation/adapters/mock_mysql.py",
-      "mock_s3": "simulation/adapters/mock_s3.py",
-      "mock_exec": "simulation/adapters/mock_exec.py"
+      "mock_mysql": "pulldb/simulation/adapters/mock_mysql.py",
+      "mock_s3": "pulldb/simulation/adapters/mock_s3.py",
+      "mock_exec": "pulldb/simulation/adapters/mock_exec.py"
     },
     "exports": [
       "MockCommandConfig",
@@ -446,7 +725,17 @@
     "hca_layer": "features",
     "documentation": "docs/AUDIT-AGENT.md",
     "package_files": 9,
-    "files": ["__init__.py", "agent.py", "drift.py", "inventory.py", "analyzers.py", "mappings.py", "knowledge_pool.py", "report.py", "__main__.py"],
+    "files": [
+      "__init__.py",
+      "agent.py",
+      "drift.py",
+      "inventory.py",
+      "analyzers.py",
+      "mappings.py",
+      "knowledge_pool.py",
+      "report.py",
+      "__main__.py"
+    ],
     "exports": [
       "DocumentationAuditAgent",
       "AuditReport",
@@ -460,13 +749,13 @@
       "FileCategory"
     ],
     "components": {
-      "agent": "audit/agent.py",
-      "drift": "audit/drift.py",
-      "inventory": "audit/inventory.py",
-      "analyzers": "audit/analyzers.py",
-      "mappings": "audit/mappings.py",
-      "knowledge_pool": "audit/knowledge_pool.py",
-      "report": "audit/report.py"
+      "agent": "pulldb/audit/agent.py",
+      "drift": "pulldb/audit/drift.py",
+      "inventory": "pulldb/audit/inventory.py",
+      "analyzers": "pulldb/audit/analyzers.py",
+      "mappings": "pulldb/audit/mappings.py",
+      "knowledge_pool": "pulldb/audit/knowledge_pool.py",
+      "report": "pulldb/audit/report.py"
     },
     "modes": {
       "targeted": "Uses 17 hardcoded mappings (--full)",
@@ -479,21 +768,19 @@
       "severity_filter": "python -m pulldb.audit --drift --severity high"
     }
   },
-  "binaries": {
-    "package": "pulldb/binaries/",
-    "hca_layer": "plugins",
-    "files": 1,
-    "purpose": "External tool binaries (myloader)",
-    "binary_path": "/opt/pulldb.service/bin/myloader-0.21.1-1",
-    "source_files": ["__init__.py", "myloader-0.21.1-1"]
-  },
   "consolidated_schema": {
     "note": "Legacy 007xx migrations consolidated into base table files",
     "structure": {
-      "00_tables": "17 SQL files - see schema.tables for complete list",
-      "01_views": ["active_jobs view"],
-      "02_seed": ["5 seed data files"],
-      "03_users": ["mysql user grants"]
+      "00_tables": "18 SQL files - see schema.tables for complete list",
+      "01_views": [
+        "active_jobs view"
+      ],
+      "02_seed": [
+        "5 seed data files"
+      ],
+      "03_users": [
+        "mysql user grants"
+      ]
     },
     "key_consolidations": {
       "auth_users": "Includes role, manager_id, max_active_jobs, locked_at",
@@ -509,48 +796,104 @@
         "api": "pulldb/api/main.py"
       },
       "credential_file": "~/.pulldb/credentials",
-      "env_vars": ["PULLDB_API_KEY", "PULLDB_API_SECRET"],
+      "env_vars": [
+        "PULLDB_API_KEY",
+        "PULLDB_API_SECRET"
+      ],
       "schema_table": "api_keys"
     },
     "host_provisioning": {
       "service": "pulldb/domain/services/provisioning.py",
       "infra": "pulldb/infra/mysql_provisioning.py",
-      "steps": ["test_connection", "create_user", "create_database", "deploy_procedure", "store_credentials", "register_host"]
+      "steps": [
+        "test_connection",
+        "create_user",
+        "create_database",
+        "deploy_procedure",
+        "store_credentials",
+        "register_host"
+      ]
     },
     "secret_rotation": {
       "service": "pulldb/domain/services/secret_rotation.py",
-      "phases": ["validation", "generation", "mysql_update", "verification", "aws_update", "final_verify"]
+      "phases": [
+        "validation",
+        "generation",
+        "mysql_update",
+        "verification",
+        "aws_update",
+        "final_verify"
+      ]
     },
     "database_retention": {
       "service": "pulldb/worker/retention.py",
-      "features": ["expiration", "locking", "extension", "maintenance_modal"],
+      "features": [
+        "expiration",
+        "locking",
+        "extension",
+        "maintenance_modal"
+      ],
       "schema_integration": {
-        "jobs_table": ["locked_at", "expires_at", "locked_by", "db_dropped_at"],
+        "jobs_table": [
+          "locked_at",
+          "expires_at",
+          "locked_by",
+          "db_dropped_at"
+        ],
         "admin_tasks": "retention_cleanup task type",
-        "settings": ["staging_retention_days", "default_retention_days", "max_retention_days", "expiring_warning_days", "cleanup_grace_days"]
+        "settings": [
+          "staging_retention_days",
+          "default_retention_days",
+          "max_retention_days",
+          "expiring_warning_days",
+          "cleanup_grace_days"
+        ]
       }
     },
     "admin_tasks": {
       "executor": "pulldb/worker/admin_tasks.py",
-      "task_types": ["force_delete_user", "scan_user_orphans", "bulk_delete_jobs", "retention_cleanup"]
+      "task_types": [
+        "force_delete_user",
+        "scan_user_orphans",
+        "bulk_delete_jobs",
+        "retention_cleanup"
+      ]
     },
     "backup_analysis": {
       "cli": "pulldb/cli/backup_commands.py",
-      "commands": ["backups list", "backups search"]
+      "commands": [
+        "backups list",
+        "backups search"
+      ]
     }
   },
   "hca_remediation": {
     "overlord_domain_models": {
       "file": "pulldb/domain/overlord.py",
       "hca_layer": "entities",
-      "exports": ["OverlordTrackingStatus", "OverlordTracking", "OverlordCompany", "OverlordError", "OverlordConnectionError", "OverlordNotEnabledError", "OverlordOwnershipError", "OverlordDuplicateError", "OverlordSyncError"],
+      "exports": [
+        "OverlordTrackingStatus",
+        "OverlordTracking",
+        "OverlordCompany",
+        "OverlordError",
+        "OverlordConnectionError",
+        "OverlordOwnershipError",
+        "OverlordAlreadyClaimedError",
+        "OverlordSafetyError",
+        "OverlordExternalChangeError",
+        "OverlordRowDeletedError"
+      ],
       "notes": "Extracted from pulldb/infra/overlord.py in Phase 4"
     },
     "overlord_routes": {
       "file": "pulldb/web/features/admin/overlord_routes.py",
       "hca_layer": "pages",
       "routes": 9,
-      "helpers": ["_get_overlord_repos", "_text_filter_match", "_enrich_companies_with_tracking"],
+      "helpers": [
+        "_get_overlord_repos",
+        "_text_filter_match",
+        "_enrich_companies_with_tracking"
+      ],
       "notes": "Extracted from admin/routes.py in Phase 2 (~700 lines)"
     },
     "enqueue_service": {
@@ -568,18 +911,23 @@
     "domain_schemas": {
       "file": "pulldb/domain/schemas.py",
       "hca_layer": "entities",
-      "exports": ["JobRequest"],
+      "exports": [
+        "JobRequest"
+      ],
       "notes": "Job request schema used by enqueue service"
     },
     "request_scoped_cache": {
       "file": "pulldb/web/dependencies.py",
       "class": "CachedOverlordData",
       "dependency": "OverlordCache",
-      "notes": "Phase 6b: request-scoped cache for overlord get_all() — avoids 3x DB calls per request"
+      "notes": "Phase 6b: request-scoped cache for overlord get_all() \u2014 avoids 3x DB calls per request"
     },
     "host_repo_protocol_additions": {
       "file": "pulldb/domain/interfaces.py",
-      "methods_added": ["database_exists", "get_pulldb_metadata_owner"],
+      "methods_added": [
+        "database_exists",
+        "get_pulldb_metadata_owner"
+      ],
       "implementation": "pulldb/infra/mysql_hosts.py",
       "notes": "Phase 5: moved raw MySQL from enqueue.py to HostRepository protocol (mysql.py decomposed into sub-modules)"
     }
@@ -589,8 +937,14 @@
     "common_mistake": "Putting completed files in resume (opposite of intended behavior)",
     "correct_usage": {
       "resume_file_content": "Only the .sql.gz files you want myloader to load",
-      "includes": ["schema files (-schema.sql.gz)", "data files (.00000.sql.gz, etc.)"],
-      "excludes": ["already loaded tables", "metadata files"]
+      "includes": [
+        "schema files (-schema.sql.gz)",
+        "data files (.00000.sql.gz, etc.)"
+      ],
+      "excludes": [
+        "already loaded tables",
+        "metadata files"
+      ]
     },
     "commands": {
       "create_resume": "ls -1 *.sql.gz | grep -E '^dbname\\.tablename[\\.-]' > resume",
@@ -599,7 +953,7 @@
     "prerequisites": {
       "drop_partial_tables": "Tables with partial data must be dropped first",
       "metadata_format": "Must be 0.19-compatible INI format",
-      "metadata_synthesis": "from pulldb.worker.metadata_synthesis import ensure_compatible_metadata"
+      "metadata_synthesis": "from pulldb.worker.backup_metadata import ensure_myloader_compatibility"
     },
     "myloader_flags": {
       "resume": "--resume (expects resume file in backup dir)",
@@ -607,5 +961,112 @@
     },
     "discovery_date": "2026-01-19",
     "lesson": "myloader --help says: 'Expect to find resume file in backup dir and will only process those files'"
+  },
+  "worker": {
+    "package": "pulldb/worker/",
+    "hca_layer": "features/widgets",
+    "files": {
+      "service": "pulldb/worker/service.py",
+      "loop": "pulldb/worker/loop.py",
+      "executor": "pulldb/worker/executor.py",
+      "downloader": "pulldb/worker/downloader.py",
+      "restore": "pulldb/worker/restore.py",
+      "restore_progress": "pulldb/worker/restore_progress.py",
+      "restore_state_tracker": "pulldb/worker/restore_state_tracker.py",
+      "processlist_monitor": "pulldb/worker/processlist_monitor.py",
+      "staging": "pulldb/worker/staging.py",
+      "post_sql": "pulldb/worker/post_sql.py",
+      "backup_metadata": "pulldb/worker/backup_metadata.py",
+      "metadata": "pulldb/worker/metadata.py",
+      "heartbeat": "pulldb/worker/heartbeat.py",
+      "early_analyze": "pulldb/worker/early_analyze.py",
+      "atomic_rename": "pulldb/worker/atomic_rename.py",
+      "cleanup": "pulldb/worker/cleanup.py",
+      "retention": "pulldb/worker/retention.py",
+      "admin_tasks": "pulldb/worker/admin_tasks.py",
+      "overlord_manager": "pulldb/worker/overlord_manager.py",
+      "profiling": "pulldb/worker/profiling.py",
+      "log_normalizer": "pulldb/worker/log_normalizer.py",
+      "myloader_log_parser": "pulldb/worker/myloader_log_parser.py",
+      "table_analyzer": "pulldb/worker/table_analyzer.py",
+      "history_backfill": "pulldb/worker/history_backfill.py",
+      "feature_request_service": "pulldb/worker/feature_request_service.py"
+    }
+  },
+  "domain": {
+    "package": "pulldb/domain/",
+    "files": {
+      "models": "pulldb/domain/models.py",
+      "errors": "pulldb/domain/errors.py",
+      "config": "pulldb/domain/config.py",
+      "schemas": "pulldb/domain/schemas.py",
+      "interfaces": "pulldb/domain/interfaces.py",
+      "permissions": "pulldb/domain/permissions.py",
+      "validation": "pulldb/domain/validation.py",
+      "settings": "pulldb/domain/settings.py",
+      "naming": "pulldb/domain/naming.py",
+      "color_schemas": "pulldb/domain/color_schemas.py",
+      "restore_models": "pulldb/domain/restore_models.py",
+      "feature_request": "pulldb/domain/feature_request.py",
+      "overlord": "pulldb/domain/overlord.py"
+    },
+    "services": {
+      "provisioning": "pulldb/domain/services/provisioning.py",
+      "secret_rotation": "pulldb/domain/services/secret_rotation.py",
+      "discovery": "pulldb/domain/services/discovery.py",
+      "enqueue": "pulldb/domain/services/enqueue.py",
+      "overlord_provisioning": "pulldb/domain/services/overlord_provisioning.py"
+    }
+  },
+  "help_system": {
+    "base_url": "/web/help/",
+    "total_pages": 14,
+    "source_directory": "pulldb/web/help/",
+    "search_index": "pulldb/web/help/search-index.json",
+    "screenshot_directory": "pulldb/web/static/help/screenshots/",
+    "documentation": "docs/HELP-PAGE-INDEX.md",
+    "annotation_config": "docs/help-screenshot-annotations.yaml",
+    "pages": [
+      "pulldb/web/help/index.html",
+      "pulldb/web/help/pages/getting-started.html",
+      "pulldb/web/help/pages/api/index.html",
+      "pulldb/web/help/pages/cli/index.html",
+      "pulldb/web/help/pages/concepts/job-lifecycle.html",
+      "pulldb/web/help/pages/troubleshooting/index.html",
+      "pulldb/web/help/pages/web-ui/index.html",
+      "pulldb/web/help/pages/web-ui/dashboard.html",
+      "pulldb/web/help/pages/web-ui/restore.html",
+      "pulldb/web/help/pages/web-ui/jobs.html",
+      "pulldb/web/help/pages/web-ui/profile.html",
+      "pulldb/web/help/pages/web-ui/requests.html",
+      "pulldb/web/help/pages/web-ui/manager.html",
+      "pulldb/web/help/pages/web-ui/admin.html"
+    ],
+    "static_assets": {
+      "css": "pulldb/web/help/css/help.css",
+      "js_help": "pulldb/web/help/js/help.js",
+      "js_search": "pulldb/web/help/js/search.js",
+      "js_terminal": "pulldb/web/help/js/terminal.js"
+    },
+    "screenshots": {
+      "total_files": 256,
+      "total_size_mb": 13,
+      "categories": {
+        "admin": 23,
+        "common": 9,
+        "dashboard": 5,
+        "jobs": 12,
+        "manager": 4,
+        "profile": 6,
+        "requests": 1,
+        "restore": 6
+      },
+      "variants": {
+        "light_raw": 66,
+        "dark_raw": 66,
+        "annotated_light": 62,
+        "annotated_dark": 62
+      }
+    }
   }
 }

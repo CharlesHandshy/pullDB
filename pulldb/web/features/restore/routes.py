@@ -41,7 +41,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/web/restore", tags=["web-restore"])
 
 # API base URL for internal calls (UI calls API for all search operations)
-_API_BASE_URL = os.getenv("PULLDB_API_URL", "http://localhost:8080")
+_API_BASE_URL = os.getenv("PULLDB_API_URL", "https://localhost:8080")
+
+# TLS cert path for verifying internal API calls (self-signed cert)
+_API_TLS_CERT: str | bool = os.getenv("PULLDB_TLS_CERT", "") or True
 
 
 def _get_allowed_hosts_for_user(user: User, all_hosts: list) -> list:
@@ -225,7 +228,7 @@ async def search_backups(
         if date_to:
             params["date_to"] = date_to
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, verify=_API_TLS_CERT) as client:
             resp = await client.get(
                 f"{_API_BASE_URL}/api/backups/search",
                 params=params,

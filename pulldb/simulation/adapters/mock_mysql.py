@@ -226,18 +226,27 @@ class SimulatedJobRepository:
         
         Clears the worker processing lock (locked_at/locked_by/can_cancel)
         since failed jobs should be deletable and no longer need protection.
+        Sets expires_at to prevent indefinite accumulation in History.
         """
         with self.state.lock:
             job = self.state.jobs.get(job_id)
             if job:
+                now = datetime.now(UTC)
                 updated = self._update_job_status(
                     job, 
                     JobStatus.FAILED, 
-                    completed_at=datetime.now(UTC),
+                    completed_at=now,
                     error_detail=error
                 )
                 # Clear the worker lock so failed jobs can be deleted
-                updated = replace(updated, locked_at=None, locked_by=None, can_cancel=True)
+                # Set expires_at so failed jobs don't accumulate indefinitely
+                updated = replace(
+                    updated,
+                    locked_at=None,
+                    locked_by=None,
+                    can_cancel=True,
+                    expires_at=now + timedelta(days=7),
+                )
                 self.state.jobs[job_id] = updated
                 self.append_job_event(job_id, "failed", f"Job failed: {error}")
                 self._bus.emit(
@@ -321,16 +330,22 @@ class SimulatedJobRepository:
             return True
 
     def mark_job_canceled(self, job_id: str, reason: str | None = None) -> None:
-        """Mark job as canceled (called by worker when it honors cancellation)."""
+        """Mark job as canceled (called by worker when it honors cancellation).
+        
+        Sets expires_at to prevent indefinite accumulation in History.
+        """
         with self.state.lock:
             job = self.state.jobs.get(job_id)
             if job:
+                now = datetime.now(UTC)
                 updated = self._update_job_status(
                     job, 
                     JobStatus.CANCELED, 
-                    completed_at=datetime.now(UTC),
+                    completed_at=now,
                     error_detail=reason
                 )
+                # Set expires_at so canceled jobs don't accumulate indefinitely
+                updated = replace(updated, expires_at=now + timedelta(days=7))
                 self.state.jobs[job_id] = updated
                 # Clear the cancellation flag
                 self.state.cancellation_requested.discard(job_id)
@@ -1133,6 +1148,32 @@ class SimulatedJobRepository:
             # Fallback to status
             return job.status.value.capitalize()
 
+    def get_deployed_jobs_for_host(self, dbhost: str) -> list[Job]:
+        """Get all deployed jobs for a specific database host.
+
+        Returns active deployed databases: not superseded, not dropped.
+        Used by database discovery to determine which databases on a host
+        are managed by pullDB.
+
+        Args:
+            dbhost: Database host to get deployed jobs for.
+
+        Returns:
+            List of deployed Job instances on this host.
+        """
+        with self.state.lock:
+            results = []
+            for job in self.state.jobs.values():
+                if (
+                    job.dbhost == dbhost
+                    and job.status == JobStatus.DEPLOYED
+                    and job.superseded_at is None
+                    and job.db_dropped_at is None
+                ):
+                    results.append(job)
+            results.sort(key=lambda j: (j.target, j.submitted_at or datetime.min), reverse=False)
+            return results
+
     def get_deployed_job_for_target(
         self, target: str, dbhost: str, owner_user_id: str
     ) -> Job | None:
@@ -1314,7 +1355,7 @@ class SimulatedJobRepository:
         with self.state.lock:
             for job in self.state.jobs.values():
                 if (
-                    job.status == JobStatus.DEPLOYED
+                    job.status in (JobStatus.DEPLOYED, JobStatus.EXPIRED)
                     and job.locked_at is None
                     and job.db_dropped_at is None
                     and job.superseded_at is None
@@ -1325,6 +1366,32 @@ class SimulatedJobRepository:
 
         # Sort by expires_at ascending (oldest first)
         return sorted(candidates, key=lambda j: j.expires_at or datetime.min.replace(tzinfo=UTC))
+
+    def get_expired_terminal_job_candidates(self, grace_days: int) -> list[Job]:
+        """Get failed/canceled jobs eligible for automatic record cleanup."""
+        cutoff = datetime.now(UTC) - timedelta(days=grace_days)
+        candidates: list[Job] = []
+
+        with self.state.lock:
+            for job in self.state.jobs.values():
+                if (
+                    job.status in (JobStatus.FAILED, JobStatus.CANCELED)
+                    and job.expires_at is not None
+                    and job.expires_at < cutoff
+                ):
+                    candidates.append(job)
+
+        return sorted(candidates, key=lambda j: j.expires_at or datetime.min.replace(tzinfo=UTC))
+
+    def purge_terminal_job(self, job_id: str) -> None:
+        """Mark a failed/canceled job as deleted (record cleanup)."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if job and job.status in (JobStatus.FAILED, JobStatus.CANCELED):
+                detail = (job.error_detail or "") + " [auto-purged: expired terminal job]"
+                updated = replace(job, status=JobStatus.DELETED, error_detail=detail)
+                self.state.jobs[job_id] = updated
+                self.append_job_event(job_id, "purged", "Auto-purged expired terminal job")
 
     def get_maintenance_items(
         self, user_id: str, notice_days: int, grace_days: int
@@ -2587,6 +2654,24 @@ class SimulatedHostRepository:
         with self.state.lock:
             host_dbs = self.state.staging_databases.get(hostname, set())
             return db_name in host_dbs
+
+    def get_database_created_dates(
+        self, hostname: str, databases: list[str] | None = None,
+    ) -> dict[str, str]:
+        """Get mock creation dates for databases on a host.
+
+        In simulation mode, returns empty dict since there is no
+        information_schema to query. Real implementation queries
+        ``information_schema.TABLES`` for earliest ``CREATE_TIME``.
+
+        Args:
+            hostname: Database host to query.
+            databases: Optional list of database names to filter.
+
+        Returns:
+            Empty dict (simulation has no table creation metadata).
+        """
+        return {}
 
     def get_pulldb_metadata_owner(
         self, hostname: str, db_name: str

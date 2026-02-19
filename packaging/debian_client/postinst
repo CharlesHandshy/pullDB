@@ -70,11 +70,63 @@ if [ "$1" = "configure" ]; then
 
     # Symlink binary for system-wide access
     ln -sf "${INSTALL_PREFIX}/venv/bin/pulldb" "${BIN_DIR}/pulldb"
-    
+
+    # Create or update config with pullDB server address
+    CONFIG_FILE="${INSTALL_PREFIX}/config"
+    NEEDS_PROMPT=false
+
+    if [ ! -f "${CONFIG_FILE}" ]; then
+        NEEDS_PROMPT=true
+    elif grep -q "pulldb.example.com" "${CONFIG_FILE}" 2>/dev/null; then
+        # Placeholder was never replaced — re-prompt
+        NEEDS_PROMPT=true
+    fi
+
+    if [ "${NEEDS_PROMPT}" = "true" ]; then
+        PULLDB_HOST=""
+
+        # Try to get input from the terminal.
+        # dpkg redirects stdin, so we must open /dev/tty explicitly
+        # for BOTH the prompt output and the read input.
+        if [ -c /dev/tty ]; then
+            echo "" >/dev/tty
+            echo "=== pullDB Server Configuration ===" >/dev/tty
+            echo "" >/dev/tty
+            echo "Enter the IP address or hostname of your pullDB server." >/dev/tty
+            echo "HTTPS is enforced automatically (port 8080)." >/dev/tty
+            echo "" >/dev/tty
+            printf "pullDB server address [e.g. 10.40.10.117]: " >/dev/tty
+            read -r PULLDB_HOST </dev/tty || true
+        fi
+
+        if [ -z "${PULLDB_HOST}" ]; then
+            PULLDB_HOST="pulldb.example.com"
+            echo ""
+            echo "  *** No address provided — using placeholder."
+            echo "  *** Edit ${CONFIG_FILE} and set the correct server address."
+            echo "  *** Or reinstall the package to be prompted again."
+        else
+            echo "  Using server: https://${PULLDB_HOST}:8080"
+        fi
+
+        cat > "${CONFIG_FILE}" <<EOF
+# pullDB Client Configuration
+# Managed by system administrator — do not edit as a regular user.
+# The CLI reads this file automatically on every invocation.
+
+PULLDB_API_URL=https://${PULLDB_HOST}:8080
+EOF
+        chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${CONFIG_FILE}"
+        chmod 644 "${CONFIG_FILE}"
+    else
+        echo "  Config:  ${CONFIG_FILE} (preserved from previous install)"
+    fi
+
     echo ""
     echo "pullDB client installed successfully."
     echo "  Python:  ${PYTHON_VERSION} (embedded)"
     echo "  Binary:  ${BIN_DIR}/pulldb"
+    echo "  Config:  ${CONFIG_FILE}"
     echo "  Run 'pulldb --help' to verify."
 fi
 

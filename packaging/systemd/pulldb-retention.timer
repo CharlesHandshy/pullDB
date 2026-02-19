@@ -3,14 +3,22 @@ Description=pullDB Database Retention Cleanup Timer
 Requires=pulldb-retention.service
 
 [Timer]
-# Run daily at 3:00 AM local time
-OnCalendar=*-*-* 03:00:00
-# Add random delay up to 30 minutes to avoid thundering herd
+# SCHEDULE: Non-work-hours only (Eastern Time work hours = 7am-9pm M-F)
+#
+# Weekdays (Mon-Fri): Run at 05:00 UTC = 12:00am EST / 1:00am EDT
+# Weekends (Sat-Sun): Run at 05:00 UTC = 12:00am EST / 1:00am EDT
+#
+# 05:00 UTC is safely outside ET work hours year-round:
+#   EST (Nov-Mar): 12:00 AM ET (7+ hours before work starts)
+#   EDT (Mar-Nov):  1:00 AM ET (6+ hours before work starts)
+#
+# The cleanup code also checks for active restore jobs and will
+# skip execution if any jobs are queued or running.
+OnCalendar=*-*-* 05:00:00
+# Add random delay up to 30 minutes
 RandomizedDelaySec=1800
-# Run immediately if we missed the last scheduled time
+# Run on next boot if we missed the last scheduled time
 Persistent=true
-# Don't run if system is on battery
-# ConditionACPower=true
 
 [Install]
 WantedBy=timers.target

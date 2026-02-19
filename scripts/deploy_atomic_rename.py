@@ -38,7 +38,7 @@ import mysql.connector
 
 PROCEDURE_NAME = "pulldb_atomic_rename"
 PREVIEW_PROCEDURE_NAME = "pulldb_atomic_rename_preview"
-EXPECTED_VERSION = "1.1.0"
+EXPECTED_VERSION = "1.2.0"
 
 
 @runtime_checkable

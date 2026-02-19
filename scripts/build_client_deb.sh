@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Cleanup on failure
+cleanup() {
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        echo "[ERROR] Build failed (exit code $exit_code). Cleaning up..." >&2
+        rm -rf "${PROJECT_ROOT:-}/build/pulldb-client" "${PROJECT_ROOT:-}/build/temp-client-wheel" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
 # =============================================================================
 # pullDB Client Package Builder
 # =============================================================================
@@ -139,7 +149,7 @@ cp "${PROJECT_ROOT}/packaging/CLIENT-README.md" "$DOC_DIR/"
 if [ -f "${PROJECT_ROOT}/LICENSE" ]; then
     cp "${PROJECT_ROOT}/LICENSE" "$DOC_DIR/copyright"
 else
-    echo "Copyright 2025 PestRoutes Engineering" > "$DOC_DIR/copyright"
+    echo "Copyright 2026 PestRoutes Engineering" > "$DOC_DIR/copyright"
 fi
 
 # Copy installer script (for reference, less needed now with embedded Python)

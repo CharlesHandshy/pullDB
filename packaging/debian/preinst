@@ -13,13 +13,16 @@ log_error() { echo "[pulldb] ERROR: $*" >&2; }
 install_python312() {
     log_info "Python 3.12 not found. Installing from deadsnakes PPA..."
     
-    # Fix any stale apt lists first
-    rm -f /var/lib/apt/lists/lock 2>/dev/null || true
-    rm -rf /var/lib/apt/lists/* 2>/dev/null || true
-    
     # Install prerequisites for add-apt-repository
-    log_info "Updating package lists..."
-    apt-get update --allow-releaseinfo-change -qq 2>/dev/null || apt-get update -qq 2>/dev/null || true
+    # Only update if package lists are older than 1 hour
+    APT_LISTS_AGE=3600
+    APT_LISTS_DIR="/var/lib/apt/lists"
+    if [ -d "$APT_LISTS_DIR" ] && [ -n "$(find "$APT_LISTS_DIR" -maxdepth 0 -mmin -60 2>/dev/null)" ]; then
+        log_info "Package lists are recent, skipping apt-get update"
+    else
+        log_info "Updating package lists..."
+        apt-get update --allow-releaseinfo-change -qq 2>/dev/null || apt-get update -qq 2>/dev/null || true
+    fi
     
     log_info "Installing software-properties-common..."
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq software-properties-common 2>/dev/null || true

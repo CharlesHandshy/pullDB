@@ -146,11 +146,23 @@ load_env_variables() {
     echo "Step 3: Loading configuration..."
     
     if [ -f "${ENV_FILE}" ]; then
+        # Quote any unquoted values containing spaces (prevents dash command-not-found errors)
+        # This handles .env files created before quoting was enforced
+        sed -i -E '/^[A-Za-z_][A-Za-z0-9_]*=[^'\''"].*[[:space:]]/ {
+            /^[A-Za-z_][A-Za-z0-9_]*='\''/ !{
+                s/^([A-Za-z_][A-Za-z0-9_]*)=(.*)/\1='\''\2'\''/
+            }
+        }' "${ENV_FILE}" 2>/dev/null || true
+        
         # Source the env file to get paths
+        # Temporarily disable set -e: dash propagates errors from sourced files
+        # before || can catch them
+        set +e
         set -a
         # shellcheck disable=SC1090
-        . "${ENV_FILE}" 2>/dev/null || true
+        . "${ENV_FILE}" 2>/dev/null
         set +a
+        set -e
         echo "  Loaded ${ENV_FILE}"
     fi
     
@@ -257,6 +269,104 @@ ensure_paths() {
             chown -R "${SYSTEM_USER}:${SYSTEM_GROUP}" "${PULLDB_QA_TEMPLATE_AFTER_SQL_DIR}"
             echo "  Installed QA after-SQL scripts"
         fi
+    fi
+}
+
+# =============================================================================
+# Step 5b: Generate TLS Certificate (HTTPS required)
+# =============================================================================
+
+generate_tls_certificate() {
+    echo "Step 5b: Generating TLS certificate for HTTPS..."
+    
+    TLS_DIR="${INSTALL_PREFIX}/tls"
+    TLS_CERT="${TLS_DIR}/cert.pem"
+    TLS_KEY="${TLS_DIR}/key.pem"
+    CA_DEST="/usr/local/share/ca-certificates/pulldb-service.crt"
+    
+    # Skip if certificate already exists and is valid
+    if [ -f "${TLS_CERT}" ] && [ -f "${TLS_KEY}" ]; then
+        # Check expiry — regenerate if less than 30 days remain
+        if openssl x509 -checkend 2592000 -noout -in "${TLS_CERT}" 2>/dev/null; then
+            echo "  TLS certificate already exists and is valid"
+            # Ensure .env has TLS vars (upgrade path)
+            _ensure_tls_env_vars
+            return
+        else
+            echo "  TLS certificate expiring soon, regenerating..."
+        fi
+    fi
+    
+    install -d -o "${SYSTEM_USER}" -g "${SYSTEM_GROUP}" -m 0750 "${TLS_DIR}"
+    
+    # Detect server IP for SAN (Subject Alternative Name)
+    SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    SERVER_HOSTNAME=$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo "pulldb")
+    
+    # Build SAN entries
+    SAN_ENTRIES="DNS:localhost,IP:127.0.0.1"
+    if [ -n "${SERVER_IP}" ] && [ "${SERVER_IP}" != "127.0.0.1" ]; then
+        SAN_ENTRIES="${SAN_ENTRIES},IP:${SERVER_IP}"
+    fi
+    if [ -n "${SERVER_HOSTNAME}" ] && [ "${SERVER_HOSTNAME}" != "localhost" ]; then
+        SAN_ENTRIES="${SAN_ENTRIES},DNS:${SERVER_HOSTNAME}"
+    fi
+    
+    echo "  Generating self-signed certificate (10-year validity)..."
+    echo "  SANs: ${SAN_ENTRIES}"
+    
+    openssl req -x509 \
+        -newkey ec \
+        -pkeyopt ec_paramgen_curve:prime256v1 \
+        -nodes \
+        -keyout "${TLS_KEY}" \
+        -out "${TLS_CERT}" \
+        -days 3650 \
+        -subj "/CN=pulldb-service/O=pullDB" \
+        -addext "subjectAltName=${SAN_ENTRIES}" \
+        2>/dev/null || {
+            echo "  FATAL: Failed to generate TLS certificate"
+            echo "  Ensure openssl is installed"
+            exit 1
+        }
+    
+    # Secure permissions — key is secret, cert is public
+    chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${TLS_CERT}" "${TLS_KEY}"
+    chmod 644 "${TLS_CERT}"
+    chmod 600 "${TLS_KEY}"
+    echo "  Generated: ${TLS_CERT} (public)"
+    echo "  Generated: ${TLS_KEY} (private, restricted)"
+    
+    # Add to system CA trust store so internal requests (web→API, CLI) work
+    cp "${TLS_CERT}" "${CA_DEST}"
+    update-ca-certificates 2>/dev/null || true
+    echo "  Added certificate to system CA trust store"
+    
+    # Set TLS env vars in .env
+    _ensure_tls_env_vars
+    
+    echo "  HTTPS configured successfully"
+}
+
+_ensure_tls_env_vars() {
+    # Ensure .env has TLS variables set
+    TLS_DIR="${INSTALL_PREFIX}/tls"
+    TLS_CERT="${TLS_DIR}/cert.pem"
+    TLS_KEY="${TLS_DIR}/key.pem"
+    
+    # Add TLS vars if not already present
+    if ! grep -q "^PULLDB_TLS_CERT=" "${ENV_FILE}" 2>/dev/null; then
+        cat >> "${ENV_FILE}" << EOF
+
+# =============================================================================
+# TLS CONFIGURATION (auto-generated — do not remove)
+# =============================================================================
+PULLDB_TLS_CERT=${TLS_CERT}
+PULLDB_TLS_KEY=${TLS_KEY}
+PULLDB_API_URL=https://localhost:8080
+REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+EOF
+        echo "  Added TLS environment variables to .env"
     fi
 }
 
@@ -436,36 +546,44 @@ create_admin_user() {
     fi
     
     # Generate random password (16 chars alphanumeric)
-    ADMIN_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16)
+    # Use 48 bytes of urandom to guarantee at least 16 alphanumeric chars after filtering
+    ADMIN_PASSWORD=$(head -c 48 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16)
     
-    # Hash password using Python/bcrypt
-    ADMIN_HASH=$("${INSTALL_PREFIX}/venv/bin/python3" -c "
-import bcrypt
-password = '${ADMIN_PASSWORD}'.encode('utf-8')
+    if [ ${#ADMIN_PASSWORD} -lt 16 ]; then
+        echo "  Warning: Failed to generate secure password"
+        return
+    fi
+    
+    # Hash password and update database using Python to avoid SQL injection.
+    # The password and hash never touch the shell as SQL literals.
+    "${INSTALL_PREFIX}/venv/bin/python3" -c "
+import sys, bcrypt, mysql.connector
+
+password = sys.argv[1].encode('utf-8')
 salt = bcrypt.gensalt(rounds=12)
-print(bcrypt.hashpw(password, salt).decode('utf-8'))
-" 2>/dev/null)
-    
-    if [ -z "$ADMIN_HASH" ]; then
-        echo "  Warning: Failed to hash password"
-        return
-    fi
-    
-    # Get the admin user_id from the seed
-    ADMIN_UUID=$(mysql -N -e "SELECT user_id FROM pulldb_service.auth_users WHERE username='admin'" 2>/dev/null)
-    
-    if [ -z "$ADMIN_UUID" ]; then
-        echo "  Warning: Could not find admin user_id"
-        return
-    fi
-    
-    # Update the password hash AND set password_reset_at to force reset on first login
-    mysql pulldb_service -e "
-UPDATE auth_credentials 
-SET password_hash = '${ADMIN_HASH}',
-    password_reset_at = UTC_TIMESTAMP(6)
-WHERE user_id = '${ADMIN_UUID}';
-" 2>/dev/null || {
+hash_value = bcrypt.hashpw(password, salt).decode('utf-8')
+
+conn = mysql.connector.connect(unix_socket='/var/run/mysqld/mysqld.sock', database='pulldb_service')
+cursor = conn.cursor()
+
+# Get admin user_id
+cursor.execute('SELECT user_id FROM auth_users WHERE username = %s', ('admin',))
+row = cursor.fetchone()
+if not row:
+    print('  Warning: Could not find admin user_id')
+    sys.exit(0)
+
+admin_uuid = row[0]
+
+# Update password hash with parameterized query (no SQL injection)
+cursor.execute(
+    'UPDATE auth_credentials SET password_hash = %s, password_reset_at = UTC_TIMESTAMP(6) WHERE user_id = %s',
+    (hash_value, admin_uuid),
+)
+conn.commit()
+cursor.close()
+conn.close()
+" "${ADMIN_PASSWORD}" 2>/dev/null || {
         echo "  Warning: Failed to set admin password"
         return
     }
@@ -687,6 +805,7 @@ case "$1" in
         load_env_variables
         offer_interactive_config
         ensure_paths
+        generate_tls_certificate
         install_python_package
         check_database_schema
         sync_database_settings_to_env

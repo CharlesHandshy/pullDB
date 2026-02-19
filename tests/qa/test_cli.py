@@ -164,8 +164,7 @@ def mock_cli_runner():
             
             # Also patch auth module's get_calling_username
             with patch("pulldb.cli.main.get_calling_username", return_value="testuser"):
-                with patch("pulldb.cli.main._get_calling_username", return_value="testuser"):
-                    result = runner.invoke(cli, args, catch_exceptions=False, **kwargs)
+                result = runner.invoke(cli, args, catch_exceptions=False, **kwargs)
                     
         return result
         

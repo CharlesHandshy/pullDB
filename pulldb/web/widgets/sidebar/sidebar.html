@@ -64,6 +64,10 @@
                     {{ icon('layers', size='20') }}
                     <span class="nav-label">Companies</span>
                 </a>
+                <a href="/web/admin/database-discovery" class="nav-link {% if '/web/admin/database-discovery' in request.url.path %}active{% endif %}" title="Database Discovery">
+                    {{ icon('hosts', size='20') }}
+                    <span class="nav-label">Discovery</span>
+                </a>
                 <a href="/web/admin/settings" class="nav-link {% if request.url.path == '/web/admin/settings' %}active{% endif %}" title="Settings">
                     {{ icon('settings', size='20') }}
                     <span class="nav-label">Settings</span>

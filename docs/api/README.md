@@ -61,8 +61,8 @@ GET /api/jobs/search?q=acme
 
 | Document | Description |
 |----------|-------------|
-| **[REST-API.md](REST-API.md)** | Complete REST API reference (53 endpoints) |
-| **[WEB-API.md](WEB-API.md)** | Web UI routes and API reference (141 routes) |
+| **[REST-API.md](REST-API.md)** | Complete REST API reference (63 endpoints) |
+| **[WEB-API.md](WEB-API.md)** | Web UI routes and API reference (166 routes) |
 | **[API-DOCUMENTATION-STANDARD.md](API-DOCUMENTATION-STANDARD.md)** | Template and guidelines for API documentation |
 
 ---

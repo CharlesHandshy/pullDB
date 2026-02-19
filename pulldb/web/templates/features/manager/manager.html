@@ -56,6 +56,42 @@
     </div>
 </div>
 
+<!-- Manage Hosts Modal -->
+<div id="hosts-modal" class="modal modal-hidden">
+    <div class="modal-backdrop" onclick="hideHostsModal()"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">Manage Database Hosts</h3>
+            <button type="button" class="modal-close" onclick="hideHostsModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" x2="6" y1="6" y2="18"/>
+                    <line x1="6" x2="18" y1="6" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="hosts-modal-info">
+                <strong id="hosts-modal-username"></strong> - Select which database hosts this user can access, and set a default.
+            </p>
+            <div id="hosts-list" class="hosts-list">
+                <div class="hosts-empty">Loading hosts...</div>
+            </div>
+            <p class="hosts-selected-count" id="hosts-selected-count">0 hosts selected</p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="hideHostsModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="save-hosts-btn" onclick="saveUserHosts()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                </svg>
+                Save
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Temp Password Modal -->
 <div id="temp-password-modal" class="modal modal-hidden">
     <div class="modal-backdrop" onclick="closeTempPasswordModal()"></div>
@@ -112,5 +148,5 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=7"></script>
-<script src="{{ url_for('static', path='js/pages/manager-dashboard.js') }}?v=2"></script>
+<script src="{{ url_for('static', path='js/pages/manager-dashboard.js') }}?v=3"></script>
 {% endblock %}

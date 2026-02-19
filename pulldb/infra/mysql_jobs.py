@@ -621,7 +621,9 @@ class JobRepository:
 
         Called by worker when job execution fails. Updates status to 'failed',
         records completion time, stores error message, clears any pending
-        cancellation request, and releases the worker lock.
+        cancellation request, releases the worker lock, and sets expires_at
+        based on default_retention_days so failed jobs don't accumulate
+        indefinitely in History.
 
         Note:
             The worker_id column is intentionally retained after failure
@@ -630,6 +632,8 @@ class JobRepository:
             terminal state and the cancellation is no longer relevant.
             The locked_at/locked_by/can_cancel fields are cleared since
             failed jobs should be deletable and no longer need protection.
+            The expires_at is set to completed_at + default_retention_days
+            to prevent indefinite accumulation of failed job records.
 
         Args:
             job_id: UUID of job.
@@ -637,15 +641,17 @@ class JobRepository:
         """
         with self.pool.connection() as conn:
             cursor = TypedTupleCursor(conn.cursor())
+            retention_days = _SettingsRepo(self.pool).get_default_retention_days()
             cursor.execute(
                 """
                 UPDATE jobs
                 SET status = 'failed', completed_at = UTC_TIMESTAMP(6),
+                    expires_at = DATE_ADD(UTC_TIMESTAMP(6), INTERVAL %s DAY),
                     error_detail = %s, cancel_requested_at = NULL,
                     locked_at = NULL, locked_by = NULL, can_cancel = TRUE
                 WHERE id = %s
                 """,
-                (error, job_id),
+                (retention_days, error, job_id),
             )
             conn.commit()
 
@@ -760,7 +766,9 @@ class JobRepository:
         """Mark job as canceled and set completed_at timestamp.
 
         Called by worker when it detects cancellation request and stops processing.
-        Updates status to 'canceled' and records completion time.
+        Updates status to 'canceled', records completion time, and sets expires_at
+        based on default_retention_days so canceled jobs don't accumulate
+        indefinitely in History.
 
         Args:
             job_id: UUID of job.
@@ -769,14 +777,16 @@ class JobRepository:
         error_detail = reason or "Canceled by user request"
         with self.pool.connection() as conn:
             cursor = TypedTupleCursor(conn.cursor())
+            retention_days = _SettingsRepo(self.pool).get_default_retention_days()
             cursor.execute(
                 """
                 UPDATE jobs
                 SET status = 'canceled', completed_at = UTC_TIMESTAMP(6),
+                    expires_at = DATE_ADD(UTC_TIMESTAMP(6), INTERVAL %s DAY),
                     error_detail = %s
                 WHERE id = %s
                 """,
-                (error_detail, job_id),
+                (retention_days, error_detail, job_id),
             )
             conn.commit()
 
@@ -1781,7 +1791,10 @@ class JobRepository:
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
                        completed_at, options_json, retry_count, error_detail, worker_id,
-                       can_cancel, cancel_requested_at
+                       can_cancel, cancel_requested_at,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id, staging_cleaned_at,
+                       custom_target
                 FROM jobs
                 WHERE 1=1
             """
@@ -3002,6 +3015,41 @@ class JobRepository:
             )
             conn.commit()
 
+    def get_deployed_jobs_for_host(self, dbhost: str) -> list[Job]:
+        """Get all deployed jobs for a specific database host.
+
+        Returns active deployed databases: not superseded, not dropped.
+        Used by database discovery to determine which databases on a host
+        are managed by pullDB.
+
+        Args:
+            dbhost: Database host to get deployed jobs for.
+
+        Returns:
+            List of deployed Job instances on this host.
+        """
+        with self.pool.connection() as conn:
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail,
+                       worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id, custom_target
+                FROM jobs
+                WHERE dbhost = %s
+                  AND status = 'deployed'
+                  AND superseded_at IS NULL
+                  AND db_dropped_at IS NULL
+                ORDER BY target ASC, submitted_at DESC
+                """,
+                (dbhost,),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
+
     def get_deployed_job_for_target(
         self, target: str, dbhost: str, owner_user_id: str
     ) -> Job | None:
@@ -3346,7 +3394,7 @@ class JobRepository:
                        expires_at, locked_at, locked_by, db_dropped_at,
                        superseded_at, superseded_by_job_id, custom_target
                 FROM jobs
-                WHERE status = 'deployed'
+                WHERE status IN ('deployed', 'expired')
                   AND locked_at IS NULL
                   AND db_dropped_at IS NULL
                   AND superseded_at IS NULL
@@ -3358,6 +3406,70 @@ class JobRepository:
             )
             rows = cursor.fetchall()
             return [self._row_to_job(row) for row in rows]
+
+    def get_expired_terminal_job_candidates(self, grace_days: int) -> list[Job]:
+        """Get failed/canceled jobs eligible for automatic record cleanup.
+
+        Returns terminal jobs (failed, canceled) that are:
+        - Past expiration + grace period
+        - Have expires_at set
+
+        Unlike deployed jobs, these have no live database to drop — this
+        query is used to find stale records for purging from History.
+
+        Args:
+            grace_days: Additional days after expiry before cleanup.
+
+        Returns:
+            List of failed/canceled jobs past their expiration + grace period.
+        """
+        with self.pool.connection() as conn:
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail,
+                       worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id, custom_target
+                FROM jobs
+                WHERE status IN ('failed', 'canceled')
+                  AND expires_at IS NOT NULL
+                  AND expires_at < UTC_TIMESTAMP() - INTERVAL %s DAY
+                ORDER BY expires_at ASC
+                """,
+                (grace_days,),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
+
+    def purge_terminal_job(self, job_id: str) -> None:
+        """Mark a failed/canceled job as deleted (record cleanup).
+
+        Sets status to 'deleted' with a detail indicating automatic purge.
+        This is a soft delete — the row remains for audit but leaves the
+        active History view.
+
+        Args:
+            job_id: UUID of the terminal job to purge.
+        """
+        with self.pool.connection() as conn:
+            cursor = TypedTupleCursor(conn.cursor())
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET status = 'deleted',
+                    error_detail = CONCAT(
+                        COALESCE(error_detail, ''),
+                        ' [auto-purged: expired terminal job]'
+                    )
+                WHERE id = %s
+                  AND status IN ('failed', 'canceled')
+                """,
+                (job_id,),
+            )
+            conn.commit()
 
     def get_all_locked_databases(self) -> list[Job]:
         """Get all locked databases across all users (manager report).

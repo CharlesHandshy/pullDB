@@ -73,6 +73,7 @@ from pulldb.cli.admin_commands import (
     keys_group,
     overlord_group,
     run_retention_cleanup_cmd,
+    run_terminal_cleanup_cmd,
     users_group,
 )
 from pulldb.cli.backup_commands import backups_group
@@ -99,31 +100,22 @@ def _get_system_username() -> str:
         return os.environ.get("USER", os.environ.get("USERNAME", "unknown"))
 
 
-def _check_admin_authorization(ctx: click.Context) -> None:
+def _check_admin_authorization() -> None:
     """Verify the system user has admin role in pullDB.
+
+    SECURITY: This runs unconditionally — no help, no command listing,
+    no subcommand details are shown to unauthorized users.
 
     Raises:
         click.ClickException: If user is not authorized.
     """
-    # Skip auth check for --help and --version
-    if ctx.resilient_parsing:
-        return
-    if ctx.invoked_subcommand is None:
-        # No subcommand - just showing help
-        return
-
-    # Load .env now that we actually need it
+    # Load .env
     _ensure_env_loaded()
-    
+
     # Check if .env loading failed
     if _env_error:
         raise click.ClickException(
-            click.style("Error: ", fg="red", bold=True)
-            + f"Permission denied reading {_env_error}\n"
-            + click.style("Hint: ", fg="yellow")
-            + "Run with: "
-            + click.style("pulldb-admin <command>", fg="cyan")
-            + " (auto-escalates to pulldb_service user)"
+            click.style("Account not authorized.", fg="red", bold=True)
         )
 
     username = _get_system_username()
@@ -155,18 +147,33 @@ def _check_admin_authorization(ctx: click.Context) -> None:
     except click.ClickException:
         # Re-raise ClickExceptions as-is
         raise
-    except Exception as e:
-        # Connection errors, etc.
+    except Exception:
+        # Connection errors, etc. — give nothing away
         raise click.ClickException(
-            click.style("Authorization check failed: ", fg="red", bold=True)
-            + "Cannot connect to database.\n"
-            + click.style("Details: ", fg="yellow")
-            + str(e)
-        ) from e
+            click.style("Account not authorized.", fg="red", bold=True)
+        )
 
 
-@click.group(help="pullDB Admin - System administration tool (requires admin role)")
-@click.version_option(__version__, prog_name="pulldb-admin")
+class _AuthGroup(click.Group):
+    """Click Group that enforces admin authorization before ANY output.
+
+    SECURITY: Auth is required for ALL operations — no exceptions.
+    Unauthorized users receive only "Account not authorized." regardless
+    of what flags or subcommands they attempt.
+    """
+
+    def invoke(self, ctx: click.Context) -> None:
+        _check_admin_authorization()
+        super().invoke(ctx)
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        # Auth before parsing — blocks --help, bare invocation, everything
+        if "--help" in args or not args:
+            _check_admin_authorization()
+        return super().parse_args(ctx, args)
+
+
+@click.group(cls=_AuthGroup, help="pullDB Admin - System administration tool (requires admin role)")
 @click.pass_context
 def cli(ctx: click.Context) -> None:
     """CLI entry point for pullDB admin commands.
@@ -174,7 +181,7 @@ def cli(ctx: click.Context) -> None:
     This is the main Click group that organizes all pullDB admin subcommands.
     Requires the system user to have admin role in pullDB.
     """
-    _check_admin_authorization(ctx)
+    pass
 
 
 # Register command groups
@@ -184,6 +191,7 @@ cli.add_command(jobs_group)
 cli.add_command(backups_group)
 cli.add_command(cleanup_cmd)
 cli.add_command(run_retention_cleanup_cmd)
+cli.add_command(run_terminal_cleanup_cmd)
 cli.add_command(hosts_group)
 cli.add_command(users_group)
 cli.add_command(keys_group)

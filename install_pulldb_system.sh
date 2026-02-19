@@ -31,6 +31,29 @@ case $OPTION in
         ;;
 esac
 
+# Warn if already installed
+if [ "$INSTALL_SERVER" = true ] && dpkg -l pulldb 2>/dev/null | grep -q "^ii"; then
+    INSTALLED_VER=$(dpkg -l pulldb 2>/dev/null | awk '/^ii/{print $3}')
+    echo ""
+    echo "WARNING: pulldb server v${INSTALLED_VER} is already installed."
+    read -p "Re-install/upgrade? [y/N] " CONFIRM
+    case "$CONFIRM" in
+        [yY][eE][sS]|[yY]) ;;
+        *) echo "Aborted."; exit 0 ;;
+    esac
+fi
+
+if [ "$INSTALL_CLIENT" = true ] && dpkg -l pulldb-client 2>/dev/null | grep -q "^ii"; then
+    INSTALLED_VER=$(dpkg -l pulldb-client 2>/dev/null | awk '/^ii/{print $3}')
+    echo ""
+    echo "WARNING: pulldb-client v${INSTALLED_VER} is already installed."
+    read -p "Re-install/upgrade? [y/N] " CONFIRM
+    case "$CONFIRM" in
+        [yY][eE][sS]|[yY]) ;;
+        *) echo "Aborted."; exit 0 ;;
+    esac
+fi
+
 # Configuration for Server
 if [ "$INSTALL_SERVER" = true ]; then
     read -p "Enter service user [default: pulldb_service]: " INPUT_USER

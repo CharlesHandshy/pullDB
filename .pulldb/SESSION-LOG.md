@@ -6,6 +6,42 @@
 
 ---
 
+## 2026-02-18 | pulldb-client Comprehensive Audit
+
+### Context
+User-requested security and code quality audit of the pulldb-client package (thin CLI distributed to end users).
+
+### What Was Done
+- Comprehensive audit of all client-only files: `main.py` (2684 lines), `auth.py` (298 lines), `parse.py` (505 lines)
+- Reviewed packaging: `pyproject-client.toml`, deb builder, install scripts
+- Audited HMAC-SHA256 auth, credential storage, input validation, error handling, HCA compliance
+
+### Findings
+
+**HIGH**: Registration sends password over HTTP by default (`DEFAULT_API_URL = "http://localhost:8080"`)
+
+**MEDIUM**:
+- No HTTPS enforcement — client sends HMAC-signed requests + auth payloads over plain HTTP without warning
+- `bcrypt` and `pydantic` listed as client dependencies but never imported in client-only files (wasted ~20MB install)
+- No retry logic on HTTP requests — single-attempt, immediate fail
+
+**LOW**:
+- Credential fallback prints `api_key`/`api_secret` to terminal stdout (not stderr)
+- Fail-open when API unreachable during user state check (assumes ENABLED) — intentional design
+- 401 handling code duplicated 5 times across request helpers
+- `main.py` is monolithic at 2684 lines
+- Unused backward-compat alias `_get_calling_username`
+
+**Strengths**: Excellent input validation, excellent error handling, perfect HCA compliance, proper client self-containment, no `verify=False`, no hardcoded secrets
+
+### Rationale
+Audit driven by operational security posture tightening. Findings noted for future remediation.
+
+### Files Modified
+- `.pulldb/SESSION-LOG.md` (this entry)
+
+---
+
 ## 2026-02-11 | HCA Remediation Plan — Final Completion Pass
 
 ### Context

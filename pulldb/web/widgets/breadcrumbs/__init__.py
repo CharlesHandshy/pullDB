@@ -154,6 +154,11 @@ BREADCRUMB_PATHS: dict[str, list[tuple[str, str | None]]] = {
         ("Administration", "/web/admin"),
         ("Companies", None),
     ],
+    "admin_database_discovery": [
+        ("Dashboard", "/web/dashboard"),
+        ("Administration", "/web/admin"),
+        ("Database Discovery", None),
+    ],
     "admin_overlord_company_detail": [
         ("Dashboard", "/web/dashboard"),
         ("Administration", "/web/admin"),

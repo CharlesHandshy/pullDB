@@ -20,7 +20,6 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
 import click
-from dotenv import load_dotenv
 
 from pulldb import __version__
 from pulldb.cli.auth import get_auth_headers, get_calling_username, get_current_username
@@ -36,24 +35,71 @@ _UUID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Load .env file from standard locations
-# Priority: /opt/pulldb.service/.env (installed), then .env (dev)
-# Note: .env loading is optional - CLI should work without it (using API URL from env or defaults)
-_installed_env = "/opt/pulldb.service/.env"
-_repo_env = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+# Configuration is read directly from config files — NO environment variables.
+# The API URL is a system-level setting managed at install time.
+# Priority order (first readable file wins):
+#   1. /opt/pulldb.client/config  (system-wide client config from .deb)
+#   2. /opt/pulldb.service/.env   (server-side — only on the pullDB server)
+#   3. .env (relative to source)  (developer checkout)
+_CONFIG_SEARCH_PATHS = [
+    "/opt/pulldb.client/config",
+    "/opt/pulldb.service/.env",
+    os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
+]
 
-try:
-    if os.path.exists(_installed_env) and os.access(_installed_env, os.R_OK):
-        load_dotenv(_installed_env)
-    elif os.path.exists(_repo_env) and os.access(_repo_env, os.R_OK):
-        load_dotenv(_repo_env)
-except PermissionError:
-    # Ignore permission errors - CLI will use defaults or explicit env vars
-    pass
+DEFAULT_API_URL = "https://localhost:8080"
 
 
-DEFAULT_API_URL = "http://localhost:8080"
+def _read_config_value(key: str, default: str | None = None) -> str | None:
+    """Read a value from the first available config file.
+
+    Parses KEY=VALUE lines directly from the config file.
+    Does NOT use environment variables — config files are the single
+    source of truth for client settings.
+    """
+    for cfg_path in _CONFIG_SEARCH_PATHS:
+        try:
+            if not os.path.exists(cfg_path) or not os.access(cfg_path, os.R_OK):
+                continue
+            with open(cfg_path, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" not in line:
+                        continue
+                    k, _, v = line.partition("=")
+                    k = k.strip()
+                    v = v.strip().strip('"').strip("'")
+                    if k == key:
+                        return v
+            # File was readable but key not found — continue to next file
+        except (PermissionError, OSError):
+            continue
+    return default
+
+
+# TLS certificate verification for HTTPS connections.
+# If a CA bundle is deployed at /opt/pulldb.client/ca-cert.pem, use it.
+# Otherwise disable verification (self-signed cert on the server).
+_TLS_CA_CERT_PATH = "/opt/pulldb.client/ca-cert.pem"
+_TLS_VERIFY: str | bool = (
+    _TLS_CA_CERT_PATH
+    if os.path.isfile(_TLS_CA_CERT_PATH)
+    else False
+)
+
+# Suppress urllib3 InsecureRequestWarning when verify=False
+if _TLS_VERIFY is False:
+    import urllib3
+
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 MAX_STATUS_LIMIT = 1000
+
+# Maximum retries for transient HTTP failures
+_HTTP_MAX_RETRIES = 2
+_HTTP_RETRY_BACKOFF = 1.0  # seconds between retries
 
 
 class _RequestsModuleProtocol(Protocol):
@@ -96,15 +142,42 @@ else:
     Response = cast(type, requests_module.Response)
 
 
-# Note: _get_calling_username is imported from pulldb.cli.auth
-# Keeping a local alias for backward compatibility with any internal references
-_get_calling_username = get_calling_username
+_https_warned = False  # Module-level flag to warn about HTTP only once
+
+
+def _warn_if_http(url: str) -> None:
+    """Warn if connecting over plain HTTP.
+
+    pullDB prefers HTTPS for API communication. Plain HTTP triggers a
+    one-time warning for non-localhost addresses but does not block the
+    request — the server enforces TLS independently.
+    """
+    global _https_warned
+    if _https_warned:
+        return
+    parsed = url.lower().rstrip("/")
+    if parsed.startswith("http://") and not any(
+        parsed.startswith(f"http://{h}") for h in ("localhost", "127.0.0.1", "[::1]")
+    ):
+        click.echo(
+            click.style(
+                "Warning: API URL uses plain HTTP. "
+                "Update PULLDB_API_URL in /opt/pulldb.client/config "
+                "to an https:// endpoint.",
+                fg="yellow",
+            ),
+            err=True,
+        )
+    _https_warned = True
 
 
 def _load_api_config() -> tuple[str, float]:
-    """Resolve API base URL and timeout from environment variables."""
-    base_url = os.getenv("PULLDB_API_URL", DEFAULT_API_URL).rstrip("/")
-    timeout_raw = os.getenv("PULLDB_API_TIMEOUT", str(DEFAULT_API_CLIENT_TIMEOUT))
+    """Resolve API base URL and timeout from config file (no env vars)."""
+    base_url = (_read_config_value("PULLDB_API_URL") or DEFAULT_API_URL).rstrip("/")
+    _warn_if_http(base_url)
+    timeout_raw = _read_config_value(
+        "PULLDB_API_TIMEOUT", str(DEFAULT_API_CLIENT_TIMEOUT)
+    ) or str(DEFAULT_API_CLIENT_TIMEOUT)
     try:
         timeout = float(timeout_raw)
     except ValueError as exc:  # FAIL HARD: invalid timeout configuration
@@ -139,7 +212,7 @@ def _get_user_info(username: str) -> tuple[str, str | None]:
         path = f"/api/users/{username}"
         url = f"{base_url}{path}"
         headers = get_auth_headers(method="GET", path=path, body=None)
-        response = requests_module.get(url, headers=headers, timeout=timeout)
+        response = requests_module.get(url, headers=headers, timeout=timeout, verify=_TLS_VERIFY)
         if response.status_code == 200:
             data = response.json()
             return username, data.get("user_code")
@@ -180,7 +253,7 @@ def _get_user_state(username: str) -> tuple[str, str | None, bool]:
             base_url, timeout = _load_api_config()
             # Use the exists endpoint which doesn't require auth
             url = f"{base_url}/api/auth/user-exists/{username}"
-            response = requests_module.get(url, timeout=timeout)
+            response = requests_module.get(url, timeout=timeout, verify=_TLS_VERIFY)
             if response.status_code == 200:
                 data = response.json()
                 if data.get("exists", False):
@@ -196,7 +269,7 @@ def _get_user_state(username: str) -> tuple[str, str | None, bool]:
         path = f"/api/users/{username}"
         url = f"{base_url}{path}"
         headers = get_auth_headers(method="GET", path=path, body=None)
-        response = requests_module.get(url, headers=headers, timeout=timeout)
+        response = requests_module.get(url, headers=headers, timeout=timeout, verify=_TLS_VERIFY)
         if response.status_code == 404:
             return UserState.NOT_REGISTERED, None, False
         if response.status_code == 401:
@@ -207,7 +280,7 @@ def _get_user_state(username: str) -> tuple[str, str | None, bool]:
                 if "revoked" in error_detail.lower():
                     # Get user_code from user-exists endpoint
                     exists_url = f"{base_url}/api/auth/user-exists/{username}"
-                    exists_resp = requests_module.get(exists_url, timeout=timeout)
+                    exists_resp = requests_module.get(exists_url, timeout=timeout, verify=_TLS_VERIFY)
                     if exists_resp.status_code == 200:
                         data = exists_resp.json()
                         return UserState.KEY_REVOKED, data.get("user_code"), False
@@ -215,7 +288,7 @@ def _get_user_state(username: str) -> tuple[str, str | None, bool]:
                 # Check if pending approval
                 if "pending" in error_detail.lower():
                     exists_url = f"{base_url}/api/auth/user-exists/{username}"
-                    exists_resp = requests_module.get(exists_url, timeout=timeout)
+                    exists_resp = requests_module.get(exists_url, timeout=timeout, verify=_TLS_VERIFY)
                     if exists_resp.status_code == 200:
                         data = exists_resp.json()
                         return UserState.PENDING_APPROVAL, data.get("user_code"), False
@@ -224,7 +297,7 @@ def _get_user_state(username: str) -> tuple[str, str | None, bool]:
                 # "Invalid API key" means the key_id doesn't exist at all
                 if "invalid api key" in error_detail.lower():
                     exists_url = f"{base_url}/api/auth/user-exists/{username}"
-                    exists_resp = requests_module.get(exists_url, timeout=timeout)
+                    exists_resp = requests_module.get(exists_url, timeout=timeout, verify=_TLS_VERIFY)
                     if exists_resp.status_code == 200:
                         data = exists_resp.json()
                         if data.get("exists", False):
@@ -233,7 +306,7 @@ def _get_user_state(username: str) -> tuple[str, str | None, bool]:
                     return UserState.NOT_REGISTERED, None, False
                 # Fallback: check if user exists (for unknown 401 reasons)
                 exists_url = f"{base_url}/api/auth/user-exists/{username}"
-                exists_resp = requests_module.get(exists_url, timeout=timeout)
+                exists_resp = requests_module.get(exists_url, timeout=timeout, verify=_TLS_VERIFY)
                 if exists_resp.status_code == 200:
                     data = exists_resp.json()
                     if data.get("exists", False):
@@ -266,8 +339,8 @@ MIN_JOB_ID_PREFIX_LENGTH = 8
 
 
 def _get_default_s3env() -> str:
-    """Get default S3 environment from PULLDB_S3ENV_DEFAULT or 'prod'."""
-    return os.getenv("PULLDB_S3ENV_DEFAULT", "prod")
+    """Get default S3 environment from config file or 'prod'."""
+    return _read_config_value("PULLDB_S3ENV_DEFAULT", "prod") or "prod"
 
 
 def _resolve_job_id(job_id_or_prefix: str) -> str:
@@ -303,7 +376,7 @@ def _resolve_job_id(job_id_or_prefix: str) -> str:
     url = f"{base_url}{path}"
     headers = get_auth_headers(method="GET", path=path, body=None)
     try:
-        response = requests_module.get(url, headers=headers, timeout=timeout)
+        response = requests_module.get(url, headers=headers, timeout=timeout, verify=_TLS_VERIFY)
     except RequestException as exc:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
@@ -427,138 +500,158 @@ def _print_formatted_dict(
             click.echo(f"{indent}{key}: {value}")
 
 
-def _api_post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+def _handle_auth_error(response: Response) -> None:
+    """Handle 401 authentication failures consistently.
+
+    Raises:
+        click.ClickException: Always — with appropriate auth error message.
+    """
+    detail = ""
+    try:
+        err_payload = response.json()
+        if isinstance(err_payload, dict):
+            detail = err_payload.get("detail", "")
+    except ValueError:
+        pass
+    if "pending approval" in detail.lower():
+        raise click.ClickException(
+            "API key is pending approval. Contact an administrator to approve your key."
+        )
+    raise click.ClickException(
+        "Authentication required. Run 'pulldb register' to create an account, "
+        "or check your API credentials in ~/.pulldb/credentials"
+    )
+
+
+def _handle_rate_limit(response: Response) -> None:
+    """Handle 429 rate-limit responses consistently.
+
+    Raises:
+        click.ClickException: Always — with appropriate rate-limit message.
+    """
+    detail = ""
+    try:
+        err_payload = response.json()
+        if isinstance(err_payload, dict):
+            detail = err_payload.get("detail", "")
+    except ValueError:
+        pass
+    if "User limit" in detail:
+        raise click.ClickException(
+            f"Rate limited: {detail}\n"
+            "Tip: Use 'pulldb status' to see your active jobs."
+        )
+    elif "System at capacity" in detail:
+        raise click.ClickException(
+            f"Rate limited: {detail}\n"
+            "The system is busy. Please try again in a few minutes."
+        )
+    else:
+        raise click.ClickException(
+            f"Rate limited: {detail or 'Too many requests'}\n"
+            "Please wait before submitting more jobs."
+        )
+
+
+def _api_request(
+    method: str,
+    path: str,
+    *,
+    payload: dict[str, Any] | None = None,
+    params: dict[str, Any] | None = None,
+) -> Response:
+    """Execute an authenticated API request with retry on transient failures.
+
+    Retries up to ``_HTTP_MAX_RETRIES`` times on connection errors or 5xx
+    responses, with exponential back-off.
+
+    Args:
+        method: HTTP method (GET or POST).
+        path: API path (e.g. ``/api/jobs``).
+        payload: JSON body for POST requests.
+        params: Query parameters for GET requests.
+
+    Returns:
+        The HTTP response object.
+
+    Raises:
+        click.ClickException: On auth failure, rate-limit, or persistent error.
+    """
     base_url, timeout = _load_api_config()
     url = f"{base_url}{path}"
-    # Serialize body for signature computation - MUST send this exact body
-    # to match the signature. Using json=payload would re-serialize differently.
-    body = json_module.dumps(payload, separators=(",", ":"), sort_keys=True)
-    headers = get_auth_headers(method="POST", path=path, body=body)
-    headers["Content-Type"] = "application/json"
-    try:
-        # Send pre-serialized body directly (not json=payload) to match signature
-        response = requests_module.post(url, data=body, headers=headers, timeout=timeout)
-    except RequestException as exc:
-        raise click.ClickException(
-            "Cannot connect to pullDB service. Is the API running?"
-        ) from exc
-    # Handle authentication failures
-    if response.status_code == 401:
-        detail = ""
+
+    body: str | None = None
+    headers: dict[str, str]
+    if method == "POST" and payload is not None:
+        body = json_module.dumps(payload, separators=(",", ":"), sort_keys=True)
+        headers = get_auth_headers(method="POST", path=path, body=body)
+        headers["Content-Type"] = "application/json"
+    else:
+        headers = get_auth_headers(method="GET", path=path, body=None)
+
+    last_exc: Exception | None = None
+    for attempt in range(_HTTP_MAX_RETRIES + 1):
         try:
-            err_payload = response.json()
-            if isinstance(err_payload, dict):
-                detail = err_payload.get("detail", "")
-        except ValueError:
-            pass
-        if "pending approval" in detail.lower():
+            if method == "POST":
+                response = requests_module.post(
+                    url, data=body, headers=headers, timeout=timeout, verify=_TLS_VERIFY,
+                )
+            else:
+                response = requests_module.get(
+                    url, params=params, headers=headers, timeout=timeout, verify=_TLS_VERIFY,
+                )
+        except RequestException as exc:
+            last_exc = exc
+            if attempt < _HTTP_MAX_RETRIES:
+                time.sleep(_HTTP_RETRY_BACKOFF * (attempt + 1))
+                continue
             raise click.ClickException(
-                "API key is pending approval. Contact an administrator to approve your key."
-            )
-        raise click.ClickException(
-            "Authentication required. Run 'pulldb register' to create an account, "
-            "or check your API credentials in ~/.pulldb/credentials"
-        )
-    # Handle rate limiting (HTTP 429) with user-friendly message
-    if response.status_code == 429:
-        detail = ""
-        try:
-            err_payload = response.json()
-            if isinstance(err_payload, dict):
-                detail = err_payload.get("detail", "")
-        except ValueError:
-            pass
-        if "User limit" in detail:
-            raise click.ClickException(
-                f"Rate limited: {detail}\n"
-                "Tip: Use 'pulldb status' to see your active jobs."
-            )
-        elif "System at capacity" in detail:
-            raise click.ClickException(
-                f"Rate limited: {detail}\n"
-                "The system is busy. Please try again in a few minutes."
-            )
-        else:
-            raise click.ClickException(
-                f"Rate limited: {detail or 'Too many requests'}\n"
-                "Please wait before submitting more jobs."
-            )
-    if response.status_code >= 400:
-        raise click.ClickException(_format_api_error(response))
-    payload = _parse_json_response(response)
-    if isinstance(payload, dict):
-        return payload
+                "Cannot connect to pullDB service. Is the API running?"
+            ) from exc
+
+        # Retry on 5xx server errors (transient)
+        if response.status_code >= 500 and attempt < _HTTP_MAX_RETRIES:
+            time.sleep(_HTTP_RETRY_BACKOFF * (attempt + 1))
+            continue
+
+        # Non-retryable status handling
+        if response.status_code == 401:
+            _handle_auth_error(response)
+        if response.status_code == 429:
+            _handle_rate_limit(response)
+        if response.status_code >= 400:
+            raise click.ClickException(_format_api_error(response))
+
+        return response
+
+    # Should not reach here, but guard against it
+    raise click.ClickException(
+        "Cannot connect to pullDB service. Is the API running?"
+    )
+
+
+def _api_post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    response = _api_request("POST", path, payload=payload)
+    parsed = _parse_json_response(response)
+    if isinstance(parsed, dict):
+        return parsed
     raise click.ClickException("Received invalid response from server.")
 
 
 def _api_get(path: str, params: dict[str, Any]) -> list[dict[str, Any]]:
-    base_url, timeout = _load_api_config()
-    url = f"{base_url}{path}"
-    headers = get_auth_headers(method="GET", path=path, body=None)
-    try:
-        response = requests_module.get(url, params=params, headers=headers, timeout=timeout)
-    except RequestException as exc:
-        raise click.ClickException(
-            "Cannot connect to pullDB service. Is the API running?"
-        ) from exc
-    # Handle authentication failures
-    if response.status_code == 401:
-        detail = ""
-        try:
-            err_payload = response.json()
-            if isinstance(err_payload, dict):
-                detail = err_payload.get("detail", "")
-        except ValueError:
-            pass
-        if "pending approval" in detail.lower():
-            raise click.ClickException(
-                "API key is pending approval. Contact an administrator to approve your key."
-            )
-        raise click.ClickException(
-            "Authentication required. Run 'pulldb register' to create an account, "
-            "or check your API credentials in ~/.pulldb/credentials"
-        )
-    if response.status_code >= 400:
-        raise click.ClickException(_format_api_error(response))
-    payload = _parse_json_response(response)
-    if isinstance(payload, list):
-        return payload
+    response = _api_request("GET", path, params=params)
+    parsed = _parse_json_response(response)
+    if isinstance(parsed, list):
+        return parsed
     raise click.ClickException("Received invalid response from server.")
 
 
 def _api_get_object(path: str, params: dict[str, Any]) -> dict[str, Any]:
     """GET request expecting object (dict) response."""
-    base_url, timeout = _load_api_config()
-    url = f"{base_url}{path}"
-    headers = get_auth_headers(method="GET", path=path, body=None)
-    try:
-        response = requests_module.get(url, params=params, headers=headers, timeout=timeout)
-    except RequestException as exc:
-        raise click.ClickException(
-            "Cannot connect to pullDB service. Is the API running?"
-        ) from exc
-    # Handle authentication failures
-    if response.status_code == 401:
-        detail = ""
-        try:
-            err_payload = response.json()
-            if isinstance(err_payload, dict):
-                detail = err_payload.get("detail", "")
-        except ValueError:
-            pass
-        if "pending approval" in detail.lower():
-            raise click.ClickException(
-                "API key is pending approval. Contact an administrator to approve your key."
-            )
-        raise click.ClickException(
-            "Authentication required. Run 'pulldb register' to create an account, "
-            "or check your API credentials in ~/.pulldb/credentials"
-        )
-    if response.status_code >= 400:
-        raise click.ClickException(_format_api_error(response))
-    payload = _parse_json_response(response)
-    if isinstance(payload, dict):
-        return payload
+    response = _api_request("GET", path, params=params)
+    parsed = _parse_json_response(response)
+    if isinstance(parsed, dict):
+        return parsed
     raise click.ClickException("Received invalid response from server.")
 
 
@@ -754,7 +847,7 @@ def cli(ctx: click.Context) -> None:
     # Commands for users whose key has been revoked
     KEY_REVOKED_ALLOWED_COMMANDS = {"register", None}
 
-    username = _get_calling_username()
+    username = get_calling_username()
     user_state, user_code, _ = _get_user_state(username)
 
     # Store user state in context for commands that need it
@@ -880,7 +973,7 @@ def cli(ctx: click.Context) -> None:
                 path = "/api/hosts"
                 url = f"{base_url}{path}"
                 headers = get_auth_headers(method="GET", path=path, body=None)
-                response = requests_module.get(url, headers=headers, timeout=timeout)
+                response = requests_module.get(url, headers=headers, timeout=timeout, verify=_TLS_VERIFY)
                 if response.status_code == 200:
                     data = _parse_json_response(response)
                     default_host = data.get("default_host")
@@ -965,7 +1058,7 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     if parsed.username:
         username = parsed.username
     else:
-        username = _get_calling_username()
+        username = get_calling_username()
 
     # Step 3: Relay request to API service
     payload: dict[str, Any] = {
@@ -1110,7 +1203,7 @@ def status_cmd(
         else:
             # No job ID provided - find user's last submitted job
             try:
-                username = _get_calling_username()
+                username = get_calling_username()
                 _, user_code = _get_user_info(username)
                 if user_code:
                     result = _api_get_object("/api/jobs/my-last", {"user_code": user_code})
@@ -1150,7 +1243,7 @@ def status_cmd(
     # When no arguments/flags: show user's last submitted job
     if not job_id and not active and not history and not filter_status:
         try:
-            username = _get_calling_username()
+            username = get_calling_username()
             _, user_code = _get_user_info(username)
             if user_code:
                 result = _api_get_object("/api/jobs/my-last", {"user_code": user_code})
@@ -2110,40 +2203,12 @@ def profile_cmd(job_id: str, json_out: bool) -> None:
     # Resolve job_id (supports short prefixes)
     resolved_job_id = _resolve_job_id(job_id)
 
-    base_url, timeout = _load_api_config()
     path = f"/api/jobs/{resolved_job_id}/profile"
-    url = f"{base_url}{path}"
-    headers = get_auth_headers(method="GET", path=path, body=None)
-    try:
-        response = requests_module.get(url, headers=headers, timeout=timeout)
-    except RequestException as exc:
-        raise click.ClickException(
-            "Cannot connect to pullDB service. Is the API running?"
-        ) from exc
-
-    # Handle authentication failures
-    if response.status_code == 401:
-        detail = ""
-        try:
-            err_payload = response.json()
-            if isinstance(err_payload, dict):
-                detail = err_payload.get("detail", "")
-        except ValueError:
-            pass
-        if "pending approval" in detail.lower():
-            raise click.ClickException(
-                "API key is pending approval. Contact an administrator to approve your key."
-            )
-        raise click.ClickException(
-            "Authentication required. Run 'pulldb register' to create an account, "
-            "or check your API credentials in ~/.pulldb/credentials"
-        )
+    response = _api_request("GET", path, params={})
 
     if response.status_code == 404:
         error_detail = response.json().get("detail", "Not found")
         raise click.ClickException(error_detail)
-    if response.status_code >= 400:
-        raise click.ClickException(_format_api_error(response))
 
     profile = _parse_json_response(response)
     if not isinstance(profile, dict):
@@ -2276,37 +2341,8 @@ def hosts_cmd(json_out: bool) -> None:
         pulldb hosts --json                 # Raw JSON output
         pulldb restore customer dbhost=dev  # Use alias in restore
     """
-    base_url, timeout = _load_api_config()
     path = "/api/hosts"
-    url = f"{base_url}{path}"
-    headers = get_auth_headers(method="GET", path=path, body=None)
-    try:
-        response = requests_module.get(url, headers=headers, timeout=timeout)
-    except RequestException as exc:
-        raise click.ClickException(
-            "Cannot connect to pullDB service. Is the API running?"
-        ) from exc
-
-    # Handle authentication failures
-    if response.status_code == 401:
-        detail = ""
-        try:
-            err_payload = response.json()
-            if isinstance(err_payload, dict):
-                detail = err_payload.get("detail", "")
-        except ValueError:
-            pass
-        if "pending approval" in detail.lower():
-            raise click.ClickException(
-                "API key is pending approval. Contact an administrator to approve your key."
-            )
-        raise click.ClickException(
-            "Authentication required. Run 'pulldb register' to create an account, "
-            "or check your API credentials in ~/.pulldb/credentials"
-        )
-
-    if response.status_code >= 400:
-        raise click.ClickException(_format_api_error(response))
+    response = _api_request("GET", path, params={})
 
     data = _parse_json_response(response)
     if not isinstance(data, dict):
@@ -2383,7 +2419,7 @@ def register_cmd(ctx: click.Context, password: str) -> None:
     """
     import socket
 
-    username = ctx.obj.get("username") or _get_calling_username()
+    username = ctx.obj.get("username") or get_calling_username()
     user_state = ctx.obj.get("user_state", UserState.NOT_REGISTERED)
     base_url, timeout = _load_api_config()
 
@@ -2426,7 +2462,7 @@ def register_cmd(ctx: click.Context, password: str) -> None:
     }
 
     try:
-        response = requests_module.post(url, json=payload, timeout=timeout)
+        response = requests_module.post(url, json=payload, timeout=timeout, verify=_TLS_VERIFY)
 
         if response.status_code == 201:
             data = response.json()
@@ -2448,12 +2484,12 @@ def register_cmd(ctx: click.Context, password: str) -> None:
                     click.echo("")
                     click.echo("✓ API credentials saved to ~/.pulldb/credentials")
                 except Exception as exc:
-                    click.echo("")
-                    click.echo(f"⚠ Could not save credentials: {exc}")
-                    click.echo("")
-                    click.echo("Save these credentials manually:")
-                    click.echo(f"  PULLDB_API_KEY={api_key}")
-                    click.echo(f"  PULLDB_API_SECRET={api_secret}")
+                    click.echo("", err=True)
+                    click.echo(f"⚠ Could not save credentials: {exc}", err=True)
+                    click.echo("", err=True)
+                    click.echo("Save these credentials manually:", err=True)
+                    click.echo(f"  PULLDB_API_KEY={api_key}", err=True)
+                    click.echo(f"  PULLDB_API_SECRET={api_secret}", err=True)
 
             click.echo("")
             click.echo("Your account is pending approval.")
@@ -2519,7 +2555,7 @@ def _request_host_key_for_existing_user(
     }
 
     try:
-        response = requests_module.post(url, json=payload, timeout=timeout)
+        response = requests_module.post(url, json=payload, timeout=timeout, verify=_TLS_VERIFY)
 
         if response.status_code == 200:
             data = response.json()
@@ -2540,12 +2576,12 @@ def _request_host_key_for_existing_user(
                     click.echo("")
                     click.echo("✓ API credentials saved to ~/.pulldb/credentials")
                 except Exception as exc:
-                    click.echo("")
-                    click.echo(f"⚠ Could not save credentials: {exc}")
-                    click.echo("")
-                    click.echo("Save these credentials manually:")
-                    click.echo(f"  PULLDB_API_KEY={api_key}")
-                    click.echo(f"  PULLDB_API_SECRET={api_secret}")
+                    click.echo("", err=True)
+                    click.echo(f"⚠ Could not save credentials: {exc}", err=True)
+                    click.echo("", err=True)
+                    click.echo("Save these credentials manually:", err=True)
+                    click.echo(f"  PULLDB_API_KEY={api_key}", err=True)
+                    click.echo(f"  PULLDB_API_SECRET={api_secret}", err=True)
 
             click.echo("")
             click.echo("⚠ Your API key is PENDING APPROVAL")
@@ -2599,7 +2635,7 @@ def setpass_cmd(ctx: click.Context, current_password: str, new_password: str) ->
     Example:
         pulldb setpass
     """
-    username = ctx.obj.get("username") or _get_calling_username()
+    username = ctx.obj.get("username") or get_calling_username()
     user_state = ctx.obj.get("user_state", UserState.ENABLED)
     base_url, timeout = _load_api_config()
 
@@ -2623,7 +2659,7 @@ def setpass_cmd(ctx: click.Context, current_password: str, new_password: str) ->
     }
 
     try:
-        response = requests_module.post(url, json=payload, timeout=timeout)
+        response = requests_module.post(url, json=payload, timeout=timeout, verify=_TLS_VERIFY)
 
         if response.status_code == 200:
             click.echo("✓ Password changed successfully")

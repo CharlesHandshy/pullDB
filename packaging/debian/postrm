@@ -52,6 +52,7 @@ cleanup_systemd() {
         rm -f /etc/systemd/system/multi-user.target.wants/pulldb-*.timer 2>/dev/null || true
         
         systemctl daemon-reload || true
+        systemctl reset-failed 2>/dev/null || true
     else
         rm -f "${WORKER_UNIT_DEST}" "${WORKER_TEMPLATE_DEST}" "${API_UNIT_DEST}" "${WEB_UNIT_DEST}" || true
         rm -f "${RETENTION_SERVICE_DEST}" "${RETENTION_TIMER_DEST}" || true
@@ -72,6 +73,13 @@ remove_keeping_config() {
     # Remove sudoers rule for pulldb-admin
     rm -f /etc/sudoers.d/pulldb-admin 2>/dev/null || true
     echo "  Removed: /etc/sudoers.d/pulldb-admin"
+    
+    # Remove pulldb CA certificate from system trust store
+    if [ -f /usr/local/share/ca-certificates/pulldb-service.crt ]; then
+        rm -f /usr/local/share/ca-certificates/pulldb-service.crt
+        update-ca-certificates 2>/dev/null || true
+        echo "  Removed: CA certificate from system trust store"
+    fi
     
     if [ ! -d "${INSTALL_PREFIX}" ]; then
         return 0
@@ -125,6 +133,13 @@ purge_all() {
     
     # Remove sudoers rule for pulldb-admin
     rm -f /etc/sudoers.d/pulldb-admin 2>/dev/null || true
+    
+    # Remove pulldb CA certificate from system trust store
+    if [ -f /usr/local/share/ca-certificates/pulldb-service.crt ]; then
+        rm -f /usr/local/share/ca-certificates/pulldb-service.crt
+        update-ca-certificates 2>/dev/null || true
+        echo "  Removed: CA certificate from system trust store"
+    fi
     
     # Remove the entire install directory
     if [ -d "${INSTALL_PREFIX}" ]; then

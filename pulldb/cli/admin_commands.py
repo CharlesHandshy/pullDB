@@ -870,6 +870,53 @@ def users_show(username: str) -> None:
     click.echo(f"  Active:     {detail.active_jobs}")
 
 
+@users_group.command("reset-password")
+@click.argument("username")
+@click.option(
+    "--password",
+    default=None,
+    help="Set an explicit password instead of generating one.",
+)
+def users_reset_password(username: str, password: str | None) -> None:
+    """Reset a user's password.
+
+    Generates a temporary password (or uses --password) and marks
+    the account for password reset on next login.
+
+    Examples:
+
+        pulldb-admin users reset-password admin
+
+        pulldb-admin users reset-password jdoe --password 'MyP@ss123'
+    """
+    import secrets
+    import string
+
+    from pulldb.auth.password import hash_password
+    from pulldb.infra.factory import get_auth_repository, get_user_repository
+
+    user_repo = get_user_repository()
+    user = user_repo.get_user_by_username(username)
+    if not user:
+        raise click.ClickException(f"User not found: {username}")
+
+    if password:
+        temp_password = password
+    else:
+        alphabet = string.ascii_letters + string.digits + "!@#$%&*"
+        temp_password = "".join(secrets.choice(alphabet) for _ in range(12))
+
+    password_hash = hash_password(temp_password)
+
+    auth_repo = get_auth_repository()
+    auth_repo.set_password_hash(user.user_id, password_hash)
+    auth_repo.mark_password_reset(user.user_id)
+
+    click.echo(f"✓ Password reset for user: {username}")
+    click.echo(f"  Temporary password: {temp_password}")
+    click.echo("  User must change password on next login.")
+
+
 # =============================================================================
 # API Keys Command Group
 # =============================================================================
@@ -1313,6 +1360,7 @@ def disallow_remove(username: str, force: bool) -> None:
 
 @click.command(
     name="run-retention-cleanup",
+    short_help="Drop expired databases past retention",
     help="Run database retention cleanup (drop expired databases)",
 )
 @click.option(
@@ -1445,6 +1493,157 @@ def run_retention_cleanup_cmd(
         click.echo("\nRetention Cleanup Complete:")
         click.echo(f"  Cleaned: {result.databases_dropped}")
         click.echo(f"  Skipped: {result.databases_skipped}")
+        if result.errors:
+            click.echo(f"  Errors: {len(result.errors)}")
+            for error in result.errors:
+                click.echo(f"    - {error}")
+
+    # Also run terminal job cleanup (failed/canceled record purge)
+    from pulldb.worker.cleanup import run_terminal_job_cleanup
+
+    terminal_result = run_terminal_job_cleanup(
+        job_repo=job_repo,  # type: ignore[arg-type]
+        settings_repo=settings_repo,  # type: ignore[arg-type]
+        dry_run=dry_run,
+    )
+
+    if terminal_result.candidates_found > 0:
+        if json_out:
+            click.echo(
+                json.dumps(
+                    {
+                        "terminal_purged": terminal_result.jobs_purged,
+                        "terminal_skipped": terminal_result.jobs_skipped,
+                        "terminal_candidates": terminal_result.candidates_found,
+                        "terminal_errors": terminal_result.errors,
+                    }
+                )
+            )
+        else:
+            click.echo(f"\nTerminal Job Cleanup:")
+            click.echo(f"  Purged: {terminal_result.jobs_purged}")
+            click.echo(f"  Skipped: {terminal_result.jobs_skipped}")
+            if terminal_result.errors:
+                click.echo(f"  Errors: {len(terminal_result.errors)}")
+                for error in terminal_result.errors:
+                    click.echo(f"    - {error}")
+
+
+# =============================================================================
+# Terminal Job Cleanup Command
+# =============================================================================
+
+
+@click.command(
+    name="run-terminal-cleanup",
+    short_help="Purge expired failed/canceled job records",
+    help="Clean up expired failed/canceled job records from History",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview what would be purged (no changes made)",
+)
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of human-readable text",
+)
+def run_terminal_cleanup_cmd(
+    dry_run: bool,
+    json_out: bool,
+) -> None:
+    """Purge expired failed/canceled job records from History.
+
+    This command finds failed and canceled jobs that are past their
+    expiration date + grace period and marks them as 'deleted' so
+    they no longer clutter the History view.
+
+    Unlike retention cleanup, this does NOT drop any databases —
+    failed/canceled jobs never had a live database.
+
+    The cleanup process:
+    1. Finds failed/canceled jobs past their expires_at + grace period
+    2. Marks each as 'deleted' (soft delete)
+    3. Records are preserved for audit but leave the active History view
+    """
+    from pulldb.infra.factory import get_job_repository, get_settings_repository
+
+    job_repo = get_job_repository()
+    settings_repo = get_settings_repository()
+
+    grace_days_str = settings_repo.get_setting("cleanup_grace_days")
+    grace_days = int(grace_days_str) if grace_days_str else 7
+    candidates = job_repo.get_expired_terminal_job_candidates(grace_days=grace_days)  # type: ignore[attr-defined]
+
+    if not candidates:
+        if json_out:
+            click.echo(json.dumps({"candidates": 0, "purged": 0}))
+        else:
+            click.echo("No expired terminal jobs to clean up.")
+        return
+
+    if dry_run:
+        if json_out:
+            data = {
+                "mode": "dry_run",
+                "candidates": len(candidates),
+                "jobs": [
+                    {
+                        "job_id": job.id,
+                        "status": job.status.value,
+                        "target": job.target,
+                        "owner": job.owner_username,
+                        "expires_at": job.expires_at.isoformat() if job.expires_at else None,
+                        "error": job.error_detail,
+                    }
+                    for job in candidates
+                ],
+            }
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo("Terminal Job Cleanup Preview (DRY RUN):\n")
+            click.echo(f"Found {len(candidates)} expired terminal job(s):\n")
+            for job in candidates:
+                exp_str = (
+                    job.expires_at.strftime("%Y-%m-%d")
+                    if job.expires_at
+                    else "never"
+                )
+                click.echo(
+                    f"  - [{job.status.value}] {job.id[:8]} "
+                    f"{job.owner_username}/{job.target} (expired {exp_str})"
+                )
+            click.echo("\nRun without --dry-run to perform cleanup.")
+        return
+
+    # Execute cleanup
+    if not json_out:
+        click.echo("Executing terminal job cleanup...\n")
+
+    from pulldb.worker.cleanup import run_terminal_job_cleanup
+
+    result = run_terminal_job_cleanup(
+        job_repo=job_repo,  # type: ignore[arg-type]
+        settings_repo=settings_repo,  # type: ignore[arg-type]
+    )
+
+    if json_out:
+        click.echo(
+            json.dumps(
+                {
+                    "purged": result.jobs_purged,
+                    "skipped": result.jobs_skipped,
+                    "candidates": result.candidates_found,
+                    "errors": result.errors,
+                }
+            )
+        )
+    else:
+        click.echo("\nTerminal Job Cleanup Complete:")
+        click.echo(f"  Purged: {result.jobs_purged}")
+        click.echo(f"  Skipped: {result.jobs_skipped}")
         if result.errors:
             click.echo(f"  Errors: {len(result.errors)}")
             for error in result.errors:

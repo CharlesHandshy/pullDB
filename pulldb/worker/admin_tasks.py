@@ -16,6 +16,7 @@ from typing import Any, TYPE_CHECKING
 
 import mysql.connector
 
+from pulldb.domain.constants import PROTECTED_DATABASES
 from pulldb.domain.models import AdminTask, AdminTaskStatus, AdminTaskType
 from pulldb.infra.metrics import MetricLabels, emit_event
 from pulldb.infra.mysql_utils import quote_identifier
@@ -126,15 +127,7 @@ def _get_pulldb_owner_user_id(credentials: "MySQLCredentials", db_name: str) -> 
         conn.close()
 
 
-# Protected databases that must NEVER be dropped
-PROTECTED_DATABASES = frozenset({
-    "mysql",
-    "information_schema",
-    "performance_schema",
-    "sys",
-    "pulldb",
-    "pulldb_service",
-})
+# PROTECTED_DATABASES imported from pulldb.domain.constants
 
 
 class AdminTaskExecutor:
@@ -1181,10 +1174,19 @@ class AdminTaskExecutor:
         )
 
         try:
-            # Run the cleanup
+            # Run the database cleanup
             cleanup_result = run_retention_cleanup(
                 job_repo=self.job_repo,
                 host_repo=self.host_repo,
+                settings_repo=self.settings_repo,
+                dry_run=dry_run,
+            )
+
+            # Also run terminal job cleanup (failed/canceled record purge)
+            from pulldb.worker.cleanup import run_terminal_job_cleanup
+
+            terminal_result = run_terminal_job_cleanup(
+                job_repo=self.job_repo,
                 settings_repo=self.settings_repo,
                 dry_run=dry_run,
             )
@@ -1198,6 +1200,10 @@ class AdminTaskExecutor:
                 "dropped_jobs": cleanup_result.dropped_jobs,
                 "grace_days": cleanup_result.grace_days,
                 "dry_run": dry_run,
+                "terminal_candidates": terminal_result.candidates_found,
+                "terminal_purged": terminal_result.jobs_purged,
+                "terminal_skipped": terminal_result.jobs_skipped,
+                "terminal_errors": terminal_result.errors,
             }
 
             # Log completion
@@ -1207,7 +1213,8 @@ class AdminTaskExecutor:
                 target_user_id=None,
                 detail=(
                     f"Retention cleanup complete: {cleanup_result.databases_dropped} dropped, "
-                    f"{cleanup_result.databases_skipped} skipped, {len(cleanup_result.errors)} errors"
+                    f"{cleanup_result.databases_skipped} skipped, {len(cleanup_result.errors)} errors; "
+                    f"Terminal purge: {terminal_result.jobs_purged} purged"
                 ),
                 context={
                     "task_id": task.task_id,
@@ -1222,7 +1229,8 @@ class AdminTaskExecutor:
                 f"Retention cleanup task {task.task_id} completed: "
                 f"dropped={cleanup_result.databases_dropped}, "
                 f"skipped={cleanup_result.databases_skipped}, "
-                f"errors={len(cleanup_result.errors)}",
+                f"errors={len(cleanup_result.errors)}, "
+                f"terminal_purged={terminal_result.jobs_purged}",
                 extra={"task_id": task.task_id, "result": result},
             )
 

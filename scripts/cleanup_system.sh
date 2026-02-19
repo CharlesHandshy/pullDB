@@ -24,7 +24,7 @@ if dpkg -l | grep -q "^ii  pulldb-client "; then
 fi
 
 # 2. Clean up Manual Server Installations
-SERVICES=("pulldb-worker.service")
+SERVICES=("pulldb-worker.service" "pulldb-api.service" "pulldb-web.service" "pulldb-retention.timer" "pulldb-retention.service" "pulldb-worker@*.service")
 PATHS=("/opt/pulldb" "/opt/pulldb.service")
 
 for SERVICE in "${SERVICES[@]}"; do
@@ -61,5 +61,20 @@ for LINK in "${BIN_LINKS[@]}"; do
         rm -f "$LINK"
     fi
 done
+
+# Remove pulldb CA certificate from system trust store
+if [ -f /usr/local/share/ca-certificates/pulldb-service.crt ]; then
+    echo "Removing pulldb CA certificate..."
+    rm -f /usr/local/share/ca-certificates/pulldb-service.crt
+    update-ca-certificates 2>/dev/null || true
+fi
+
+# Remove sudoers rule
+rm -f /etc/sudoers.d/pulldb-admin 2>/dev/null || true
+
+# Remove systemd unit symlinks
+rm -f /etc/systemd/system/pulldb-*.service 2>/dev/null || true
+rm -f /etc/systemd/system/pulldb-*.timer 2>/dev/null || true
+systemctl daemon-reload 2>/dev/null || true
 
 echo "Cleanup complete. All pullDB components should be removed."

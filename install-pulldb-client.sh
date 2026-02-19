@@ -70,7 +70,7 @@ else
     
     # Install Python 3.12
     log_info "Installing Python 3.12..."
-    apt-get install -y python3.12 python3.12-venv python3.12-distutils
+    apt-get install -y python3.12 python3.12-venv
     
     log_info "Python 3.12 installed successfully"
 fi

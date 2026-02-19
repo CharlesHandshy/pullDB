@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Cleanup on failure
+cleanup() {
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        echo "[ERROR] Build failed (exit code $exit_code). Cleaning up..." >&2
+        rm -rf build 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
 # =============================================================================
 # pullDB Server Package Builder
 # =============================================================================
@@ -146,7 +156,7 @@ cp packaging/INSTALL-UPGRADE.md "$DOC_DIR/"
 if [ -f LICENSE ]; then
     cp LICENSE "$DOC_DIR/copyright"
 else
-    echo "Copyright 2025 PestRoutes Engineering" > "$DOC_DIR/copyright"
+    echo "Copyright 2026 PestRoutes Engineering" > "$DOC_DIR/copyright"
 fi
 # Compress changelog if it exists (Debian policy recommendation, but optional for internal)
 if [ -f CHANGELOG.md ]; then

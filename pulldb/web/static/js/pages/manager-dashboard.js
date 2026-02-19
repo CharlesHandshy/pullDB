@@ -18,7 +18,9 @@
         // Key icon SVG (for setting password reset)
         key: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>',
         // Lock icon SVG (for clearing password reset / temp password)
-        lock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>'
+        lock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>',
+        // Server icon SVG (for managing database hosts)
+        server: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>'
     };
 
     // ==========================================================================
@@ -87,6 +89,9 @@
         // Temp password button
         html += '<button class="team-action-btn action-btn-primary-muted" data-action="assign-temp-password" data-user-id="' + userId + '" data-username="' + username + '" title="Assign Temporary Password">' + icons.lock + '</button>';
         
+        // Manage hosts button
+        html += '<button class="team-action-btn action-btn-primary" data-action="manage-hosts" data-user-id="' + userId + '" data-username="' + username + '" title="Manage Database Hosts">' + icons.server + '</button>';
+        
         return html;
     }
 
@@ -128,7 +133,7 @@
             key: 'actions', 
             label: 'Actions', 
             sortable: false,
-            width: '80px',
+            width: '120px',
             render: renderActions
         }
     ];
@@ -195,6 +200,12 @@
                 type: 'warning'
             });
             if (!confirmed) return;
+        }
+        
+        // Handle manage-hosts action - opens modal, not an endpoint
+        if (action === 'manage-hosts') {
+            showHostsModal(userId, username);
+            return;
         }
         
         // Map action to endpoint
@@ -285,5 +296,204 @@
 
     window.refreshTeamTable = function() {
         if (table) table.refresh();
+    };
+
+    // ==========================================================================
+    // Manage Database Hosts Modal
+    // ==========================================================================
+
+    let allHosts = null;
+    let currentHostsUserId = null;
+    let currentHostsUsername = null;
+
+    async function loadManagerHosts() {
+        if (allHosts !== null) return allHosts;
+        try {
+            const resp = await fetch('/web/manager/api/hosts');
+            const data = await resp.json();
+            if (data.success) {
+                allHosts = data.hosts;
+                return allHosts;
+            }
+        } catch (e) {
+            console.error('Failed to load hosts:', e);
+        }
+        return [];
+    }
+
+    async function loadUserHosts(userId) {
+        try {
+            const resp = await fetch('/web/manager/my-team/' + userId + '/hosts');
+            const data = await resp.json();
+            if (data.success) {
+                return {
+                    host_ids: data.host_ids || [],
+                    default_host_id: data.default_host_id
+                };
+            }
+        } catch (e) {
+            console.error('Failed to load user hosts:', e);
+        }
+        return { host_ids: [], default_host_id: null };
+    }
+
+    function renderHostsList(hosts, userHostIds, defaultHostId) {
+        const listEl = document.getElementById('hosts-list');
+
+        if (!hosts || hosts.length === 0) {
+            listEl.innerHTML = '<div class="hosts-empty">No database hosts available. You need host assignments before you can assign hosts to team members.</div>';
+            return;
+        }
+
+        let html = '\n' +
+            '<div class="hosts-header">\n' +
+            '    <div class="hosts-header-default">Default</div>\n' +
+            '    <div class="hosts-header-auth">Authorized</div>\n' +
+            '    <div style="flex: 1;">Host</div>\n' +
+            '</div>';
+
+        hosts.forEach(function(host) {
+            var isChecked = userHostIds.includes(host.id);
+            var isDefault = host.id === defaultHostId;
+            var isEnabled = host.enabled !== false;
+            var displayName = host.display_name || host.hostname;
+            var canBeDefault = isEnabled && isChecked;
+
+            html += '\n<div class="host-item ' + (isEnabled ? '' : 'inactive') + '" data-enabled="' + isEnabled + '">' +
+                '<div class="host-item-default ' + (canBeDefault ? '' : 'disabled') + '" id="default-' + host.id + '">' +
+                '<input type="radio" name="default_host" value="' + host.id + '"' +
+                (canBeDefault ? '' : ' disabled') +
+                (isDefault && canBeDefault ? ' checked' : '') + '>' +
+                '</div>' +
+                '<div class="host-item-auth ' + (isEnabled ? '' : 'disabled') + '">' +
+                '<input type="checkbox" id="host-' + host.id + '" value="' + host.id + '"' +
+                ' data-enabled="' + isEnabled + '"' +
+                (isChecked && isEnabled ? ' checked' : '') +
+                (isEnabled ? '' : ' disabled') +
+                ' onchange="updateHostSelection()">' +
+                '</div>' +
+                '<label class="host-item-label" for="host-' + host.id + '">' + displayName + (isEnabled ? '' : ' (inactive)') + '</label>' +
+                '</div>';
+        });
+
+        listEl.innerHTML = html;
+        updateHostSelection();
+    }
+
+    window.updateHostSelection = function() {
+        var checkboxes = document.querySelectorAll('#hosts-list input[type="checkbox"]');
+        var checkedBoxes = document.querySelectorAll('#hosts-list input[type="checkbox"]:checked');
+
+        checkboxes.forEach(function(cb) {
+            var isEnabled = cb.dataset.enabled === 'true';
+            var defaultDiv = document.getElementById('default-' + cb.value);
+            var radio = defaultDiv ? defaultDiv.querySelector('input[type="radio"]') : null;
+            if (defaultDiv && radio) {
+                var canBeDefault = isEnabled && cb.checked;
+                if (canBeDefault) {
+                    defaultDiv.classList.remove('disabled');
+                    radio.disabled = false;
+                } else {
+                    defaultDiv.classList.add('disabled');
+                    radio.disabled = true;
+                    if (radio.checked) radio.checked = false;
+                }
+            }
+        });
+
+        if (checkedBoxes.length === 1) {
+            var cb = checkedBoxes[0];
+            if (cb.dataset.enabled === 'true') {
+                var radio = document.querySelector('#default-' + cb.value + ' input[type="radio"]');
+                if (radio) radio.checked = true;
+            }
+        }
+
+        updateSelectedCount();
+    };
+
+    function updateSelectedCount() {
+        var checked = document.querySelectorAll('#hosts-list input[type="checkbox"]:checked').length;
+        var hasDefault = document.querySelector('#hosts-list input[type="radio"]:checked') !== null;
+        var countEl = document.getElementById('hosts-selected-count');
+
+        var text = checked + ' host' + (checked !== 1 ? 's' : '') + ' selected';
+        if (checked === 1) {
+            text += ' (will be default)';
+            countEl.classList.remove('needs-default');
+        } else if (checked > 1 && !hasDefault) {
+            text += ' \u2014 select a default';
+            countEl.classList.add('needs-default');
+        } else {
+            countEl.classList.remove('needs-default');
+        }
+        countEl.textContent = text;
+    }
+
+    function showHostsModal(userId, username) {
+        currentHostsUserId = userId;
+        currentHostsUsername = username;
+
+        document.getElementById('hosts-modal-username').textContent = username;
+        document.getElementById('hosts-list').innerHTML = '<div class="hosts-empty">Loading hosts...</div>';
+        document.getElementById('hosts-modal').classList.remove('modal-hidden');
+
+        Promise.all([
+            loadManagerHosts(),
+            loadUserHosts(userId)
+        ]).then(function(results) {
+            renderHostsList(results[0], results[1].host_ids, results[1].default_host_id);
+        });
+    }
+
+    window.hideHostsModal = function() {
+        document.getElementById('hosts-modal').classList.add('modal-hidden');
+        currentHostsUserId = null;
+        currentHostsUsername = null;
+    };
+
+    window.saveUserHosts = async function() {
+        if (!currentHostsUserId) return;
+
+        var checkboxes = document.querySelectorAll('#hosts-list input[type="checkbox"]:checked');
+        var hostIds = Array.from(checkboxes).map(function(cb) { return cb.value; });
+
+        var defaultRadio = document.querySelector('#hosts-list input[type="radio"]:checked');
+        var defaultHostId = defaultRadio ? defaultRadio.value : null;
+
+        if (hostIds.length > 1 && !defaultHostId) {
+            showToast('Please select a default host', 'error');
+            return;
+        }
+
+        var saveBtn = document.getElementById('save-hosts-btn');
+        var originalText = saveBtn.innerHTML;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = 'Saving...';
+
+        try {
+            var resp = await fetch('/web/manager/my-team/' + currentHostsUserId + '/hosts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    host_ids: hostIds,
+                    default_host_id: defaultHostId
+                })
+            });
+            var data = await resp.json();
+
+            if (data.success) {
+                showToast('Host assignments updated', 'success');
+                hideHostsModal();
+                table.refresh();
+            } else {
+                showToast(data.message || 'Failed to update hosts', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalText;
+        }
     };
 })();

@@ -171,7 +171,7 @@ PULLDB_S3_BACKUP_LOCATIONS='[
 ]'
 
 # Myloader settings
-PULLDB_MYLOADER_BINARY=/opt/pulldb.service/bin/myloader-0.19.3-3
+PULLDB_MYLOADER_BINARY=/opt/pulldb.service/bin/myloader-0.21.1-1
 PULLDB_MYLOADER_THREADS=4
 PULLDB_MYLOADER_TIMEOUT_SECONDS=86400
 
@@ -292,11 +292,11 @@ run_tests() {
     log_info "  Executing pytest..."
     
     # Create a test runner script
-    cat > /tmp/run_pulldb_tests.sh << 'TESTSCRIPT'
+    cat > /tmp/run_pulldb_tests.sh << TESTSCRIPT
 #!/bin/bash
 set -e
 
-cd /home/charleshandshy/Projects/pullDB
+cd "${PROJECT_ROOT}"
 
 # Source the environment
 export HOME=/opt/pulldb.service
@@ -313,6 +313,7 @@ export PULLDB_TEST_MYSQL_PASSWORD=test123
 # Run pytest
 pytest pulldb/tests/ -v --tb=short --timeout=120 2>&1
 TESTSCRIPT
+
     
     chmod +x /tmp/run_pulldb_tests.sh
     

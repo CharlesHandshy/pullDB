@@ -6,7 +6,7 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 
 **Related:** [Deployment](hca/widgets/deployment.md) · [policies/](hca/plugins/policies/) · [terraform/](hca/plugins/terraform/)
 
-Last updated: 2026-01-31
+Last updated: 2026-02-18
 Current version: v1.1.0
 Phases complete: 0-6
 
@@ -18,7 +18,7 @@ Phases complete: 0-6
 |-----------|-----------------|------|
 | Python wheel | `/opt/pulldb.service/dist/pulldb-1.1.0-py3-none-any.whl` | ~16MB |
 | myloader binary | `/opt/pulldb.service/bin/myloader-0.21.1-1` | 7.7MB |
-| Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 17 SQL files |
+| Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 28 SQL files |
 | Systemd units | `/opt/pulldb.service/systemd/` | 6 files |
 | Config templates | `/opt/pulldb.service/env.example`, `aws.config.example` | - |
 | After-SQL templates | `/opt/pulldb.service/template_after_sql/` | 12 customer scripts |
@@ -47,7 +47,7 @@ Phases complete: 0-6
 
 Complete API documentation: [docs/api/README.md](api/README.md)
 
-### REST API (port 8080) - 53 endpoints
+### REST API (port 8080) - 63 endpoints
 
 | Category | Count | Key Endpoints |
 |----------|-------|---------------|
@@ -63,16 +63,17 @@ Complete API documentation: [docs/api/README.md](api/README.md)
 | Dropdowns | 3 | `/api/dropdown/customers`, `/api/dropdown/users`, `/api/dropdown/hosts` |
 | Backups | 2 | `/api/customers/search`, `/api/backups/search` |
 | Features | 6 | `/api/feature-requests`, `/api/feature-requests/{id}`, `/api/feature-requests/{id}/vote` |
+| Overlord | 7 | `/api/overlord/{job_id}`, `/api/overlord/{job_id}/claim`, `/api/overlord/{job_id}/sync`, `/api/overlord/{job_id}/release` |
 
-### Web UI API (port 8000) - 150 routes
+### Web UI API (port 8000) - 166 routes
 
 | Module | Prefix | Route Count | Key Routes |
 |--------|--------|-------------|------------|
 | auth | `/web` | 12 | `/login`, `/logout`, `/change-password`, `/auth/profile` |
 | dashboard | `/web/dashboard` | 1 | `/` (role-specific) |
-| jobs | `/web/jobs` | 16 | `/`, `/{job_id}`, `/{job_id}/cancel`, `/api/paginated` |
+| jobs | `/web/jobs` | 21 | `/`, `/{job_id}`, `/{job_id}/cancel`, `/api/paginated` |
 | restore | `/web/restore` | 4 | `/`, `/search-customers`, `/search-backups` |
-| admin | `/web/admin` | 88 | `/users`, `/hosts`, `/settings`, `/api-keys`, `/job-history`, `/locked-databases` |
+| admin | `/web/admin` | 107 | `/users`, `/hosts`, `/settings`, `/api-keys`, `/job-history`, `/locked-databases`, `/overlord` |
 | manager | `/web/manager` | 7 | `/`, `/my-team/{user_id}/*`, `/api/team` |
 | audit | `/web/audit` | 3 | `/`, `/api/logs`, `/api/logs/distinct` |
 | requests | `/web/requests` | 10 | `/`, `/api/list`, `/api/vote/{id}`, `/api/notes/{id}` |
@@ -89,6 +90,31 @@ Complete API documentation: [docs/api/README.md](api/README.md)
 | `pulldb/api/auth.py` | pages | Authentication middleware, `get_authenticated_user()` |
 | `pulldb/api/schemas.py` | entities | Pydantic models: `JobRequest`, `JobResponse`, `JobSummary`, `JobHistoryItem` |
 | `pulldb/api/routes/*.py` | pages | Individual route modules (jobs, hosts, auth, admin) |
+
+### Domain Layer Files (v1.1.0)
+
+| File | Layer | Purpose |
+|------|-------|---------|
+| `pulldb/domain/__init__.py` | entities | Package exports |
+| `pulldb/domain/models.py` | entities | Core data models: `Job`, `User`, `Host`, `Backup` |
+| `pulldb/domain/errors.py` | entities | Domain-specific exception classes |
+| `pulldb/domain/config.py` | entities | Configuration dataclasses |
+| `pulldb/domain/schemas.py` | entities | Preset schema definitions |
+| `pulldb/domain/interfaces.py` | entities | Abstract repository interfaces |
+| `pulldb/domain/permissions.py` | entities | RBAC permission checks |
+| `pulldb/domain/validation.py` | entities | Input validation utilities |
+| `pulldb/domain/settings.py` | entities | System settings definitions |
+| `pulldb/domain/naming.py` | entities | Database naming conventions |
+| `pulldb/domain/color_schemas.py` | entities | Color schema definitions for UI theming |
+| `pulldb/domain/restore_models.py` | entities | Restore-specific data models |
+| `pulldb/domain/feature_request.py` | entities | Feature request data model |
+| `pulldb/domain/overlord.py` | entities | Overlord domain models |
+| `pulldb/domain/services/__init__.py` | features | Service package |
+| `pulldb/domain/services/provisioning.py` | features | Host provisioning service |
+| `pulldb/domain/services/secret_rotation.py` | features | Secret rotation service |
+| `pulldb/domain/services/discovery.py` | features | Service discovery |
+| `pulldb/domain/services/enqueue.py` | features | Job enqueue service |
+| `pulldb/domain/services/overlord_provisioning.py` | features | Overlord company provisioning |
 
 ---
 
@@ -737,8 +763,12 @@ Self-contained HTML documentation system served at `/web/help/`.
 ```
 pulldb/web/help/
 ├── index.html                    # Help Center landing
-├── css/help.css                  # Glassmorphism styling
-├── js/help.js, search.js         # Client-side interactivity
+├── css/help.css                  # Glassmorphism styling (1,923 lines)
+├── js/
+│   ├── help.js                   # Alpine.js app: theme, search, accordion (320 lines)
+│   ├── search.js                 # Fuzzy search engine with relevance scoring (217 lines)
+│   └── terminal.js               # Animated terminal demos with typing effects (227 lines)
+├── search-index.json             # Full-text search index (14 pages)
 └── pages/
     ├── getting-started.html
     ├── api/index.html            # API Reference
@@ -760,12 +790,15 @@ pulldb/web/help/
 
 - **14 help pages** with consistent navigation
 - **Dark/light theme** toggle (respects OS preference)
-- **Search** (/) with keyboard shortcuts
+- **Search** (/) with keyboard shortcuts and fuzzy matching
 - **Role-based content** (Admin, Manager, User sections)
+- **Animated terminal demos** on index and getting-started pages
+- **256 screenshots** (66 light + 66 dark raw, 62 + 62 annotated) across 8 categories
+- **Screenshot annotations** defined in `docs/help-screenshot-annotations.yaml` (62 entries)
 
 ### Index Document
 
-`docs/HELP-PAGE-INDEX.md` - Page inventory, endpoint catalog, visual audit log
+`docs/HELP-PAGE-INDEX.md` - Page inventory, endpoint catalog, screenshot inventory, visual audit log
 
 ---
 
@@ -963,6 +996,96 @@ templates/
 └── mockup/             # Design mockups
 ```
 
+### Web UI CSS Files (HCA-organized)
+
+Source CSS (compiled to static/css/):
+
+| Source File | Layer | Purpose |
+|-------------|-------|---------|
+| `pulldb/web/shared/css/design-tokens.css` | shared | CSS custom properties (colors, spacing, etc.) |
+| `pulldb/web/shared/css/fonts.css` | shared | Font definitions and loading |
+| `pulldb/web/entities/css/avatar.css` | entities | Avatar styling |
+| `pulldb/web/features/css/alerts.css` | features | Alert/notification component styles |
+| `pulldb/web/features/css/buttons.css` | features | Button component styles |
+| `pulldb/web/features/css/modals.css` | features | Modal dialog styles |
+| `pulldb/web/widgets/css/stats-bar.css` | widgets | Stats bar widget styles |
+| `pulldb/web/pages/css/admin-hosts.css` | pages | Admin hosts page styles |
+| `pulldb/web/pages/css/styleguide.css` | pages | Style guide page styles |
+
+Compiled static CSS:
+
+| Static File | Source |
+|-------------|--------|
+| `pulldb/web/static/css/shared/design-tokens.css` | shared layer tokens |
+| `pulldb/web/static/css/shared/fonts.css` | shared fonts |
+| `pulldb/web/static/css/entities/avatar.css` | entity avatar |
+| `pulldb/web/static/css/features/alerts.css` | feature alerts |
+| `pulldb/web/static/css/features/buttons.css` | feature buttons |
+| `pulldb/web/static/css/features/modals.css` | feature modals |
+| `pulldb/web/static/css/widgets/stats-bar.css` | widget stats bar |
+| `pulldb/web/static/css/pages/admin-hosts.css` | page admin hosts |
+| `pulldb/web/static/css/pages/styleguide.css` | page styleguide |
+| `pulldb/web/static/css/generated/manifest-dark.css` | Generated dark theme manifest |
+| `pulldb/web/static/css/generated/manifest-light.css` | Generated light theme manifest |
+
+### Web UI JavaScript Files
+
+| File | Purpose |
+|------|---------|
+| `pulldb/web/static/js/theme-toggle.js` | Dark/light theme switcher |
+| `pulldb/web/static/js/local-datetime.js` | UTC to local datetime conversion |
+| `pulldb/web/static/js/pages/admin-hosts.js` | Admin hosts page interactivity |
+| `pulldb/web/static/js/pages/admin-settings.js` | Admin settings page logic |
+| `pulldb/web/static/js/pages/admin-overlord-companies.js` | Overlord companies management |
+| `pulldb/web/static/js/pages/admin-overlord-company-detail.js` | Overlord company detail page |
+| `pulldb/web/static/js/pages/manager-dashboard.js` | Manager dashboard interactivity |
+| `pulldb/web/static/js/vendor/htmx.min.js` | HTMX library (vendored) |
+
+### Web UI Template Files (v1.1.0)
+
+Admin templates:
+
+| Template | Purpose |
+|----------|---------|
+| `templates/features/admin/admin_task_status.html` | Background task status |
+| `templates/features/admin/cleanup_preview.html` | Cleanup operation preview |
+| `templates/features/admin/host_detail.html` | Host detail view |
+| `templates/features/admin/locked_databases.html` | Locked databases management |
+| `templates/features/admin/orphan_preview.html` | Orphan record preview |
+| `templates/features/admin/prune_preview.html` | Prune operation preview |
+| `templates/features/admin/styleguide.html` | Visual style guide page |
+| `templates/features/admin/overlord_companies.html` | Overlord companies list |
+| `templates/features/admin/overlord_company_detail.html` | Overlord company detail |
+| `templates/features/admin/partials/_appearance.html` | Appearance settings partial |
+| `templates/features/admin/partials/_overlord_setup.html` | Overlord setup partial |
+
+Auth & dashboard templates:
+
+| Template | Purpose |
+|----------|---------|
+| `templates/features/auth/change_password.html` | Password change form |
+| `templates/features/dashboard/_admin_dashboard.html` | Admin role dashboard |
+| `templates/features/dashboard/_manager_dashboard.html` | Manager role dashboard |
+| `templates/features/dashboard/_user_dashboard.html` | User role dashboard |
+
+Restore & widget templates:
+
+| Template | Purpose |
+|----------|---------|
+| `templates/features/restore/partials/backup_results.html` | Backup search results |
+| `templates/features/restore/partials/customer_results.html` | Customer search results |
+| `templates/partials/job_header.html` | Job detail header partial |
+| `templates/partials/job_progress_bars.html` | Job progress bar partial |
+| `templates/partials/overlord_modal.html` | Overlord action modal |
+| `templates/widgets/stats_bar.html` | Stats bar widget template |
+| `templates/mockup/job-details-mockup.html` | Job details mockup page |
+
+### Web Feature Python Files
+
+| File | Purpose |
+|------|---------|
+| `pulldb/web/features/admin/theme_generator.py` | CSS theme manifest generator |
+
 ---
 
 ## Schema Structure (Consolidated)
@@ -972,29 +1095,45 @@ The schema uses a consolidated structure under `schema/pulldb_service/`. Legacy 
 ### Directory Layout
 
 ```
-schema/pulldb_service/
-├── 00_tables/           # Core table definitions (17 files)
-│   ├── 001_auth_users.sql       # Users + role + manager_id
-│   ├── 002_auth_credentials.sql # Passwords + TOTP + reset
-│   ├── 003_sessions.sql         # Session tokens
-│   ├── 004_api_keys.sql         # CLI API keys
-│   ├── 010_db_hosts.sql         # Database hosts
-│   ├── 011_user_hosts.sql       # User-host assignments
-│   ├── 020_jobs.sql             # Job queue + retention
-│   ├── 021_job_events.sql       # Job event log
-│   ├── 022_job_history_summary.sql  # Aggregated job metrics
-│   ├── 030_locks.sql            # Distributed locks
-│   ├── 031_settings.sql         # System settings
-│   ├── 040_admin_tasks.sql      # Background tasks
-│   ├── 041_audit_logs.sql       # Security audit trail
-│   ├── 042_procedure_deployments.sql  # Stored proc versioning
-│   ├── 050_disallowed_users.sql # Blocked usernames
-│   ├── 060_feature_requests.sql # Feature request tracking
-│   └── 099_schema_migrations.sql # Migration history
-├── 01_views/            # Database views
-├── 02_seed/             # Seed data (5 files)
-└── 03_users/            # MySQL user grants
+schema/
+├── migrations/              # Schema migration scripts (3 files)
+│   ├── 009_overlord_tracking.sql        # Overlord tracking tables
+│   ├── 010_overlord_tracking_subdomain.sql  # Subdomain tracking
+│   └── 011_fix_settings_keys.sql        # Settings key fixes
+└── pulldb_service/
+    ├── 00_tables/           # Core table definitions (18 files)
+    │   ├── 001_auth_users.sql       # Users + role + manager_id
+    │   ├── 002_auth_credentials.sql # Passwords + TOTP + reset
+    │   ├── 003_sessions.sql         # Session tokens
+    │   ├── 004_api_keys.sql         # CLI API keys
+    │   ├── 010_db_hosts.sql         # Database hosts
+    │   ├── 011_user_hosts.sql       # User-host assignments
+    │   ├── 020_jobs.sql             # Job queue + retention
+    │   ├── 021_job_events.sql       # Job event log
+    │   ├── 022_job_history_summary.sql  # Aggregated job metrics
+    │   ├── 030_locks.sql            # Distributed locks
+    │   ├── 031_settings.sql         # System settings
+    │   ├── 040_admin_tasks.sql      # Background tasks
+    │   ├── 041_audit_logs.sql       # Security audit trail
+    │   ├── 042_procedure_deployments.sql  # Stored proc versioning
+    │   ├── 050_disallowed_users.sql # Blocked usernames
+    │   ├── 060_feature_requests.sql # Feature request tracking
+    │   └── 099_schema_migrations.sql # Migration history
+    ├── 01_views/            # Database views (1 file)
+    │   └── 001_active_jobs_view.sql # Active jobs view
+    ├── 02_seed/             # Seed data (5 files)
+    │   ├── 001_seed_db_hosts.sql    # Default database hosts
+    │   ├── 002_seed_admin_account.sql   # Admin user seed
+    │   ├── 003_seed_service_account.sql # Service account seed
+    │   ├── 004_seed_settings.sql    # Default settings
+    │   └── 005_seed_disallowed_users.sql # Blocked username defaults
+    ├── 03_users/            # MySQL user grants (1 file)
+    │   └── 001_mysql_users.sql      # MySQL user creation
+    └── archived/            # Archived migrations (1 file)
+        └── 022_job_events_offset_index.sql  # Superseded index
 ```
+
+Total: 28 SQL files (18 tables + 3 migrations + 1 view + 5 seeds + 1 users)
 
 ### Table: auth_users (includes RBAC + manager)
 
@@ -1512,6 +1651,38 @@ HEARTBEAT_SUPPRESSION_WINDOW_SECONDS = 30.0
 # - Meaningful events: table_progress, download_progress, etc.
 ```
 
+### Worker Module Files (v1.1.0)
+
+| File | Purpose |
+|------|---------|
+| `pulldb/worker/service.py` | Main worker service entry point |
+| `pulldb/worker/loop.py` | Worker main loop and job dispatch |
+| `pulldb/worker/executor.py` | Job execution orchestrator |
+| `pulldb/worker/downloader.py` | S3 backup download management |
+| `pulldb/worker/restore.py` | Restore orchestration |
+| `pulldb/worker/restore_progress.py` | Phase-weighted progress calculation |
+| `pulldb/worker/restore_state_tracker.py` | Tracks restore state across phases |
+| `pulldb/worker/processlist_monitor.py` | MySQL SHOW PROCESSLIST poller |
+| `pulldb/worker/staging.py` | Staging database lifecycle |
+| `pulldb/worker/post_sql.py` | Post-restore SQL script executor |
+| `pulldb/worker/backup_metadata.py` | Metadata synthesis for legacy backups |
+| `pulldb/worker/metadata.py` | Backup metadata parsing |
+| `pulldb/worker/heartbeat.py` | Worker heartbeat management |
+| `pulldb/worker/early_analyze.py` | Background ANALYZE TABLE |
+| `pulldb/worker/atomic_rename.py` | Atomic database rename procedures |
+| `pulldb/worker/cleanup.py` | Post-job cleanup operations |
+| `pulldb/worker/retention.py` | Database retention enforcement |
+| `pulldb/worker/admin_tasks.py` | Background admin task runner |
+| `pulldb/worker/overlord_manager.py` | Overlord company management |
+| `pulldb/worker/profiling.py` | Worker performance profiling |
+| `pulldb/worker/log_normalizer.py` | Log output normalization |
+| `pulldb/worker/myloader_log_parser.py` | Myloader log parsing and analysis |
+| `pulldb/worker/table_analyzer.py` | Table structure analysis |
+| `pulldb/worker/history_backfill.py` | Job history backfill operations |
+| `pulldb/worker/feature_request_service.py` | Feature request processing |
+
+---
+
 ## Database Schema (Quick Reference)
 - **Canonical Source**: `docs/hca/entities/mysql-schema.md` (Read this for full column definitions)
 - **Hosts Table**: `db_hosts` (NOT `hosts`) - contains registered database servers
@@ -1533,6 +1704,7 @@ HEARTBEAT_SUPPRESSION_WINDOW_SECONDS = 30.0
   - Source location: `pulldb/binaries/`
   - Current version: `myloader-0.21.1-1` (unified binary for all backup formats)
   - Legacy backup support: Metadata synthesis in `pulldb/worker/backup_metadata.py`
+- Development templates: `scripts/dev_templates/dev_extensions.html` (dev toolbar extensions)
 
 ## System Paths & Service Locations
 - **Installation Root**: `/opt/pulldb.service`
@@ -1607,13 +1779,13 @@ myloader-0.19.3-3 \
 
 **Pre-Requisites Before Resume**:
 1. **Tables must be dropped first** if they already have partial data
-2. **Metadata file** must be 0.19-compatible INI format (use `ensure_compatible_metadata()`)
+2. **Metadata file** must be 0.19-compatible INI format (use `ensure_myloader_compatibility()`)
 3. **Resume file** must contain ONLY the files to load
 
 **Metadata File Synthesis** (if backup has old mydumper 0.9 format):
 ```python
-from pulldb.worker.metadata_synthesis import ensure_compatible_metadata
-ensure_compatible_metadata('/path/to/extracted/backup')
+from pulldb.worker.backup_metadata import ensure_myloader_compatibility
+ensure_myloader_compatibility('/path/to/extracted/backup')
 ```
 
 **Verification Commands**:

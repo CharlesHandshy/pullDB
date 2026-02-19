@@ -1,7 +1,7 @@
 # Help Page Index
 
 > **Generated:** 2026-01-17  
-> **Last Audited:** 2026-01-31  
+> **Last Audited:** 2026-02-18  
 > **Total Pages:** 14 (indexed in search-index.json)  
 > **Base URL:** http://localhost:8000/web/help/
 > **Version:** 1.1.0
@@ -54,9 +54,11 @@
 - `GET /web/help/pages/troubleshooting/index.html` → Common issues, FAQ
 
 ## Static Assets
-- `GET /web/help/css/help.css` → Main stylesheet
+- `GET /web/help/css/help.css` → Main stylesheet (1,923 lines)
 - `GET /web/help/search-index.json` → Search index (14 pages indexed)
-- `GET /web/help/js/help.js` → Search functionality
+- `GET /web/help/js/help.js` → Alpine.js app: theme toggle, search modal, accordion (320 lines)
+- `GET /web/help/js/search.js` → Advanced fuzzy search engine with relevance scoring (217 lines)
+- `GET /web/help/js/terminal.js` → Animated terminal demos with typing effects (227 lines)
 
 ---
 
@@ -75,23 +77,21 @@
 ## Screenshot Inventory (2026-01-17)
 
 > **Location:** `pulldb/web/static/help/screenshots/`  
-> **Total Files:** 254 PNG files + 4 new captures  
-> **Total Size:** 6.7 MB (after pngquant optimization from 19 MB)
-> 
-> **New Screenshots (2026-01-17):** Feature Requests page, Admin Task Status page captured via Playwright (light + dark themes)
+> **Total Files:** 256 PNG files  
+> **Total Size:** 13 MB (raw: 3.4 MB, annotated: 8.9 MB)
 
 ### Directory Structure
 
 | Directory | Count | Description |
 |-----------|-------|-------------|
-| `light/` | 65 | Raw light theme screenshots |
-| `dark/` | 65 | Raw dark theme screenshots |
+| `light/` | 66 | Raw light theme screenshots |
+| `dark/` | 66 | Raw dark theme screenshots |
 | `annotated/light/` | 62 | Annotated light screenshots |
 | `annotated/dark/` | 62 | Annotated dark screenshots |
-| `light/requests/` | 1 | Feature requests (new) |
-| `dark/requests/` | 1 | Feature requests dark (new) |
 
-### Screenshots by Category (67 unique)
+**Annotated gap:** 3 common screenshots (403, 404, 500) and 1 requests screenshot exist only as raw — not annotated.
+
+### Screenshots by Category (66 unique)
 
 #### Common (9 screenshots)
 | File | Description |
@@ -151,7 +151,7 @@
 | `create-key-modal.png` | Create API key modal |
 | `maintenance-modal.png` | Maintenance mode modal |
 
-#### Admin (25 screenshots)
+#### Admin (23 screenshots)
 | File | Description |
 |------|-------------|
 | `overview.png` | Admin dashboard overview |
@@ -177,12 +177,11 @@
 | `maintenance.png` | Maintenance mode toggle |
 | `audit-log.png` | Audit log viewer |
 | `prune-logs.png` | Prune logs action |
-| `admin-task-status.png` | ✅ **NEW** - Background task status page |
 
-#### Feature Requests (1 screenshot - NEW)
+#### Feature Requests (1 screenshot)
 | File | Description |
 |------|-------------|
-| `feature-requests.png` | ✅ **NEW** - Feature requests list page |
+| `feature-requests.png` | Feature requests list page (raw only, not annotated) |
 
 #### Manager (4 screenshots)
 | File | Description |
@@ -262,5 +261,5 @@
 - Consistent navigation across all help pages
 
 ---
-*Last updated: 2026-01-27*  
+*Last updated: 2026-02-18*  
 *Search index regenerated via: `python3 scripts/build_help_search_index.py`*

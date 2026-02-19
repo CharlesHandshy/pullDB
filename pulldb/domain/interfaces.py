@@ -460,6 +460,31 @@ class JobRepository(Protocol):
         """
         ...
 
+    def get_expired_terminal_job_candidates(self, grace_days: int) -> list[Job]:
+        """Get failed/canceled jobs eligible for automatic record cleanup.
+
+        Returns terminal jobs (failed, canceled) that are:
+        - Past expiration + grace period
+        - Have expires_at set
+
+        Args:
+            grace_days: Additional days after expiry before cleanup.
+
+        Returns:
+            List of failed/canceled jobs past their expiration + grace period.
+        """
+        ...
+
+    def purge_terminal_job(self, job_id: str) -> None:
+        """Mark a failed/canceled job as deleted (record cleanup).
+
+        Soft-deletes the job record so it leaves the active History view.
+
+        Args:
+            job_id: UUID of the terminal job to purge.
+        """
+        ...
+
     def check_target_exclusivity(self, target: str, dbhost: str) -> bool:
         """Check if target can accept new job.
 
