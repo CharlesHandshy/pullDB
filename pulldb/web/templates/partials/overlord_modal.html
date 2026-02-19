@@ -2516,6 +2516,8 @@ async function saveCompanyCard() {
         }
         
         showToast(companyState.isNew ? 'Company record created' : 'Company record updated', 'success');
+        // Clear snapshot so closeCompanyEditCard() skips the dirty-state check
+        companyState._originalSnapshot = null;
         closeCompanyEditCard();
         
         // Refresh data
