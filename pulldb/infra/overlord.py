@@ -387,7 +387,7 @@ class OverlordRepository:
         with self._conn.connection() as conn:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
-                f"SELECT * FROM {self._table} WHERE `database` = %s",
+                f"SELECT * FROM {self._table} WHERE `database` = %s LIMIT 1",
                 (database_name,)
             )
             row = cursor.fetchone()
@@ -433,7 +433,7 @@ class OverlordRepository:
         with self._conn.connection() as conn:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
-                f"SELECT * FROM {self._table} WHERE `database` = %s",
+                f"SELECT * FROM {self._table} WHERE `database` = %s LIMIT 1",
                 (database_name,)
             )
             row = cursor.fetchone()
