@@ -1595,6 +1595,9 @@ def list_mysql_credential_secrets(prefix: str = "/pulldb/mysql/") -> list[dict[s
     Returns:
         List of dicts with 'name' (full path) and 'display' (short name) keys.
     """
+    from pulldb.infra.factory import is_simulation_mode
+    if is_simulation_mode():
+        return []  # No AWS credentials in simulation; avoid boto3 connection attempt
     import boto3
 
     # Secrets to exclude (service credentials, not host credentials)
@@ -3471,6 +3474,12 @@ async def sync_single_setting(
     env_path = _find_env_file()
 
     if direction == "db_to_env":
+        from pulldb.infra.factory import is_simulation_mode as _is_sim
+        if _is_sim():
+            return {
+                "success": False,
+                "error": "Simulation mode: .env writes are disabled to protect the production environment",
+            }
         # Copy DB value → .env file
         if not hasattr(state, "settings_repo") or not state.settings_repo:
             return {"success": False, "error": "Settings repository not available"}
