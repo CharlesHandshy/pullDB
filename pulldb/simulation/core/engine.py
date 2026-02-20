@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from pulldb.simulation.adapters.mock_exec import MockProcessExecutor
 from pulldb.simulation.adapters.mock_mysql import SimulatedHostRepository, SimulatedJobRepository
 from pulldb.simulation.adapters.mock_s3 import MockS3Client
-from pulldb.simulation.core.state import SimulationState, get_simulation_state
+from pulldb.simulation.core.state import SimulationState, get_simulation_state, reset_simulation
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +64,12 @@ class SimulationEngine:
     def initialize(self) -> None:
         """Reset state and prepare for simulation.
 
-        Clears all simulation state and prepares for a fresh run.
+        Fully resets all simulation state including the event bus and scenario
+        manager so each simulation run begins with a completely clean environment.
+        Uses reset_simulation() rather than state.clear() to avoid leaking
+        event bus subscribers or scenario manager state between runs.
         """
-        self.state.clear()
+        reset_simulation()
         logger.info("Simulation initialized")
 
     def tick(self) -> None:

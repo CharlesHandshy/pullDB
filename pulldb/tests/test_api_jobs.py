@@ -192,6 +192,10 @@ class FakeHostRepository:
         """Test helper to control capacity check result."""
         self._has_active_capacity = value
 
+    def database_exists(self, hostname: str, db_name: str) -> bool:
+        """Return False — no pre-existing database in test stub."""
+        return False
+
 
 class FakeRepos(NamedTuple):
     user_repo: FakeUserRepository
