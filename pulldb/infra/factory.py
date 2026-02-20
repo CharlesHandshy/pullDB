@@ -223,8 +223,11 @@ def _get_real_mysql_pool() -> "MySQLPool":
 
     mysql_user = os.getenv("PULLDB_API_MYSQL_USER", "pulldb_api")
     mysql_database = os.getenv("PULLDB_MYSQL_DATABASE", "pulldb_service")
+    pool_size = int(os.getenv("PULLDB_MYSQL_POOL_SIZE", "5"))
 
     return MySQLPool(
+        pool_name="pulldb_api",
+        pool_size=pool_size,
         host=creds.host,
         user=mysql_user,
         password=creds.password,
