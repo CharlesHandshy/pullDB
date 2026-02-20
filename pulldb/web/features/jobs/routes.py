@@ -2083,7 +2083,11 @@ async def bulk_delete_jobs(
 
     # Create admin task
     from pulldb.infra.mysql import AdminTaskRepository
-    admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+    if getattr(state.job_repo, 'pool', None) is None:
+        from pulldb.simulation.adapters.mock_mysql import SimulatedAdminTaskRepository
+        admin_task_repo: Any = SimulatedAdminTaskRepository()
+    else:
+        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
     task_id = admin_task_repo.create_bulk_delete_task(
         requested_by=user.user_id,
         job_infos=job_infos,
@@ -2109,7 +2113,11 @@ async def bulk_delete_status(
         return {"error": "Job repository unavailable"}
 
     from pulldb.infra.mysql import AdminTaskRepository
-    admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+    if getattr(state.job_repo, 'pool', None) is None:
+        from pulldb.simulation.adapters.mock_mysql import SimulatedAdminTaskRepository
+        admin_task_repo: Any = SimulatedAdminTaskRepository()
+    else:
+        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
     task = admin_task_repo.get_task(task_id)
     if not task:
         return {"error": "Task not found"}

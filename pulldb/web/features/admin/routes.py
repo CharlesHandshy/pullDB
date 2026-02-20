@@ -448,7 +448,11 @@ async def force_delete_user(
             }
         
         # Create admin task
-        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+        if getattr(state.job_repo, 'pool', None) is None:
+            from pulldb.simulation.adapters.mock_mysql import SimulatedAdminTaskRepository
+            admin_task_repo: Any = SimulatedAdminTaskRepository()
+        else:
+            admin_task_repo = AdminTaskRepository(state.job_repo.pool)
         
         # Build parameters
         parameters = {
@@ -487,7 +491,11 @@ async def get_admin_task_json(
     from pulldb.infra.mysql import AdminTaskRepository
     
     try:
-        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+        if getattr(state.job_repo, 'pool', None) is None:
+            from pulldb.simulation.adapters.mock_mysql import SimulatedAdminTaskRepository
+            admin_task_repo: Any = SimulatedAdminTaskRepository()
+        else:
+            admin_task_repo = AdminTaskRepository(state.job_repo.pool)
         task = admin_task_repo.get_task(task_id)
         
         if not task:
@@ -4750,7 +4758,11 @@ async def start_user_orphan_scan(
         body = await request.json()
         specific_hosts = body.get("hosts")  # Optional: limit to specific hosts
         
-        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+        if getattr(state.job_repo, 'pool', None) is None:
+            from pulldb.simulation.adapters.mock_mysql import SimulatedAdminTaskRepository
+            admin_task_repo: Any = SimulatedAdminTaskRepository()
+        else:
+            admin_task_repo = AdminTaskRepository(state.job_repo.pool)
         
         parameters = {}
         if specific_hosts:
@@ -5291,7 +5303,11 @@ async def api_get_disallowed_users(
         return {"success": False, "message": "Database not available"}
     
     try:
-        repo = DisallowedUserRepository(state.job_repo.pool)
+        if getattr(state.job_repo, 'pool', None) is None:
+            from pulldb.simulation.adapters.mock_mysql import SimulatedDisallowedUserRepository
+            repo: Any = SimulatedDisallowedUserRepository()
+        else:
+            repo = DisallowedUserRepository(state.job_repo.pool)
         users = repo.get_all()
         
         return {
@@ -5337,7 +5353,11 @@ async def api_add_disallowed_user(
         if len(username) < 2:
             return {"success": False, "message": "Username must be at least 2 characters"}
         
-        repo = DisallowedUserRepository(state.job_repo.pool)
+        if getattr(state.job_repo, 'pool', None) is None:
+            from pulldb.simulation.adapters.mock_mysql import SimulatedDisallowedUserRepository
+            repo: Any = SimulatedDisallowedUserRepository()
+        else:
+            repo = DisallowedUserRepository(state.job_repo.pool)
         
         # Check if already exists
         if repo.exists(username):
@@ -5378,7 +5398,11 @@ async def api_remove_disallowed_user(
         return {"success": False, "message": "Database not available"}
     
     try:
-        repo = DisallowedUserRepository(state.job_repo.pool)
+        if getattr(state.job_repo, 'pool', None) is None:
+            from pulldb.simulation.adapters.mock_mysql import SimulatedDisallowedUserRepository
+            repo: Any = SimulatedDisallowedUserRepository()
+        else:
+            repo = DisallowedUserRepository(state.job_repo.pool)
         success, message = repo.remove(username.lower())
         
         if success:
@@ -5416,7 +5440,11 @@ async def disallowed_users_page(
     database_users = []
     if hasattr(state, "job_repo") and state.job_repo:
         try:
-            repo = DisallowedUserRepository(state.job_repo.pool)
+            if getattr(state.job_repo, 'pool', None) is None:
+                from pulldb.simulation.adapters.mock_mysql import SimulatedDisallowedUserRepository
+                repo: Any = SimulatedDisallowedUserRepository()
+            else:
+                repo = DisallowedUserRepository(state.job_repo.pool)
             all_entries = repo.get_all()
             # Filter to non-hardcoded entries (database-added only)
             database_users = [
