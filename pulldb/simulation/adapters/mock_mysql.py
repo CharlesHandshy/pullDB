@@ -3450,10 +3450,10 @@ class SimulatedAuthRepository:
         Returns:
             Tuple of (key_id, secret). The secret is only returned once.
         """
-        import secrets as _s
+        import secrets  # local: avoid polluting module namespace with stdlib import
 
-        key_id = "key_" + _s.token_hex(16)
-        secret = _s.token_hex(32)
+        key_id = "key_" + secrets.token_hex(16)
+        secret = secrets.token_hex(32)
 
         now = datetime.now(UTC)
         with self.state.lock:
@@ -3560,60 +3560,51 @@ class SimulatedAuthRepository:
 
     def get_all_api_keys(
         self, include_inactive: bool = False, user_id: str | None = None
-    ) -> list[Any]:
+    ) -> list[dict]:
         """Get all API keys with filtering options.
+
+        Returns plain dicts to match the real AuthRepository return type
+        (which returns TypedDict rows from the MySQL cursor).
+        Sensitive fields key_secret and key_secret_hash are intentionally
+        excluded — matching what the real SQL SELECT omits.
 
         Args:
             include_inactive: If True, include revoked keys.
             user_id: If provided, filter to keys for this user only.
 
         Returns:
-            List of all API key objects.
+            List of dicts with keys: key_id, user_id, username, user_code,
+            name, host_name, is_active, approved_at, created_at,
+            created_from_ip, last_used_at, last_used_ip, expires_at.
         """
-        from dataclasses import dataclass as dc
-
-        @dc
-        class ApiKeyInfo:
-            """Container for API key information."""
-            key_id: str
-            user_id: str
-            username: str | None
-            user_code: str | None
-            name: str | None
-            host_name: str | None
-            is_active: bool
-            approved_at: datetime | None
-            created_at: datetime | None
-            created_from_ip: str | None
-            last_used_at: datetime | None
-            last_used_ip: str | None
-            expires_at: datetime | None
-
         with self.state.lock:
-            result: list[ApiKeyInfo] = []
-            for key_id, key_data in self.state.api_keys.items():
+            result: list[dict] = []
+            for kid, key_data in self.state.api_keys.items():
                 if not include_inactive and not key_data.get('is_active', False):
                     continue
                 if user_id and key_data.get('user_id') != user_id:
                     continue
                 uid = key_data.get('user_id', '')
                 user = self.state.users.get(uid)
-                result.append(ApiKeyInfo(
-                    key_id=key_id,
-                    user_id=uid,
-                    username=user.username if user else None,
-                    user_code=user.user_code if user else None,
-                    name=key_data.get('name'),
-                    host_name=key_data.get('host_name'),
-                    is_active=key_data.get('is_active', False),
-                    approved_at=key_data.get('approved_at'),
-                    created_at=key_data.get('created_at'),
-                    created_from_ip=key_data.get('created_from_ip'),
-                    last_used_at=key_data.get('last_used_at'),
-                    last_used_ip=key_data.get('last_used_ip'),
-                    expires_at=key_data.get('expires_at'),
-                ))
-            result.sort(key=lambda k: k.created_at or datetime.min.replace(tzinfo=UTC), reverse=True)
+                result.append({
+                    "key_id": kid,
+                    "user_id": uid,
+                    "username": user.username if user else None,
+                    "user_code": user.user_code if user else None,
+                    "name": key_data.get('name'),
+                    "host_name": key_data.get('host_name'),
+                    "is_active": key_data.get('is_active', False),
+                    "approved_at": key_data.get('approved_at'),
+                    "created_at": key_data.get('created_at'),
+                    "created_from_ip": key_data.get('created_from_ip'),
+                    "last_used_at": key_data.get('last_used_at'),
+                    "last_used_ip": key_data.get('last_used_ip'),
+                    "expires_at": key_data.get('expires_at'),
+                })
+            result.sort(
+                key=lambda k: k["created_at"] or datetime.min.replace(tzinfo=UTC),
+                reverse=True,
+            )
             return result
 
     def approve_api_key(self, key_id: str, approver_user_id: str) -> bool:
@@ -3681,6 +3672,7 @@ class SimulatedAuthRepository:
         Raises:
             KeyPendingApprovalError: If key exists but is not yet approved.
         """
+        # Local import: avoid circular dependency (domain.errors → auth → simulation)
         from pulldb.domain.errors import KeyPendingApprovalError
 
         with self.state.lock:
@@ -3694,7 +3686,8 @@ class SimulatedAuthRepository:
             expires_at = key_data.get('expires_at')
             if expires_at and expires_at < datetime.now(UTC):
                 return None
-            return str(key_data.get('key_secret_hash', ''))
+            val = key_data.get('key_secret_hash')
+            return str(val) if val is not None else None
 
     def get_api_key_secret(self, key_id: str) -> str | None:
         """Get the plaintext secret for an API key (for HMAC verification).
@@ -3712,6 +3705,7 @@ class SimulatedAuthRepository:
             KeyPendingApprovalError: If key exists but is not yet approved.
             KeyRevokedError: If key has been revoked (is_active=False).
         """
+        # Local import: avoid circular dependency (domain.errors → auth → simulation)
         from pulldb.domain.errors import KeyPendingApprovalError, KeyRevokedError
 
         with self.state.lock:
@@ -3725,7 +3719,8 @@ class SimulatedAuthRepository:
             expires_at = key_data.get('expires_at')
             if expires_at and expires_at < datetime.now(UTC):
                 return None
-            return str(key_data.get('key_secret', ''))
+            val = key_data.get('key_secret')
+            return str(val) if val is not None else None
 
     def reactivate_api_key(self, key_id: str) -> bool:
         """Reactivate a revoked API key.
@@ -3822,6 +3817,9 @@ class SimulatedAuthRepository:
         Returns:
             Number of keys deleted.
         """
+        # Cutoff is computed before acquiring the lock intentionally:
+        # we want a fixed point-in-time snapshot, not one that drifts
+        # if lock acquisition is delayed.
         cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
         with self.state.lock:
             to_delete = [
