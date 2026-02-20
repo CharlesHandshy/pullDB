@@ -3784,6 +3784,82 @@ async def get_user_api_keys(
     )
 
 
+# ---------------------------------------------------------------------------
+# API Key Validation & Migration
+# ---------------------------------------------------------------------------
+
+
+class ValidateKeyResponse(pydantic.BaseModel):
+    """Response for GET /api/auth/validate-key."""
+
+    valid: bool
+    username: str
+    user_code: str
+    key_id: str | None = None
+
+
+@app.get("/api/auth/validate-key", response_model=ValidateKeyResponse)
+async def validate_api_key(user: AuthUser) -> ValidateKeyResponse:
+    """Validate the caller's API key credentials.
+
+    Authenticates via the normal HMAC / bearer mechanism then returns a
+    minimal confirmation.  Clients can use this to verify that locally-stored
+    credentials are still valid and accepted by the server.
+
+    Requires a valid API key (HMAC or bearer token).  Returns 200 on success
+    and 401 if the key is invalid, revoked, or pending approval.
+    """
+    return ValidateKeyResponse(
+        valid=True,
+        username=user.username,
+        user_code=user.user_code,
+        key_id=getattr(user, "key_id", None),
+    )
+
+
+class MigrateKeySecretsResponse(pydantic.BaseModel):
+    """Response for POST /api/admin/migrate-key-secrets."""
+
+    migrated: int
+    message: str
+
+
+@app.post("/api/admin/migrate-key-secrets", response_model=MigrateKeySecretsResponse)
+async def migrate_key_secrets(
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> MigrateKeySecretsResponse:
+    """Encrypt all plaintext key_secret rows in the api_keys table (admin only).
+
+    Iterates the ``api_keys`` table and AES-256-GCM encrypts every
+    ``key_secret`` value that does not already carry the ``aes256gcm:`` prefix.
+    Safe to call multiple times — already-encrypted rows are skipped.
+
+    Requires ``PULLDB_KEY_ENCRYPTION_KEY`` to be configured on the server.
+    Returns the count of rows that were encrypted during this call.
+    """
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    try:
+        count = await run_in_threadpool(state.auth_repo.migrate_encrypt_existing_keys)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
+    if count:
+        msg = f"Successfully encrypted {count} key_secret row(s)."
+    else:
+        msg = "All key_secret rows were already encrypted — no changes made."
+
+    return MigrateKeySecretsResponse(migrated=count, message=msg)
+
+
 def create_app() -> fastapi.FastAPI:
     return app
 

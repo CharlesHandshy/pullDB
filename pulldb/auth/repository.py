@@ -16,6 +16,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from pulldb.domain.errors import KeyPendingApprovalError, KeyRevokedError, LockedUserError
+from pulldb.infra.key_encryption import decrypt_secret, encrypt_secret, get_encryption_key
 from pulldb.infra.mysql import MySQLPool, TypedDictCursor, TypedTupleCursor
 
 logger = logging.getLogger(__name__)
@@ -358,6 +359,9 @@ class AuthRepository:
         # Hash the secret for audit purposes
         secret_hash = hash_password(secret)
 
+        # Encrypt the secret at rest (passthrough when key not configured)
+        stored_secret = encrypt_secret(secret)
+
         # Determine approval status
         is_active = auto_approve
         approved_at = "UTC_TIMESTAMP(6)" if auto_approve else None
@@ -372,7 +376,7 @@ class AuthRepository:
                          host_name, created_from_ip, is_active, approved_at, approved_by, created_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, UTC_TIMESTAMP(6), %s, UTC_TIMESTAMP(6))
                     """,
-                    (key_id, user_id, secret_hash, secret, name, host_name, created_from_ip, approved_by),
+                    (key_id, user_id, secret_hash, stored_secret, name, host_name, created_from_ip, approved_by),
                 )
             else:
                 cursor.execute(
@@ -382,7 +386,7 @@ class AuthRepository:
                          host_name, created_from_ip, is_active, created_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, UTC_TIMESTAMP(6))
                     """,
-                    (key_id, user_id, secret_hash, secret, name, host_name, created_from_ip),
+                    (key_id, user_id, secret_hash, stored_secret, name, host_name, created_from_ip),
                 )
             conn.commit()
 
@@ -575,7 +579,59 @@ class AuthRepository:
                 return None
 
             secret = row.get("key_secret")
-            return str(secret) if secret is not None else None
+            if secret is None:
+                return None
+            return decrypt_secret(str(secret))
+
+    def migrate_encrypt_existing_keys(self) -> int:
+        """Encrypt all plaintext ``key_secret`` rows in ``api_keys``.
+
+        Iterates over every row whose ``key_secret`` does not already carry the
+        ``aes256gcm:`` prefix and encrypts it in-place.  Rows that are already
+        encrypted are skipped.
+
+        This method is idempotent — safe to call multiple times.
+
+        Returns:
+            The number of rows that were encrypted during this call.
+
+        Raises:
+            RuntimeError: If ``PULLDB_KEY_ENCRYPTION_KEY`` is not configured.
+        """
+        if get_encryption_key() is None:
+            raise RuntimeError(
+                "Cannot migrate: PULLDB_KEY_ENCRYPTION_KEY is not set. "
+                "Configure the encryption key before running migration."
+            )
+
+        migrated = 0
+        with self.pool.connection() as conn:
+            # Fetch all rows that are NOT yet encrypted
+            read_cursor = TypedDictCursor(conn.cursor(dictionary=True))
+            read_cursor.execute(
+                "SELECT key_id, key_secret FROM api_keys "
+                "WHERE key_secret NOT LIKE 'aes256gcm:%'"
+            )
+            rows = read_cursor.fetchall()
+
+            write_cursor = TypedTupleCursor(conn.cursor())
+            for row in rows:
+                key_id = row["key_id"]
+                plaintext = row["key_secret"]
+                if plaintext is None:
+                    continue
+                encrypted = encrypt_secret(str(plaintext))
+                write_cursor.execute(
+                    "UPDATE api_keys SET key_secret = %s WHERE key_id = %s",
+                    (encrypted, key_id),
+                )
+                migrated += 1
+
+            if migrated:
+                conn.commit()
+                logger.info("migrate_encrypt_existing_keys: encrypted %d key_secret rows", migrated)
+
+        return migrated
 
     def revoke_api_key(self, key_id: str) -> bool:
         """Revoke an API key (mark inactive).
