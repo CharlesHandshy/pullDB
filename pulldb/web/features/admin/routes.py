@@ -3113,6 +3113,15 @@ async def sync_all_settings_to_env(
     if not db_settings:
         return {"success": False, "error": "No settings in database to sync"}
 
+    # Never write to .env in simulation mode — the production .env lives at
+    # /opt/pulldb.service/.env and must not be touched by a dev session.
+    from pulldb.infra.factory import is_simulation_mode as _is_sim
+    if _is_sim():
+        return {
+            "success": False,
+            "error": "Simulation mode: .env writes are disabled to protect the production environment",
+        }
+
     # Find .env file (shared infra — includes dev fallback)
     env_path = _find_env_file()
     if not env_path:
@@ -3229,8 +3238,11 @@ async def update_setting(
     # stays in sync with the database without requiring a separate
     # "Sync All" step.  Failures here are non-fatal — the DB is the
     # authoritative source; .env will catch up on next explicit sync.
+    # NEVER write to .env in simulation mode — the production .env at
+    # /opt/pulldb.service/.env must not be touched by a dev session.
+    from pulldb.infra.factory import is_simulation_mode as _is_sim
     env_synced = False
-    if meta and not meta.db_only:
+    if meta and not meta.db_only and not _is_sim():
         env_path = _find_env_file()
         if env_path:
             env_var = meta.env_var
