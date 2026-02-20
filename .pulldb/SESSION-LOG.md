@@ -6,6 +6,70 @@
 
 ---
 
+## 2026-02-20 | v1.3.0 Optimization Sprint (Phases 0-5)
+
+### Context
+User-requested industry-standard audit, followed by a structured 5-phase optimization sprint on `dev/v1.3.0-optimization` branch. Production protected via branch isolation; no main commits.
+
+### What Was Done
+
+**Phase 0 — pytest Infrastructure** (`9134aac`)
+- Added `testpaths`, `asyncio_mode=auto`, `--strict-markers` to `pyproject.toml`
+- Pinned `pytest-asyncio==0.25.3`, `pytest-cov==6.1.0` to `requirements-test.txt`
+- Created `tests/conftest.py` with 4 shared fixtures (mock_mysql_conn, mock_s3_client, mock_secrets_client, mock_mysql_pool)
+
+**Phase 1 — Security Fixes B+C** (`9134aac`)
+- `auth.py` Fix B: Added `user.locked` check to `get_optional_user` session path — locked users were reachable via session tokens but not HMAC (inconsistency)
+- `auth.py` Fix C: Removed trusted-mode `None` bypass from `validate_job_submission_user`; tightened parameter type `User | None` → `User`
+- 11 new unit tests in `tests/unit/api/test_auth.py`
+
+**Phase 2 — HCA Migration** (`d802638`)
+- Moved 5 service files from `domain/services/` (entities layer, wrong) to `worker/` (features layer, correct)
+- Files: `discovery.py`, `enqueue.py`, `provisioning.py`, `secret_rotation.py`, `overlord_provisioning.py`
+- Updated 9 caller files + 4 test files (including mock patch strings)
+- `domain/services/__init__.py` replaced with `DeprecationWarning` shim
+
+**Phase 3 — Real MySQLConnectionPool** (`202896e`)
+- Replaced stub `MySQLPool` (new TCP per query) with `mysql.connector.pooling.MySQLConnectionPool`
+- Fixed double-wrap bug: `TypedDictCursor(TypedDictCursor(raw))` → `TypedDictCursor(raw)`
+- Added `PULLDB_MYSQL_POOL_SIZE` env var (default 5); `factory.py` passes `pool_name="pulldb_api"`
+- 17 new unit tests in `tests/unit/infra/test_mysql_pool.py`
+
+**Phase 4 — api/main.py Decomposition** (`ce05768`)
+- Created `pulldb/api/routers/` package (HCA-compliant pages layer)
+- Extracted 7-route feature-requests group into `pulldb/api/routers/feature_requests.py`
+- Factory-function pattern (`create_feature_requests_router(get_api_state)`) matching existing `overlord.py`
+- `api/main.py`: 4558 → 4270 lines (-288 lines); backward-compat re-exports preserved
+
+**Phase 5 — CLI Test Coverage** (`36efb2c`)
+- `tests/unit/cli/test_backup_commands.py` (23 tests): `_parse_size`, `_parse_date`, `_extract_date_from_key`
+- `tests/unit/cli/test_parse.py` (31 tests): `normalize_customer_name`, `parse_restore_args` (happy + error paths), immutability
+
+### Rationale
+- FAIL HARD (all security fixes), HCA Law 1 (layer isolation), KNOWLEDGE-POOL FIRST (no re-discovery)
+- Root cause fixing: MySQLPool double-wrap bug fixed at source, not worked around
+- Pre-commit hooks respected throughout; no `--no-verify` usage
+
+### Test Count
+- Baseline: 345 → Final: 427 (+82 new tests, all passing)
+- Commits: `9134aac`, `d802638`, `202896e`, `ce05768`, `36efb2c`
+
+### Phase 6 Status
+- Plaintext `key_secret` column remediation awaiting user decision: Option A (bcrypt Bearer, breaking CLI change) vs Option B (AES-at-rest, no client changes)
+
+### Files Modified
+- `pulldb/api/auth.py` (security fixes)
+- `pulldb/api/main.py` (feature_requests router include)
+- `pulldb/api/routers/__init__.py`, `pulldb/api/routers/feature_requests.py` (new)
+- `pulldb/domain/services/__init__.py` (deprecation shim)
+- `pulldb/infra/factory.py` (pool_name, pool_size)
+- `pulldb/infra/mysql_pool.py` (real pool, double-wrap fix)
+- `pulldb/worker/discovery.py`, `enqueue.py`, `provisioning.py`, `secret_rotation.py`, `overlord_provisioning.py` (new/migrated)
+- `pyproject.toml`, `requirements-test.txt` (pytest config)
+- 4 test files: `tests/unit/api/test_auth.py`, `tests/unit/cli/test_backup_commands.py`, `tests/unit/cli/test_parse.py`, `tests/unit/infra/test_mysql_pool.py`
+
+---
+
 ## 2026-02-18 | pulldb-client Comprehensive Audit
 
 ### Context
