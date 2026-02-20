@@ -3424,44 +3424,56 @@ class SimulatedAuthRepository:
         return self.list_api_keys_for_user(user_id)
 
     def create_api_key(
-        self, 
-        user_id: str, 
+        self,
+        user_id: str,
         name: str | None = None,
         host_name: str | None = None,
+        created_from_ip: str | None = None,
+        auto_approve: bool = False,
+        approved_by: str | None = None,
     ) -> tuple[str, str]:
         """Create a new API key for a user.
-        
+
+        Mirrors the real AuthRepository.create_api_key signature.
+        In simulation mode the secret is stored in plaintext (no encryption
+        env var expected); the hash is stored as a sentinel string so that
+        verify_api_key() can skip bcrypt for dev speed.
+
         Args:
             user_id: UUID of the user.
             name: Optional name/description for the key.
             host_name: Optional hostname the key is for.
-            
+            created_from_ip: IP address of the request.
+            auto_approve: If True, approve the key immediately.
+            approved_by: User ID of the approver (used when auto_approve=True).
+
         Returns:
             Tuple of (key_id, secret). The secret is only returned once.
         """
-        import secrets
-        
-        key_id = "key_" + secrets.token_hex(16)
-        secret = "sec_" + secrets.token_hex(32)
-        
+        import secrets as _s
+
+        key_id = "key_" + _s.token_hex(16)
+        secret = _s.token_hex(32)
+
+        now = datetime.now(UTC)
         with self.state.lock:
             self.state.api_keys[key_id] = {
                 "key_id": key_id,
                 "user_id": user_id,
-                "key_secret_hash": "$2b$12$SimulatedHash",
-                "key_secret": secret,  # In real DB, only hash is stored
+                "key_secret_hash": "$simulated$" + secret,  # sentinel; compared by verify_api_key
+                "key_secret": secret,  # plaintext — simulated env only
                 "name": name,
                 "host_name": host_name,
-                "created_from_ip": "127.0.0.1",
-                "is_active": True,
-                "created_at": datetime.now(UTC),
+                "created_from_ip": created_from_ip or "127.0.0.1",
+                "is_active": auto_approve,
+                "created_at": now,
                 "last_used_at": None,
                 "last_used_ip": None,
-                "approved_at": datetime.now(UTC),  # Auto-approve in simulation
-                "approved_by": user_id,
+                "approved_at": now if auto_approve else None,
+                "approved_by": approved_by if auto_approve else None,
                 "expires_at": None,
             }
-        
+
         return key_id, secret
 
     def revoke_api_key(self, key_id: str) -> bool:
@@ -3546,20 +3558,27 @@ class SimulatedAuthRepository:
             result.sort(key=lambda k: k.created_at or datetime.min.replace(tzinfo=UTC), reverse=True)
             return result
 
-    def get_all_api_keys(self) -> list[Any]:
-        """Get all API keys in the system.
-        
+    def get_all_api_keys(
+        self, include_inactive: bool = False, user_id: str | None = None
+    ) -> list[Any]:
+        """Get all API keys with filtering options.
+
+        Args:
+            include_inactive: If True, include revoked keys.
+            user_id: If provided, filter to keys for this user only.
+
         Returns:
-            List of all API key objects with user information.
+            List of all API key objects.
         """
         from dataclasses import dataclass as dc
-        
+
         @dc
         class ApiKeyInfo:
             """Container for API key information."""
             key_id: str
             user_id: str
             username: str | None
+            user_code: str | None
             name: str | None
             host_name: str | None
             is_active: bool
@@ -3569,16 +3588,21 @@ class SimulatedAuthRepository:
             last_used_at: datetime | None
             last_used_ip: str | None
             expires_at: datetime | None
-        
+
         with self.state.lock:
             result: list[ApiKeyInfo] = []
             for key_id, key_data in self.state.api_keys.items():
-                user_id = key_data.get('user_id', '')
-                user = self.state.users.get(user_id)
+                if not include_inactive and not key_data.get('is_active', False):
+                    continue
+                if user_id and key_data.get('user_id') != user_id:
+                    continue
+                uid = key_data.get('user_id', '')
+                user = self.state.users.get(uid)
                 result.append(ApiKeyInfo(
                     key_id=key_id,
-                    user_id=user_id,
+                    user_id=uid,
                     username=user.username if user else None,
+                    user_code=user.user_code if user else None,
                     name=key_data.get('name'),
                     host_name=key_data.get('host_name'),
                     is_active=key_data.get('is_active', False),
@@ -3589,30 +3613,238 @@ class SimulatedAuthRepository:
                     last_used_ip=key_data.get('last_used_ip'),
                     expires_at=key_data.get('expires_at'),
                 ))
-            # Sort by created_at desc
             result.sort(key=lambda k: k.created_at or datetime.min.replace(tzinfo=UTC), reverse=True)
             return result
 
     def approve_api_key(self, key_id: str, approver_user_id: str) -> bool:
         """Approve an API key.
-        
+
         Args:
             key_id: ID of the key to approve.
             approver_user_id: User ID of the admin approving.
-            
+
         Returns:
-            True if approved, False if key not found.
+            True if approved, False if key not found or already approved.
+        """
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if key_data is None:
+                return False
+            if key_data.get('approved_at') is not None:
+                return False  # Already approved — mirrors real MySQL WHERE approved_at IS NULL
+            key_data['approved_at'] = datetime.now(UTC)
+            key_data['approved_by'] = approver_user_id
+            key_data['is_active'] = True
+            return True
+
+    def verify_api_key(self, key_id: str, secret: str) -> str | None:
+        """Verify an API key and return the associated user_id.
+
+        In simulation mode the stored sentinel hash ($simulated$<secret>) is
+        compared directly rather than using bcrypt, keeping dev server fast.
+
+        Args:
+            key_id: The public key identifier.
+            secret: The plaintext secret to verify.
+
+        Returns:
+            user_id if the key is valid, active, approved, and not expired.
+            None otherwise.
+        """
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if not key_data:
+                return None
+            if not key_data.get('is_active'):
+                return None
+            expires_at = key_data.get('expires_at')
+            if expires_at and expires_at < datetime.now(UTC):
+                return None
+            # Compare sentinel hash (simulated env only)
+            stored_hash = key_data.get('key_secret_hash', '')
+            expected_hash = "$simulated$" + secret
+            if stored_hash != expected_hash:
+                return None
+            # Update last_used_at
+            key_data['last_used_at'] = datetime.now(UTC)
+            return str(key_data.get('user_id'))
+
+    def get_api_key_secret_hash(self, key_id: str) -> str | None:
+        """Get the secret hash for an API key (for HMAC verification).
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            Secret hash if key is active and approved, None otherwise.
+
+        Raises:
+            KeyPendingApprovalError: If key exists but is not yet approved.
+        """
+        from pulldb.domain.errors import KeyPendingApprovalError
+
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if not key_data:
+                return None
+            if key_data.get('approved_at') is None:
+                raise KeyPendingApprovalError(key_id)
+            if not key_data.get('is_active'):
+                return None
+            expires_at = key_data.get('expires_at')
+            if expires_at and expires_at < datetime.now(UTC):
+                return None
+            return str(key_data.get('key_secret_hash', ''))
+
+    def get_api_key_secret(self, key_id: str) -> str | None:
+        """Get the plaintext secret for an API key (for HMAC verification).
+
+        In simulation mode the plaintext secret is stored directly in state.
+        In production it would be decrypted by decrypt_secret().
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            Plaintext secret if key is active and approved, None if not found.
+
+        Raises:
+            KeyPendingApprovalError: If key exists but is not yet approved.
+            KeyRevokedError: If key has been revoked (is_active=False).
+        """
+        from pulldb.domain.errors import KeyPendingApprovalError, KeyRevokedError
+
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if not key_data:
+                return None
+            if key_data.get('approved_at') is None:
+                raise KeyPendingApprovalError(key_id)
+            if not key_data.get('is_active'):
+                raise KeyRevokedError(key_id)
+            expires_at = key_data.get('expires_at')
+            if expires_at and expires_at < datetime.now(UTC):
+                return None
+            return str(key_data.get('key_secret', ''))
+
+    def reactivate_api_key(self, key_id: str) -> bool:
+        """Reactivate a revoked API key.
+
+        Only reactivates keys that have been previously approved.
+        Keys that were never approved must go through the approval process.
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            True if reactivated, False if not found or never approved.
+        """
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if not key_data:
+                return False
+            if key_data.get('approved_at') is None:
+                return False  # Never approved — mirrors real WHERE approved_at IS NOT NULL
+            key_data['is_active'] = True
+            return True
+
+    def delete_api_key(self, key_id: str) -> bool:
+        """Delete a single API key permanently.
+
+        Args:
+            key_id: The public key identifier to delete.
+
+        Returns:
+            True if deleted, False if not found.
         """
         with self.state.lock:
             if key_id in self.state.api_keys:
-                self.state.api_keys[key_id]['approved_at'] = datetime.now(UTC)
-                self.state.api_keys[key_id]['approved_by'] = approver_user_id
-                self.state.api_keys[key_id]['is_active'] = True
+                del self.state.api_keys[key_id]
                 return True
             return False
 
+    def delete_api_keys_for_user(self, user_id: str) -> int:
+        """Delete all API keys for a user.
 
-class SimulatedAuditRepository:
+        Used when deleting a user account.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Number of keys deleted.
+        """
+        with self.state.lock:
+            to_delete = [
+                k for k, v in self.state.api_keys.items()
+                if v.get('user_id') == user_id
+            ]
+            for k in to_delete:
+                del self.state.api_keys[k]
+            return len(to_delete)
+
+    def count_pending_api_keys_by_user(self, user_id: str) -> int:
+        """Count pending API keys for a specific user.
+
+        Args:
+            user_id: The user ID to check.
+
+        Returns:
+            Number of pending (unapproved) keys for this user.
+        """
+        with self.state.lock:
+            return sum(
+                1 for v in self.state.api_keys.values()
+                if v.get('user_id') == user_id and v.get('approved_at') is None
+            )
+
+    def update_api_key_last_used(
+        self, key_id: str, ip_address: str | None = None
+    ) -> None:
+        """Update last_used_at and last_used_ip for an API key.
+
+        Args:
+            key_id: The public key identifier.
+            ip_address: IP address of the request (optional).
+        """
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if key_data:
+                key_data['last_used_at'] = datetime.now(UTC)
+                key_data['last_used_ip'] = ip_address
+
+    def delete_expired_pending_keys(self, max_age_days: int = 7) -> int:
+        """Delete pending keys that were never approved.
+
+        Args:
+            max_age_days: Maximum age in days for pending keys.
+
+        Returns:
+            Number of keys deleted.
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
+        with self.state.lock:
+            to_delete = [
+                k for k, v in self.state.api_keys.items()
+                if v.get('approved_at') is None
+                and v.get('created_at') is not None
+                and v['created_at'] < cutoff
+            ]
+            for k in to_delete:
+                del self.state.api_keys[k]
+            return len(to_delete)
+
+    def migrate_encrypt_existing_keys(self) -> int:
+        """No-op in simulation mode — returns 0.
+
+        The real implementation encrypts plaintext key_secret rows in MySQL.
+        Simulation stores secrets in plaintext by design (no PULLDB_KEY_ENCRYPTION_KEY
+        required in dev), so there is nothing to migrate.
+
+        Returns:
+            0 — no rows updated.
+        """
+        return 0
     """In-memory implementation of AuditRepository for simulation mode.
     
     Thread-safe using RLock from SimulationState.
