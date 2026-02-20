@@ -522,8 +522,15 @@ async def get_admin_task_page(
 ) -> Response:
     """Render admin task status page with HTMX polling."""
     from pulldb.infra.mysql import AdminTaskRepository
-    
-    admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+
+    # In simulation mode state.job_repo.pool is None (no live MySQL).  Fall
+    # back to SimulatedAdminTaskRepository so the task status page works in
+    # dev without crashing.
+    if getattr(state.job_repo, 'pool', None) is None:
+        from pulldb.simulation.adapters.mock_mysql import SimulatedAdminTaskRepository
+        admin_task_repo: Any = SimulatedAdminTaskRepository()
+    else:
+        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
     task = admin_task_repo.get_task(task_id)
     
     if not task:

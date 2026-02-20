@@ -444,5 +444,103 @@ class TestSimulatedAuthRepository(unittest.TestCase):
         self.assertEqual(results, [])
 
 
+class TestSimulatedAuthRepositoryHostUserMethods(unittest.TestCase):
+    """Tests for count_users_for_host and get_users_for_host (admin host detail page)."""
+
+    def setUp(self) -> None:
+        self.state = get_simulation_state()
+        self.state.clear()
+        self.repo = SimulatedAuthRepository()
+        self.user_repo = SimulatedUserRepository()
+        from pulldb.simulation.adapters.mock_mysql import SimulatedHostRepository
+        self.host_repo = SimulatedHostRepository()
+
+        # Create two hosts
+        self.host_repo.add_host("db-primary.example.com", 4, None, host_id="host-001")
+        self.host_repo.add_host("db-secondary.example.com", 4, None, host_id="host-002")
+
+        # Create three users
+        self.alice = self.user_repo.create_user("alice", "alice1")
+        self.bob = self.user_repo.create_user("bob", "bob111")
+        self.carol = self.user_repo.create_user("carol", "carol1")
+
+    def _assign_hosts(self, user_id: str, host_ids: list, default: str | None) -> None:
+        self.repo.set_user_hosts(user_id, host_ids, default)
+
+    # --- count_users_for_host ---
+
+    def test_count_users_for_host_zero_when_none_assigned(self) -> None:
+        count = self.repo.count_users_for_host("host-001")
+        self.assertEqual(count, 0)
+
+    def test_count_users_for_host_one_user(self) -> None:
+        self._assign_hosts(self.alice.user_id, ["host-001"], "host-001")
+        self.assertEqual(self.repo.count_users_for_host("host-001"), 1)
+
+    def test_count_users_for_host_multiple_users(self) -> None:
+        self._assign_hosts(self.alice.user_id, ["host-001"], "host-001")
+        self._assign_hosts(self.bob.user_id, ["host-001", "host-002"], "host-001")
+        self._assign_hosts(self.carol.user_id, ["host-002"], "host-002")
+        self.assertEqual(self.repo.count_users_for_host("host-001"), 2)
+        self.assertEqual(self.repo.count_users_for_host("host-002"), 2)
+
+    def test_count_users_for_host_nonexistent_host(self) -> None:
+        self._assign_hosts(self.alice.user_id, ["host-001"], "host-001")
+        self.assertEqual(self.repo.count_users_for_host("host-999"), 0)
+
+    def test_count_does_not_double_count_same_user(self) -> None:
+        """A user assigned to host-001 only counts once even with multiple host entries."""
+        self._assign_hosts(self.alice.user_id, ["host-001", "host-002"], "host-001")
+        self.assertEqual(self.repo.count_users_for_host("host-001"), 1)
+
+    # --- get_users_for_host ---
+
+    def test_get_users_for_host_empty(self) -> None:
+        result = self.repo.get_users_for_host("host-001")
+        self.assertEqual(result, [])
+
+    def test_get_users_for_host_returns_dict_with_required_keys(self) -> None:
+        self._assign_hosts(self.alice.user_id, ["host-001"], "host-001")
+        result = self.repo.get_users_for_host("host-001")
+        self.assertEqual(len(result), 1)
+        row = result[0]
+        self.assertIn("user_id", row)
+        self.assertIn("username", row)
+        self.assertIn("is_default", row)
+
+    def test_get_users_for_host_correct_values(self) -> None:
+        self._assign_hosts(self.alice.user_id, ["host-001"], "host-001")
+        result = self.repo.get_users_for_host("host-001")
+        self.assertEqual(result[0]["user_id"], self.alice.user_id)
+        self.assertEqual(result[0]["username"], "alice")
+        self.assertIsInstance(result[0]["is_default"], bool)
+
+    def test_get_users_for_host_sorted_by_username(self) -> None:
+        self._assign_hosts(self.carol.user_id, ["host-001"], "host-001")
+        self._assign_hosts(self.alice.user_id, ["host-001"], "host-001")
+        self._assign_hosts(self.bob.user_id, ["host-001"], "host-001")
+        result = self.repo.get_users_for_host("host-001")
+        names = [r["username"] for r in result]
+        self.assertEqual(names, sorted(names))
+
+    def test_get_users_for_host_excludes_unassigned_users(self) -> None:
+        self._assign_hosts(self.alice.user_id, ["host-001"], "host-001")
+        # bob not assigned to host-001
+        result = self.repo.get_users_for_host("host-001")
+        usernames = [r["username"] for r in result]
+        self.assertNotIn("bob", usernames)
+
+    def test_get_users_for_host_is_default_true(self) -> None:
+        self._assign_hosts(self.alice.user_id, ["host-001"], "host-001")
+        result = self.repo.get_users_for_host("host-001")
+        self.assertTrue(result[0]["is_default"])
+
+    def test_get_users_for_host_is_default_false_when_different_default(self) -> None:
+        self._assign_hosts(self.alice.user_id, ["host-001", "host-002"], "host-002")
+        result = self.repo.get_users_for_host("host-001")
+        self.assertEqual(len(result), 1)
+        self.assertFalse(result[0]["is_default"])
+
+
 if __name__ == "__main__":
     unittest.main()

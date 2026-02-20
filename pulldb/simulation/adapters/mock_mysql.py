@@ -41,6 +41,14 @@ logger = logging.getLogger(__name__)
 class SimulatedJobRepository:
     """In-memory implementation of JobRepository."""
 
+    # Sentinel so routes that do `AdminTaskRepository(state.job_repo.pool)` or
+    # `DisallowedUserRepository(state.job_repo.pool)` don't raise AttributeError.
+    # The constructors of those real repos accept None without crashing; only
+    # their *methods* (which open a DB connection) will fail — and all callers
+    # of those repos in admin/routes.py are wrapped in try/except, except for
+    # get_admin_task_page which is guarded separately (see routes.py).
+    pool = None
+
     def __init__(self) -> None:
         """Initialize the repository with shared simulation state."""
         self.state = get_simulation_state()
@@ -2694,6 +2702,44 @@ class SimulatedHostRepository:
         """Get all hosts (alias for get_all_hosts)."""
         return self.get_all_hosts()
 
+    def list_databases(self, hostname: str) -> list[str]:
+        """Return database names visible on a host in simulation mode.
+
+        The real implementation opens a direct MySQL connection to the host and
+        runs ``SHOW DATABASES``, filtering out system schemas.  In simulation
+        mode the worker never runs, so there is no live MySQL to query.
+        Instead we derive a plausible list from two sources:
+
+          1. ``state.staging_databases[hostname]`` — staging DBs created by the
+             simulated staging lifecycle.
+          2. ``state.jobs`` — target database names from completed/deployed jobs
+             on this host.
+
+        System schemas are always excluded.
+
+        Args:
+            hostname: Canonical hostname of the database server to query.
+
+        Returns:
+            Sorted list of database names, excluding system schemas.
+        """
+        _PROTECTED = frozenset({
+            'information_schema', 'mysql', 'performance_schema', 'sys', 'pulldb',
+        })
+        with self.state.lock:
+            dbs: set[str] = set()
+            # Source 1: staging databases
+            for db in self.state.staging_databases.get(hostname, set()):
+                if db.lower() not in _PROTECTED:
+                    dbs.add(db)
+            # Source 2: target names from jobs on this host
+            for job in self.state.jobs.values():
+                if getattr(job, 'dbhost', None) == hostname and getattr(job, 'target', None):
+                    db = job.target
+                    if db.lower() not in _PROTECTED:
+                        dbs.add(db)
+        return sorted(dbs)
+
     def database_exists(self, hostname: str, db_name: str) -> bool:
         """Check if a database exists on a host.
 
@@ -3843,6 +3889,61 @@ class SimulatedAuthRepository:
             0 — no rows updated.
         """
         return 0
+
+    # =========================================================================
+    # Host↔User Assignment Methods (used by admin host detail page)
+    # =========================================================================
+
+    def count_users_for_host(self, host_id: str) -> int:
+        """Count users assigned to a specific host.
+
+        Mirrors: SELECT COUNT(*) FROM user_hosts WHERE host_id = %s
+
+        Args:
+            host_id: The ID of the host to count users for.
+
+        Returns:
+            Number of users with this host in their host assignment list.
+        """
+        with self.state.lock:
+            count = 0
+            for assignments in self.state.user_hosts.values():
+                for uh in assignments:
+                    if uh.get('host_id') == host_id:
+                        count += 1
+                        break  # count each user once even if assigned multiple times
+            return count
+
+    def get_users_for_host(self, host_id: str) -> list[dict]:
+        """Get all users assigned to a specific host.
+
+        Mirrors:
+            SELECT u.user_id, u.username, uh.is_default
+            FROM user_hosts uh
+            JOIN auth_users u ON u.user_id = uh.user_id
+            WHERE uh.host_id = %s
+            ORDER BY u.username
+
+        Args:
+            host_id: The ID of the host to get users for.
+
+        Returns:
+            List of dicts with user_id, username, is_default keys.
+        """
+        with self.state.lock:
+            result: list[dict] = []
+            for user_id, assignments in self.state.user_hosts.items():
+                for uh in assignments:
+                    if uh.get('host_id') == host_id:
+                        user = self.state.users.get(user_id)
+                        if user:
+                            result.append({
+                                'user_id': user.user_id,
+                                'username': user.username,
+                                'is_default': bool(uh.get('is_default', False)),
+                            })
+                        break  # each user appears once per host
+            return sorted(result, key=lambda u: u['username'])
 
 
 class SimulatedAuditRepository:

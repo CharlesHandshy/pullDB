@@ -6,6 +6,164 @@
 
 ---
 
+## 2026-02-21 | Full-page simulation audit — close all page-coverage gaps
+
+### Context
+User requested a full audit of all web pages to ensure simulation covers every
+route handler.  Previous session audited `SimulatedAuthRepository` in isolation;
+this session extended coverage to every feature area.
+
+### What Was Done
+- **Reconnaissance**: mapped all 10 web-feature areas + their route files against
+  the 9 simulated-repository classes in `mock_mysql.py`
+- **Identified & closed 5 gaps:**
+  1. `SimulatedAuthRepository.count_users_for_host` + `get_users_for_host` —
+     missing methods for the admin host-detail page user list (admin/routes.py
+     line ~1838 — guarded by hasattr, so silently returned empty; now returns
+     real data)
+  2. `SimulatedHostRepository.list_databases` — completely missing, caused
+     `AttributeError` crash on database-discovery page
+     (`database_discovery_routes.py:81`, unguarded)
+  3. `SimulatedJobRepository.pool = None` — routes do
+     `AdminTaskRepository(state.job_repo.pool)` before any try/except; the
+     missing attr raised `AttributeError` before any guard ran
+  4. `get_admin_task_page` route guard — the only unguarded crash path after
+     fixing pool; now falls back to `SimulatedAdminTaskRepository` in dev
+  5. Added `pool = None` sentinel enabling all try/except-guarded admin and
+     disallowed-user routes to degrade gracefully without crashing
+- **25 new tests** in `test_simulated_auth_repository.py` and new
+  `test_simulated_host_repository.py`; suite grew 523 → 548 all passing
+
+### Rationale
+- FAIL HARD: silence-on-crash gaps are root-cause bugs, not acceptable
+- Simulation code only touched; no production-path changes except the minimal
+  route guard for the one truly unguarded crash (simulation detection pattern)
+- Root cause fixed (AttributeError before try/except) rather than patching
+  individual callers
+
+### Files Modified
+- `pulldb/simulation/adapters/mock_mysql.py` (3 new simulation methods + pool sentinel)
+- `pulldb/web/features/admin/routes.py` (simulation guard added to `get_admin_task_page`)
+- `tests/unit/simulation/test_simulated_auth_repository.py` (new host-user test class)
+- `tests/unit/simulation/test_simulated_host_repository.py` (new — list_databases + pool)
+
+---
+
+## 2026-02-20 | Simulation audit — SimulatedAuthRepository parity with AuthRepository
+
+### Context
+User requested a full audit of the dev-simulation layer to bring it current with
+the production codebase without touching any production/real code.
+
+### What Was Done
+- Full reconnaissance of `pulldb/simulation/adapters/mock_mysql.py`
+  (`SimulatedAuthRepository`) vs ground-truth `pulldb/auth/repository.py`
+- Identified 10 missing methods and 2 signature mismatches
+- **Fixed `create_api_key`**: added `created_from_ip`, `auto_approve`,
+  `approved_by` params; `is_active` / `approved_at` now respect the
+  `auto_approve` flag (previously always auto-approved)
+- **Fixed `get_all_api_keys`**: added `include_inactive` / `user_id` filter
+  params and `user_code` field on return dataclass
+- **Fixed `approve_api_key`**: guards against double-approval
+- **Added 10 missing methods**: `verify_api_key`, `get_api_key_secret_hash`,
+  `get_api_key_secret`, `reactivate_api_key`, `delete_api_key`,
+  `delete_api_keys_for_user`, `count_pending_api_keys_by_user`,
+  `update_api_key_last_used`, `delete_expired_pending_keys`,
+  `migrate_encrypt_existing_keys` (no-op — encryption not needed in simulation)
+
+### Rationale
+- **FAIL HARD**: simulation methods that silently diverge from the real interface
+  cause integration tests to give false confidence — parity is mandatory
+- **Root cause fixing**: fixed the divergence at the source rather than
+  adding workarounds in tests
+- Simulation-only changes: no production files modified
+
+### Files Modified
+- `pulldb/simulation/adapters/mock_mysql.py` (266 insertions, 34 deletions)
+
+### Outcome
+- Commit `9692137` on `dev/v1.3.0-optimization`
+- 465 unit tests passing
+
+---
+
+## 2026-02-20 | Key rotation audit remediation (11 findings)
+
+### Context
+Full code audit of key rotation changes (commit `7b09e6c`) found 2 bugs, 6 should-fix, 3 missing items. User: "Have the team proceed."
+
+### What Was Done
+- **B1** (`api/main.py`, `admin_commands.py`): Wrapped `get_old_encryption_key()` / `is_rotation_in_progress()` callers in `try/except ValueError` — a malformed `PULLDB_KEY_ENCRYPTION_KEY_OLD` now produces a clean error message at the CLI and a graceful degradation (`rotation_in_progress=False` + WARNING log) at the API instead of a traceback / HTTP 500
+- **B2** (`admin_commands.py`): CLI help text for `keys encrypt-secrets` now accurately describes rotation mode behaviour; no longer falsely states "already-encrypted rows are always skipped"
+- **SF1** (`key_encryption.py`): Extracted `_b64_decode()` — the strip-and-repad base64 logic is now a single function used by both `_decode_key` and `_decode_blob`
+- **SF2** (`key_encryption.py`): `_try_decrypt()` now catches `(InvalidTag, ValueError)` instead of bare `Exception`; programming errors propagate instead of being silently swallowed
+- **SF3** (`key_encryption.py`): Added `_encrypt_with_key(plaintext, key)` private helper; `reencrypt_if_needed()` calls it with the already-decoded key rather than calling `encrypt_secret()` which re-decodes the env var on every row in migration loops
+- **SF4** (`admin_commands.py`): Dry-run rotation output now notes that the "total encrypted" count includes already-rotated rows so operators don't overestimate remaining work
+- **SF6** (`test_key_encryption.py`): Removed dead `_env_with_key()` helper
+- **M1** (`key_encryption.py`, `api/main.py`): Added `log_startup_state()` function; called from `_initialize_real_state()` — operators see AES status + rotation warning in service logs at every start without querying the API
+- **M2** (`test_key_encryption.py`): Added `test_raises_value_error_when_old_key_invalid` to `TestIsRotationInProgress`
+- **M3** (`repository.py`): Clarified `migrate_encrypt_existing_keys()` docstring — "returned 0 = rotation complete" is valid because a single call drains the full table
+
+### Rationale
+- **FAIL HARD**: B1 ensures invalid key config always surfaces as an actionable message rather than a traceback
+- **Root cause fix**: SF2 narrows exception scope — swallowing all `Exception` was a latent correctness risk
+- **SF3**: Avoiding repeated env-var reads in a migration loop is a performance and correctness principle (no TOCTOU between reading primary key and using it per row)
+
+### Files Modified
+- `pulldb/infra/key_encryption.py`
+- `pulldb/api/main.py`
+- `pulldb/cli/admin_commands.py`
+- `pulldb/auth/repository.py`
+- `tests/unit/infra/test_key_encryption.py`
+
+### Metrics
+- 465 unit tests passing (was 464 after rotation feature, +1 for M2)
+- Commit: `5165f7e`
+
+---
+
+## 2026-02-20 | Key rotation via PULLDB_KEY_ENCRYPTION_KEY_OLD
+
+### Context
+User asked "Let's do it now" to implement the key rotation feature discussed as the last missing piece of the AES-256-GCM encryption work (Phase 6).
+
+### What Was Done
+- **`pulldb/infra/key_encryption.py`**: Rewrote to support two-key rotation
+  - `_decode_key(env_var, raw)` DRY helper (eliminates duplication)
+  - `_OLD_ENV_VAR = "PULLDB_KEY_ENCRYPTION_KEY_OLD"` constant
+  - `get_old_encryption_key()` — same decode contract as primary
+  - `is_rotation_in_progress()` — True when both env vars set
+  - `_try_decrypt(blob, key)` — internal helper returning `bytes | None`
+  - `decrypt_secret()` — now falls back to old key on GCM auth failure
+  - `reencrypt_if_needed(value)` — returns `(new_val, changed)` for migration loop
+  - Module docstring updated with full rotation operator procedure
+- **`pulldb/auth/repository.py`**: Extended `migrate_encrypt_existing_keys()`
+  - Rotation mode: full scan (`WHERE key_secret IS NOT NULL`) to catch old-key rows
+  - Normal mode: fast scan (`NOT LIKE 'aes256gcm:%'`) unchanged
+  - Per-row dispatch: encrypted → `reencrypt_if_needed`; plaintext → `encrypt_secret`
+  - Log message notes rotation pass vs normal pass
+- **`pulldb/api/main.py`**: Added `rotation_in_progress: bool` to `ValidateKeyResponse`
+- **`pulldb/cli/admin_commands.py`**: `keys encrypt-secrets --dry-run` now shows rotation banner, plaintext count, and encrypted-row count when old key is present
+- **Tests**: 17 new rotation tests across 4 new classes: `TestGetOldEncryptionKey`, `TestIsRotationInProgress`, `TestDecryptSecretRotation`, `TestReencryptIfNeeded`
+
+### Rationale
+- **FAIL HARD**: `reencrypt_if_needed` raises `ValueError` rather than silently skipping corrupt rows
+- **Root cause fix**: Two-key fallback means auth never breaks mid-rotation — no need for downtime or risky single-step cutover
+- **GCM tag check is deterministic**: Zero risk of decrypting with the wrong key and returning garbage
+
+### Files Modified
+- `pulldb/infra/key_encryption.py` (major rewrite, +230 lines)
+- `pulldb/auth/repository.py` (migration function extended)
+- `pulldb/api/main.py` (`ValidateKeyResponse` + endpoint)
+- `pulldb/cli/admin_commands.py` (`keys encrypt-secrets --dry-run`)
+- `tests/unit/infra/test_key_encryption.py` (17 new tests, 37 total in file)
+
+### Metrics
+- 464 unit tests passing (was 447 before this session)
+- Commit: `7b09e6c`
+
+---
+
 ## 2026-02-20 | Phase 6: AES-256-GCM at-rest encryption + client config check
 
 ### Context
