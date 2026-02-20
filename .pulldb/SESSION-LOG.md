@@ -6,6 +6,47 @@
 
 ---
 
+## 2026-02-20 | Phase 6: AES-256-GCM at-rest encryption + client config check
+
+### Context
+User chose AES-at-rest for `key_secret` column ("It is more secure I think") and asked to also add a way for clients to verify their stored credentials.
+
+### What Was Done
+- **`pulldb/infra/key_encryption.py`** (NEW): AES-256-GCM module
+  - Wire format: `aes256gcm:<base64url(nonce+ciphertext+tag)>`
+  - `PULLDB_KEY_ENCRYPTION_KEY` env var (base64-encoded 32 bytes)
+  - Passthrough mode when key not configured (dev safety / migration window)
+  - Migration-safe: values without prefix returned unchanged
+- **`pulldb/auth/repository.py`**: transparent encryption at the repo layer
+  - `create_api_key()`: encrypts `key_secret` before INSERT
+  - `get_api_key_secret()`: decrypts after SELECT — callers see plaintext, no changes needed above this layer
+  - New `migrate_encrypt_existing_keys()`: idempotent batch migration, returns count
+- **`pulldb/api/main.py`**: two new endpoints
+  - `GET /api/auth/validate-key`: returns 200 + username/user_code if key accepted
+  - `POST /api/admin/migrate-key-secrets`: admin triggers DB-wide encryption
+- **`pulldb/cli/main.py`**: `pulldb config check` command group
+  - Reads `~/.pulldb/credentials`, calls `/api/auth/validate-key`
+  - Reports ✓/✗ with key ID, username, user_code details
+- **`requirements.txt`**: added `cryptography>=41.0.0`
+- **`tests/unit/infra/test_key_encryption.py`**: 20 unit tests
+
+### Rationale
+- HMAC auth requires plaintext secret → bcrypt unusable → AES-at-rest is correct
+- Prefix sentinel (`aes256gcm:`) allows safe migration of existing rows
+- Encryption is transparent to all callers above the repo layer — zero HMAC logic changes
+- Passthrough mode (no key configured) follows FAIL HARD principle: it makes the intent explicit rather than silently skipping encryption
+- 447 tests passing, commit `e52306a` on `dev/v1.3.0-optimization`
+
+### Files Modified
+- `pulldb/infra/key_encryption.py` (new — AES-256-GCM infra module)
+- `pulldb/auth/repository.py` (encrypt on write, decrypt on read, migration method)
+- `pulldb/api/main.py` (two new endpoints)
+- `pulldb/cli/main.py` (config check command group)
+- `requirements.txt` (cryptography>=41.0.0)
+- `tests/unit/infra/test_key_encryption.py` (new — 20 tests)
+
+---
+
 ## 2026-02-20 | v1.3.0 Optimization Sprint (Phases 0-5)
 
 ### Context
