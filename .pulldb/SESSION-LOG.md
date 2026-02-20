@@ -6,6 +6,147 @@
 
 ---
 
+## 2026-02-21 | Simulation test isolation audit — reset_simulation() enforcement
+
+### Context
+Deep audit requested: "maximum effort to be 10000000% sure we are using mocking
+and temporary memory based on the scenario system. Repeat the loop until no
+additional fixes have been found."
+
+### Root Cause Found
+All simulation setUp() methods called `state.clear()` instead of `reset_simulation()`.
+`state.clear()` only clears data dictionaries. `reset_simulation()` also:
+- Calls `reset_event_bus()` — clears event subscriber list
+- Calls `reset_scenario_manager()` — clears _current_scenario state
+
+Without this, event bus subscribers and scenario manager state leaked between tests.
+
+### What Was Done (3 audit loops)
+
+**Loop 1 — simulation/ and unit/simulation/ directories:**
+- Created `tests/simulation/conftest.py` — autouse `reset_simulation()` safety-net
+- Created `tests/unit/simulation/conftest.py` — autouse `reset_simulation()` safety-net
+- Fixed 5 setUp methods in `test_mock_mysql.py` (state.clear → reset_simulation)
+- Fixed tearDown in `TestOrphanDetectionSimulation` (state.clear → reset_simulation)
+- Fixed setUp in `test_mock_s3.py`, `test_mock_exec.py`
+- Fixed setUp + added tearDown in `test_integration.py`
+- Fixed 2 setUp methods each in `test_simulated_auth_repository.py`,
+  `test_simulated_host_repository.py`
+
+**Loop 2 — qa/admin/ directory:**
+- Fixed 3 setUp methods in `tests/qa/admin/test_user_hosts.py`
+- Added autouse `reset_simulation_state` fixture to `tests/qa/admin/conftest.py`
+
+**Loop 3 — full workspace sweep:**
+- Scanned entire tests/ tree: 0 remaining `state.clear()` calls (except intentional
+  one in `test_integration.py::test_simulation_state_clears` which tests the method)
+- Confirmed `tests/qa/worker/` tests already used `reset_simulation()` inline
+- Added autouse safety-net to `tests/qa/worker/conftest.py` (defense in depth)
+- Confirmed `tests/e2e/` uses session-scoped `reset_simulation()` correctly
+- Confirmed `test_protocol_parity.py` only uses inspect — no state manipulation
+
+### Pre-existing failures (NOT caused by this audit)
+- `tests/qa/admin/test_common.py::TestAdminVersion` — `--version` CLI flag missing
+- `tests/qa/worker/test_executor.py::TestExtractTarArchive` — return type mismatch
+  (function now returns tuple, tests expect str) — confirmed pre-existing via git stash
+
+### Final Results
+- 135 simulation + unit/simulation tests: **all pass**
+- 0 `state.clear()` calls remaining in setUp/tearDown (only in docstrings/comments
+  and one intentional test body)
+- 4 conftest.py files now have autouse `reset_simulation()` safety-nets
+
+### Rationale
+- FAIL HARD: incomplete state reset causes intermittent test failures (order-dependent)
+- Root cause: `state.clear()` was the wrong function — fixed systematically, not patched
+- Defense in depth: autouse fixtures provide a safety-net even if setUp is missing the call
+
+### Files Created
+- `tests/simulation/conftest.py`
+- `tests/unit/simulation/conftest.py`
+
+### Files Modified
+- `tests/simulation/test_mock_mysql.py`
+- `tests/simulation/test_mock_s3.py`
+- `tests/simulation/test_mock_exec.py`
+- `tests/simulation/test_integration.py`
+- `tests/unit/simulation/test_simulated_auth_repository.py`
+- `tests/unit/simulation/test_simulated_host_repository.py`
+- `tests/qa/admin/test_user_hosts.py`
+- `tests/qa/admin/conftest.py`
+- `tests/qa/worker/conftest.py`
+
+## 2026-02-21 | Simulation security audit round 2 — inline repo construction gaps
+
+### Context
+Continuation of simulation security audit. Previous round fixed 2 security gaps
+(`.env` write paths, boto3 call). This round: full scanner sweep found additional
+functional gaps where real repo classes were being instantiated inline in routes
+even though `SimulatedAdminTaskRepository` and `SimulatedDisallowedUserRepository`
+already existed but were never wired in.
+
+### What Was Done
+- Re-ran comprehensive security scanner across all web/API routes
+- Triaged all hits:
+  - `state.pool.connection()` — guarded by `if state.pool is None:` check ✅
+  - `DisallowedUserRepository(state.pool)` in register route — guarded ✅
+  - MySQL connection test route — guarded by `is_mock` credential check ✅
+  - Overlord employee routes — `*.example.com` hostnames prevent real connections ✅
+  - theme_generator.py FILE_WRITE — repo-local static assets, intentional ✅
+  - ENV_WRITE hits at 3157/3508 — scanner false positives (guards > 12-line window) ✅
+- Found and fixed 9 routes that used `AdminTaskRepository(None)` or
+  `DisallowedUserRepository(None)` inline (pool=None sentinel):
+  - Routes failed at DB call time catching with try/except or raising HTTP 500
+  - `SimulatedAdminTaskRepository` and `SimulatedDisallowedUserRepository` existed
+    but were never used (already fully implemented)
+  - Applied consistent guard pattern: `if getattr(state.job_repo, 'pool', None) is None`
+  - Jobs bulk_delete route was completely unguarded (HTTP 500 in simulation)
+- Final scanner: 0 genuine unguarded hits. All 8 remaining hits are false positives.
+- 548 tests pass. Committed as `99677f8`.
+
+### Rationale
+- FAIL HARD: simulation should never expose broken behavior (HTTP 500s)
+- Root cause fixing: found that SimulatedAdminTaskRepository existed but was
+  NEVER USED — fixed the wiring, not just the symptom
+- Complete coverage: "repeat until no additional fixes found" criterion met
+
+### Files Modified
+- `pulldb/web/features/admin/routes.py` — 7 simulation guards added
+- `pulldb/web/features/jobs/routes.py` — 2 simulation guards added
+
+## 2026-02-21 | Simulation security audit — full attack-surface sweep + 2 fixes
+
+### Context
+User requested a "full security audit of the simulation making sure everything has
+a mock so that we are not advertently updating live files nor database."
+
+### What Was Done
+- Ran comprehensive AST/regex scanner (22 threat patterns) across all non-simulation
+  Python files: web routes, api, infra, worker, cli, auth, domain
+- Triaged all scanner hits into false positives vs real risks:
+  - DB layer: safe — `Simulated*` repos injected via `state.*`, real pools never initialized
+  - Worker subprocess/exec: safe — worker NOT started by `dev_server.py`
+  - httpx in restore/routes.py: safe — internal loopback `http://127.0.0.1:8111`
+  - theme_generator.py CSS writes: safe — writes to repo-local `static/css/generated/`
+  - infra/exec.py subprocess: safe — only called from worker code paths
+- Confirmed 2 real security gaps and fixed both:
+  - **GAP 1 (CRITICAL)**: `sync_single_setting` (`POST /settings/{key}/sync`) —
+    third unguarded `.env` write path; `db_to_env` direction called `_write_env_setting()`
+    without simulation guard. Fixed: added `is_simulation_mode()` guard at top of branch.
+  - **GAP 2 (MEDIUM)**: `list_mysql_credential_secrets()` — made real boto3 AWS call
+    on every admin hosts page load even in simulation. Fixed: returns `[]` immediately
+    when `is_simulation_mode()`.
+- All 548 unit tests pass; committed as `c095596`
+
+### Rationale
+- FAIL HARD: closing write paths prevents silent real-world mutations during simulation
+- Root cause fixing: found the third `.env` write path the earlier audit missed;
+  systematically blocked all callers rather than patching one-by-one
+- Principle of least privilege: simulation should never touch production files or AWS
+
+### Files Modified
+- `pulldb/web/features/admin/routes.py` — two simulation guards added (9 insertions)
+
 ## 2026-02-21 | Full-page simulation audit — close all page-coverage gaps
 
 ### Context

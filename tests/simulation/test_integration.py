@@ -33,6 +33,7 @@ import pytest
 from pulldb.domain.config import Config
 from pulldb.domain.models import DBHost, Job, JobStatus
 from pulldb.simulation.core.engine import SimulationEngine
+from pulldb.simulation.core.state import reset_simulation
 
 
 class MockMySQLCursor:
@@ -125,6 +126,8 @@ class TestSimulationIntegration(unittest.TestCase):
     """
 
     def setUp(self):
+        # Full reset: clears state, event bus, and scenario manager
+        reset_simulation()
         self.engine = SimulationEngine()
         self.engine.initialize()
         self.work_dir = tempfile.mkdtemp()
@@ -140,6 +143,8 @@ class TestSimulationIntegration(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.work_dir)
+        # Ensure full reset after each test so no state leaks to next test
+        reset_simulation()
 
     def test_end_to_end_job_execution_with_safe_mocks(self):
         """Test full job execution with properly mocked dependencies.

@@ -28,6 +28,25 @@ from pulldb.domain.models import Job, JobStatus
 
 
 # ---------------------------------------------------------------------------
+# Simulation Safety-Net
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def reset_simulation_state() -> Generator[None, None, None]:
+    """Safety-net: fully reset simulation state before every worker test.
+
+    Calls reset_simulation() (not state.clear()) to ensure event bus
+    subscribers and scenario manager are also cleared between tests.
+    """
+    from pulldb.simulation.core.state import reset_simulation
+
+    reset_simulation()
+    yield
+    reset_simulation()
+
+
+# ---------------------------------------------------------------------------
 # Configuration Constants
 # ---------------------------------------------------------------------------
 

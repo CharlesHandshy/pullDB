@@ -23,15 +23,15 @@ from pulldb.simulation.adapters.mock_mysql import (
     SimulatedAuthRepository,
     SimulatedUserRepository,
 )
-from pulldb.simulation.core.state import get_simulation_state
+from pulldb.simulation.core.state import get_simulation_state, reset_simulation
 
 
 class TestSimulatedAuthRepository(unittest.TestCase):
     """Tests for SimulatedAuthRepository API key management."""
 
     def setUp(self) -> None:
+        reset_simulation()
         self.state = get_simulation_state()
-        self.state.clear()
         self.repo = SimulatedAuthRepository()
         self.user_repo = SimulatedUserRepository()
         self.user = self.user_repo.create_user("testuser", "testu")
@@ -448,8 +448,8 @@ class TestSimulatedAuthRepositoryHostUserMethods(unittest.TestCase):
     """Tests for count_users_for_host and get_users_for_host (admin host detail page)."""
 
     def setUp(self) -> None:
+        reset_simulation()
         self.state = get_simulation_state()
-        self.state.clear()
         self.repo = SimulatedAuthRepository()
         self.user_repo = SimulatedUserRepository()
         from pulldb.simulation.adapters.mock_mysql import SimulatedHostRepository

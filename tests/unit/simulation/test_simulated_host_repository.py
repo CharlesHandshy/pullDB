@@ -18,7 +18,7 @@ from pulldb.simulation.adapters.mock_mysql import (
     SimulatedHostRepository,
     SimulatedJobRepository,
 )
-from pulldb.simulation.core.state import get_simulation_state
+from pulldb.simulation.core.state import get_simulation_state, reset_simulation
 
 
 def _make_job(
@@ -47,8 +47,8 @@ class TestSimulatedHostRepositoryListDatabases(unittest.TestCase):
     """Tests for SimulatedHostRepository.list_databases."""
 
     def setUp(self) -> None:
+        reset_simulation()
         self.state = get_simulation_state()
-        self.state.clear()
         self.repo = SimulatedHostRepository()
         self.job_repo = SimulatedJobRepository()
         # Add a host so the hostname is "registered"
@@ -143,8 +143,8 @@ class TestSimulatedJobRepositoryPoolAttribute(unittest.TestCase):
     """Tests for SimulatedJobRepository.pool sentinel attribute."""
 
     def setUp(self) -> None:
+        reset_simulation()
         self.state = get_simulation_state()
-        self.state.clear()
         self.repo = SimulatedJobRepository()
 
     def test_pool_attribute_exists(self) -> None:
