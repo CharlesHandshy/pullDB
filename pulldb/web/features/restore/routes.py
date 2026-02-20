@@ -30,7 +30,7 @@ from pulldb.domain.errors import (
     UserDisabledError,
 )
 from pulldb.domain.schemas import JobRequest
-from pulldb.domain.services.enqueue import enqueue_job
+from pulldb.worker.enqueue import enqueue_job
 from pulldb.domain.models import User, UserRole
 from pulldb.domain.naming import normalize_customer_name
 from pulldb.web.dependencies import get_api_state, require_login, templates
@@ -146,7 +146,7 @@ async def search_customers(
     Returns a list of customers matching the query prefix or pattern.
     Supports wildcard patterns (* and ?) when detected in query.
     """
-    from pulldb.domain.services.discovery import DiscoveryService
+    from pulldb.worker.discovery import DiscoveryService
     
     service = DiscoveryService()
     is_pattern = '*' in q or '?' in q

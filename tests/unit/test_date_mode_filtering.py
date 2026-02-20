@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from pulldb.domain.services.discovery import (
+from pulldb.worker.discovery import (
     BackupInfo,
     DiscoveryService,
     SearchContext,

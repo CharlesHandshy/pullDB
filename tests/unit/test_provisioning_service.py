@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from pulldb.domain.models import DBHost
-from pulldb.domain.services.provisioning import (
+from pulldb.worker.provisioning import (
     ConnectionTestResult,
     DeleteHostResult,
     HostProvisioningService,

@@ -25,7 +25,7 @@ from pulldb.domain.interfaces import (
 
 
 if TYPE_CHECKING:
-    from pulldb.domain.services.provisioning import HostProvisioningService
+    from pulldb.worker.provisioning import HostProvisioningService
     from pulldb.infra.mysql import JobHistorySummaryRepository, MySQLPool
 
 
@@ -196,7 +196,7 @@ def get_provisioning_service(actor_user_id: str) -> "HostProvisioningService":
         >>> # For Web UI, use session user_id
         >>> service = get_provisioning_service(current_user.user_id)
     """
-    from pulldb.domain.services.provisioning import HostProvisioningService
+    from pulldb.worker.provisioning import HostProvisioningService
 
     host_repo = get_host_repository()
     audit_repo = get_audit_repository()

@@ -2524,7 +2524,7 @@ async def api_rotate_host_secret(
     This is the Web UI API endpoint that wraps the secret rotation service.
     Returns JSON with rotation result, timing information, and any error details.
     """
-    from pulldb.domain.services.secret_rotation import rotate_host_secret
+    from pulldb.worker.secret_rotation import rotate_host_secret
     import time
 
     result_data: dict[str, Any] = {
@@ -6100,7 +6100,7 @@ async def provision_overlord(
     
     Returns JSON with step-by-step results for UI display.
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import is_simulation_mode, get_audit_repository
@@ -6222,7 +6222,7 @@ async def test_overlord_connection(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Test connection to overlord using stored credentials."""
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import is_simulation_mode
@@ -6267,7 +6267,7 @@ async def check_overlord_host_change(
             "new_host": str,
         }
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import is_simulation_mode
@@ -6323,7 +6323,7 @@ async def cleanup_old_overlord_host(
     
     Returns JSON with step-by-step results for UI display.
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import is_simulation_mode, get_audit_repository
@@ -6416,7 +6416,7 @@ async def rotate_overlord_secret(
     
     Returns JSON with step-by-step results for UI display.
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import is_simulation_mode, get_audit_repository
@@ -6539,7 +6539,7 @@ async def deprovision_overlord(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Remove pullDB access to overlord database."""
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import is_simulation_mode, get_audit_repository

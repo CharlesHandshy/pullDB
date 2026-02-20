@@ -40,7 +40,7 @@ from pulldb.api.schemas import (
 from pulldb.api.types import APIState
 from pulldb.domain.config import Config
 from pulldb.domain.models import Job, JobStatus, User
-from pulldb.domain.services.discovery import DiscoveryService
+from pulldb.worker.discovery import DiscoveryService
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
 from pulldb.infra.mysql import (
@@ -3314,7 +3314,7 @@ def _rotate_host_secret(
     user: User,
 ) -> RotateHostSecretResponse:
     """Execute host secret rotation."""
-    from pulldb.domain.services.secret_rotation import rotate_host_secret
+    from pulldb.worker.secret_rotation import rotate_host_secret
 
     # Get host
     if not hasattr(state, "host_repo") or not state.host_repo:

@@ -1740,7 +1740,7 @@ def overlord_provision(
             --host overlord.example.com \\
             --admin-user root
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import (
@@ -1846,7 +1846,7 @@ def overlord_test(json_out: bool) -> None:
     
     Tests connectivity using the configured credential_ref from settings.
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import (
@@ -1936,7 +1936,7 @@ def overlord_deprovision(
     3. Clear overlord settings
     4. Disable overlord feature
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import (

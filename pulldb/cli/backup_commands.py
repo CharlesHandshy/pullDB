@@ -21,7 +21,7 @@ from datetime import datetime
 
 import click
 
-from pulldb.domain.services.discovery import format_size
+from pulldb.worker.discovery import format_size
 from pulldb.infra.s3 import BACKUP_FILENAME_REGEX, S3Client
 
 

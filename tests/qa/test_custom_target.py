@@ -257,7 +257,7 @@ class TestAPILogicConstructTarget:
 
     def test_construct_target_custom_valid(self, sample_user: User) -> None:
         """Custom target is used as-is."""
-        from pulldb.domain.services.enqueue import _construct_target
+        from pulldb.worker.enqueue import _construct_target
         from pulldb.api.schemas import JobRequest
 
         req = JobRequest(
@@ -272,7 +272,7 @@ class TestAPILogicConstructTarget:
 
     def test_construct_target_custom_min_length(self, sample_user: User) -> None:
         """Custom target of 1 char is accepted."""
-        from pulldb.domain.services.enqueue import _construct_target
+        from pulldb.worker.enqueue import _construct_target
         from pulldb.api.schemas import JobRequest
 
         req = JobRequest(
@@ -289,7 +289,7 @@ class TestAPILogicConstructTarget:
         self, sample_user: User
     ) -> None:
         """Custom target is validated as lowercase (normalization happens at CLI/Web layer)."""
-        from pulldb.domain.services.enqueue import _construct_target
+        from pulldb.worker.enqueue import _construct_target
         from pulldb.api.schemas import JobRequest
 
         # API expects lowercase input (CLI/Web normalize before sending)
@@ -305,7 +305,7 @@ class TestAPILogicConstructTarget:
 
     def test_construct_target_auto_generation(self, sample_user: User) -> None:
         """Without custom_target, auto-generates {user_code}{customer}."""
-        from pulldb.domain.services.enqueue import _construct_target
+        from pulldb.worker.enqueue import _construct_target
         from pulldb.api.schemas import JobRequest
 
         req = JobRequest(
@@ -319,7 +319,7 @@ class TestAPILogicConstructTarget:
 
     def test_construct_target_auto_with_suffix(self, sample_user: User) -> None:
         """Without custom_target, suffix is appended."""
-        from pulldb.domain.services.enqueue import _construct_target
+        from pulldb.worker.enqueue import _construct_target
         from pulldb.api.schemas import JobRequest
 
         req = JobRequest(
@@ -334,7 +334,7 @@ class TestAPILogicConstructTarget:
 
     def test_construct_target_qatemplate(self, sample_user: User) -> None:
         """QA template generates {user_code}qatemplate."""
-        from pulldb.domain.services.enqueue import _construct_target
+        from pulldb.worker.enqueue import _construct_target
         from pulldb.api.schemas import JobRequest
 
         req = JobRequest(
@@ -352,10 +352,10 @@ class TestAPILogicCustomerNameCheck:
 
     def test_is_known_customer_exact_match(self) -> None:
         """Returns True for exact customer match."""
-        from pulldb.domain.services.enqueue import _is_known_customer_name
+        from pulldb.worker.enqueue import _is_known_customer_name
 
         with patch(
-            "pulldb.domain.services.discovery.DiscoveryService"
+            "pulldb.worker.discovery.DiscoveryService"
         ) as mock_discovery:
             mock_instance = MagicMock()
             mock_instance.search_customers.return_value = ["acme", "widgets", "corp"]
@@ -365,10 +365,10 @@ class TestAPILogicCustomerNameCheck:
 
     def test_is_known_customer_case_insensitive(self) -> None:
         """Returns True for case-insensitive match."""
-        from pulldb.domain.services.enqueue import _is_known_customer_name
+        from pulldb.worker.enqueue import _is_known_customer_name
 
         with patch(
-            "pulldb.domain.services.discovery.DiscoveryService"
+            "pulldb.worker.discovery.DiscoveryService"
         ) as mock_discovery:
             mock_instance = MagicMock()
             mock_instance.search_customers.return_value = ["Acme", "Widgets"]
@@ -379,10 +379,10 @@ class TestAPILogicCustomerNameCheck:
 
     def test_is_known_customer_no_match(self) -> None:
         """Returns False for non-matching name."""
-        from pulldb.domain.services.enqueue import _is_known_customer_name
+        from pulldb.worker.enqueue import _is_known_customer_name
 
         with patch(
-            "pulldb.domain.services.discovery.DiscoveryService"
+            "pulldb.worker.discovery.DiscoveryService"
         ) as mock_discovery:
             mock_instance = MagicMock()
             mock_instance.search_customers.return_value = ["acme", "widgets"]
@@ -392,10 +392,10 @@ class TestAPILogicCustomerNameCheck:
 
     def test_is_known_customer_partial_not_matched(self) -> None:
         """Partial match is NOT considered a match."""
-        from pulldb.domain.services.enqueue import _is_known_customer_name
+        from pulldb.worker.enqueue import _is_known_customer_name
 
         with patch(
-            "pulldb.domain.services.discovery.DiscoveryService"
+            "pulldb.worker.discovery.DiscoveryService"
         ) as mock_discovery:
             mock_instance = MagicMock()
             mock_instance.search_customers.return_value = ["acme", "acmecorp"]
@@ -406,10 +406,10 @@ class TestAPILogicCustomerNameCheck:
 
     def test_is_known_customer_service_error_returns_false(self) -> None:
         """Returns False on service error (fail open for UX)."""
-        from pulldb.domain.services.enqueue import _is_known_customer_name
+        from pulldb.worker.enqueue import _is_known_customer_name
 
         with patch(
-            "pulldb.domain.services.discovery.DiscoveryService"
+            "pulldb.worker.discovery.DiscoveryService"
         ) as mock_discovery:
             mock_instance = MagicMock()
             mock_instance.search_customers.side_effect = Exception("S3 error")

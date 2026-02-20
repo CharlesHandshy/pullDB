@@ -2610,7 +2610,7 @@ async def api_resubmit_job(
         UserDisabledError,
     )
     from pulldb.domain.schemas import JobRequest
-    from pulldb.domain.services.enqueue import enqueue_job
+    from pulldb.worker.enqueue import enqueue_job
     
     if not hasattr(state, "job_repo") or not state.job_repo:
         return JSONResponse(content={"detail": "Job repository unavailable"}, status_code=503)
