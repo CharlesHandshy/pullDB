@@ -1178,18 +1178,23 @@ def keys_list(username: str | None, show_all: bool, json_out: bool) -> None:
     help="Report how many rows would be encrypted without making changes.",
 )
 def keys_encrypt_secrets(dry_run: bool) -> None:
-    """Encrypt all plaintext key_secret values in the database.
+    """Encrypt plaintext key_secret values; re-key old-key rows during rotation.
 
-    Iterates the api_keys table and AES-256-GCM encrypts every key_secret
-    value that does not already carry the 'aes256gcm:' prefix.  Rows that
-    are already encrypted are skipped — safe to call multiple times.
+    In normal mode: iterates the api_keys table and AES-256-GCM encrypts every
+    key_secret that does not already carry the 'aes256gcm:' prefix.  Already-
+    encrypted rows are skipped.
+
+    In rotation mode (PULLDB_KEY_ENCRYPTION_KEY_OLD is also set): all non-NULL
+    rows are inspected.  Rows encrypted with the old key are re-encrypted with
+    the primary key.  Rows already using the primary key are skipped.
+    Safe to call multiple times in either mode.
 
     Requires PULLDB_KEY_ENCRYPTION_KEY to be set in the server environment.
 
     \b
     Examples:
-        pulldb-admin keys encrypt-secrets           # migrate all plaintext rows
-        pulldb-admin keys encrypt-secrets --dry-run # print count, no changes
+        pulldb-admin keys encrypt-secrets           # migrate / complete rotation
+        pulldb-admin keys encrypt-secrets --dry-run # print counts, no changes
     """
     from pulldb.infra.factory import get_auth_repository
     from pulldb.infra.key_encryption import get_encryption_key, is_rotation_in_progress
@@ -1200,8 +1205,15 @@ def keys_encrypt_secrets(dry_run: bool) -> None:
             "Configure the key before running encryption migration."
         )
 
+    try:
+        rotation = is_rotation_in_progress()
+    except ValueError as exc:
+        raise click.ClickException(
+            f"PULLDB_KEY_ENCRYPTION_KEY_OLD is invalid: {exc}\n"
+            "Ensure it is a base64url-encoded 32-byte key, or unset it to disable rotation mode."
+        ) from exc
+
     auth_repo = get_auth_repository()
-    rotation = is_rotation_in_progress()
 
     if dry_run:
         from pulldb.infra.mysql import TypedTupleCursor
@@ -1236,10 +1248,14 @@ def keys_encrypt_secrets(dry_run: bool) -> None:
                 )
             )
             click.echo(
-                f"  Plaintext rows to encrypt:          {plaintext_count}"
+                f"  Plaintext rows to encrypt:    {plaintext_count}"
             )
             click.echo(
-                f"  Encrypted rows to re-key (approx):  {encrypted_count}"
+                f"  Encrypted rows (total):       {encrypted_count}"
+            )
+            click.echo(
+                "  Note: the encrypted count includes rows already using the new key;"
+                " only old-key rows will be updated."
             )
             click.echo(
                 "  Run without --dry-run to complete the rotation,"

@@ -239,6 +239,11 @@ def _initialize_real_state() -> APIState:
     except Exception as e:
         logger.warning(f"Failed to initialize overlord manager: {e}")
 
+    # Emit encryption / rotation status to the log once at startup so operators
+    # can verify key configuration without querying the API.
+    from pulldb.infra.key_encryption import log_startup_state
+    log_startup_state()
+
     return APIState(
         config=config,
         pool=pool,
@@ -3817,12 +3822,24 @@ async def validate_api_key(user: AuthUser) -> ValidateKeyResponse:
     """
     from pulldb.infra.key_encryption import get_encryption_key, get_old_encryption_key
 
+    encryption_enabled = get_encryption_key() is not None
+    try:
+        rotation_in_progress = get_old_encryption_key() is not None
+    except ValueError:
+        # Misconfigured old key — treat as absent so auth keeps working;
+        # the misconfiguration will surface as an ERROR in log_startup_state().
+        logger.warning(
+            "validate_api_key: %s is set but invalid — treated as absent",
+            "PULLDB_KEY_ENCRYPTION_KEY_OLD",
+        )
+        rotation_in_progress = False
+
     return ValidateKeyResponse(
         valid=True,
         username=user.username,
         user_code=user.user_code,
-        encryption_enabled=get_encryption_key() is not None,
-        rotation_in_progress=get_old_encryption_key() is not None,
+        encryption_enabled=encryption_enabled,
+        rotation_in_progress=rotation_in_progress,
     )
 
 

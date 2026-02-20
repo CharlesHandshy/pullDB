@@ -605,8 +605,13 @@ class AuthRepository:
         Iterates *all* non-NULL rows.  Plaintext rows are encrypted.
         Rows encrypted with the old key are transparently re-encrypted with
         the primary key.  Rows already using the primary key are skipped.
-        Once this method returns 0 (nothing changed), remove the
-        ``PULLDB_KEY_ENCRYPTION_KEY_OLD`` variable to retire the old key.
+        Once this method returns 0 (nothing changed), the pass is complete:
+        every row in the table is encrypted with the primary key.  At that
+        point remove ``PULLDB_KEY_ENCRYPTION_KEY_OLD`` and restart the service
+        to retire the old key.  A single call drains the entire table via
+        the ``fetchmany`` loop, so "returned 0" and "rotation complete" are
+        equivalent — there is no need to run the method a second time to
+        confirm.
 
         This method is idempotent — safe to call multiple times.
 

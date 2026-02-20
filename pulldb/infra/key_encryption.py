@@ -53,6 +53,7 @@ import logging
 import os
 import secrets
 
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,18 @@ _ENV_VAR = "PULLDB_KEY_ENCRYPTION_KEY"
 _OLD_ENV_VAR = "PULLDB_KEY_ENCRYPTION_KEY_OLD"
 _PREFIX = "aes256gcm:"
 _NONCE_BYTES = 12  # 96-bit nonce recommended for AES-GCM
+
+
+# -------------------------------------------------------------------
+# Base64 helper (shared by key decoding and blob decoding)
+# -------------------------------------------------------------------
+
+
+def _b64_decode(s: str) -> bytes:
+    """Base64url-decode *s*, tolerating missing or surplus padding."""
+    stripped = s.rstrip("=")
+    padding = (4 - len(stripped) % 4) % 4
+    return base64.urlsafe_b64decode(stripped + "=" * padding)
 
 
 # -------------------------------------------------------------------
@@ -86,9 +99,7 @@ def _decode_key(env_var: str, raw: str) -> bytes:
         ValueError: If the string isn't valid base64 or doesn't decode to 32 bytes.
     """
     try:
-        stripped = raw.rstrip("=")
-        padding = (4 - len(stripped) % 4) % 4
-        key = base64.urlsafe_b64decode(stripped + "=" * padding)
+        key = _b64_decode(raw)
     except Exception as exc:
         raise ValueError(f"{env_var} is not valid base64: {exc}") from exc
     if len(key) != 32:
@@ -141,25 +152,40 @@ def is_rotation_in_progress() -> bool:
 
 def _decode_blob(value: str) -> bytes:
     """Strip the prefix and base64-decode an encrypted value to raw bytes."""
-    blob_b64 = value[len(_PREFIX):]
-    stripped = blob_b64.rstrip("=")
-    padding = (4 - len(stripped) % 4) % 4
     try:
-        return base64.urlsafe_b64decode(stripped + "=" * padding)
+        return _b64_decode(value[len(_PREFIX):])
     except Exception as exc:
         raise ValueError(f"Malformed encrypted secret (base64 error): {exc}") from exc
 
 
 def _try_decrypt(blob: bytes, key: bytes) -> bytes | None:
-    """Attempt AES-GCM decryption. Returns plaintext bytes or None on failure."""
+    """Attempt AES-GCM decryption.  Returns plaintext bytes or None on failure.
+
+    Only ``InvalidTag`` (authentication failure) and ``ValueError`` (bad input
+    dimensions) are caught.  Other exceptions (e.g. ``MemoryError``) propagate
+    so programming errors are never silently swallowed.
+    """
     if len(blob) < _NONCE_BYTES + 16:
         return None
     nonce = blob[:_NONCE_BYTES]
     ciphertext_with_tag = blob[_NONCE_BYTES:]
     try:
         return AESGCM(key).decrypt(nonce, ciphertext_with_tag, None)
-    except Exception:
+    except (InvalidTag, ValueError):
         return None
+
+
+def _encrypt_with_key(plaintext: str, key: bytes) -> str:
+    """Encrypt *plaintext* with AES-256-GCM using the given *key*.
+
+    Internal helper used by both ``encrypt_secret()`` (which reads the key from
+    the environment) and ``reencrypt_if_needed()`` (which already holds the key
+    in memory, avoiding a redundant env-var read per row in migration loops).
+    """
+    nonce = secrets.token_bytes(_NONCE_BYTES)
+    ciphertext_with_tag = AESGCM(key).encrypt(nonce, plaintext.encode(), None)
+    blob = base64.urlsafe_b64encode(nonce + ciphertext_with_tag).decode()
+    return f"{_PREFIX}{blob}"
 
 
 # -------------------------------------------------------------------
@@ -191,11 +217,7 @@ def encrypt_secret(plaintext: str) -> str:
     key = get_encryption_key()
     if key is None:
         return plaintext
-
-    nonce = secrets.token_bytes(_NONCE_BYTES)
-    ciphertext_with_tag = AESGCM(key).encrypt(nonce, plaintext.encode(), None)
-    blob = base64.urlsafe_b64encode(nonce + ciphertext_with_tag).decode()
-    return f"{_PREFIX}{blob}"
+    return _encrypt_with_key(plaintext, key)
 
 
 def decrypt_secret(value: str) -> str:
@@ -301,10 +323,59 @@ def reencrypt_if_needed(value: str) -> tuple[str, bool]:
     # Primary failed — try old key
     plaintext_bytes = _try_decrypt(blob, old)
     if plaintext_bytes is not None:
-        new_value = encrypt_secret(plaintext_bytes.decode())
+        # Use the already-decoded primary key directly; avoids a second
+        # env-var read + base64 decode inside a potentially large migration loop.
+        new_value = _encrypt_with_key(plaintext_bytes.decode(), primary)
         return new_value, True
 
     raise ValueError(
         "reencrypt_if_needed: neither key could decrypt the value — "
         "data may be corrupted or was encrypted with an unknown key."
     )
+
+
+# -------------------------------------------------------------------
+# Startup diagnostics
+# -------------------------------------------------------------------
+
+
+def log_startup_state() -> None:
+    """Log AES encryption and key-rotation status at service startup.
+
+    Call once during application initialisation (e.g. in ``_initialize_state``)
+    so operators can verify configuration from the service log.
+
+    * INFO  when encryption is active and no rotation is in progress.
+    * WARNING when ``PULLDB_KEY_ENCRYPTION_KEY_OLD`` is set (rotation active).
+    * WARNING when the primary key is absent (plaintext passthrough mode).
+    * ERROR  when either env var is set but contains an invalid key.
+    """
+    try:
+        primary = get_encryption_key()
+    except ValueError as exc:
+        logger.error("key_encryption: invalid %s — %s", _ENV_VAR, exc)
+        return
+
+    if primary is None:
+        logger.warning(
+            "key_encryption: %s is not set — key_secret values are stored in plaintext",
+            _ENV_VAR,
+        )
+        return
+
+    try:
+        old = get_old_encryption_key()
+    except ValueError as exc:
+        logger.error("key_encryption: invalid %s — %s", _OLD_ENV_VAR, exc)
+        return
+
+    if old is not None:
+        logger.warning(
+            "key_encryption: KEY ROTATION IN PROGRESS — %s is set. "
+            "Run 'pulldb-admin keys encrypt-secrets' to complete re-encryption, "
+            "then remove %s.",
+            _OLD_ENV_VAR,
+            _OLD_ENV_VAR,
+        )
+    else:
+        logger.info("key_encryption: AES-256-GCM at-rest encryption active")

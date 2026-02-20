@@ -46,10 +46,6 @@ def _make_key_b64() -> str:
     return base64.urlsafe_b64encode(_s.token_bytes(32)).decode()
 
 
-def _env_with_key(key_b64: str) -> dict[str, str]:
-    return {_ENV_VAR: key_b64}
-
-
 # ---------------------------------------------------------------------------
 # get_encryption_key
 # ---------------------------------------------------------------------------
@@ -284,6 +280,15 @@ class TestIsRotationInProgress:
         monkeypatch.setenv(_ENV_VAR, key1)
         monkeypatch.setenv(_OLD_ENV_VAR, key2)
         assert is_rotation_in_progress() is True
+
+    def test_raises_value_error_when_old_key_invalid(self, monkeypatch):
+        """Invalid PULLDB_KEY_ENCRYPTION_KEY_OLD propagates as ValueError."""
+        import secrets as _s
+        good_key = base64.urlsafe_b64encode(_s.token_bytes(32)).decode()
+        monkeypatch.setenv(_ENV_VAR, good_key)
+        monkeypatch.setenv(_OLD_ENV_VAR, "not-valid-base64!!!")
+        with pytest.raises(ValueError):
+            is_rotation_in_progress()
 
 
 class TestDecryptSecretRotation:
