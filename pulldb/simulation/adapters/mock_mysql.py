@@ -3845,6 +3845,9 @@ class SimulatedAuthRepository:
             0 — no rows updated.
         """
         return 0
+
+
+class SimulatedAuditRepository:
     """In-memory implementation of AuditRepository for simulation mode.
     
     Thread-safe using RLock from SimulationState.
