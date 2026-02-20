@@ -2713,65 +2713,62 @@ def config_check() -> None:
     # ── 1. Check file exists ─────────────────────────────────────────────────
     credentials_path = Path.home() / ".pulldb" / "credentials"
     if not credentials_path.exists():
-        click.echo(
-            click.style("✗ No credentials file found.", fg="red"),
+        raise click.ClickException(
+            f"No credentials file found.\n"
+            f"  Expected : {credentials_path}\n"
+            f"  Fix      : run 'pulldb register' to set up API credentials."
         )
-        click.echo(f"  Expected: {credentials_path}")
-        click.echo("  Run 'pulldb register' to set up API credentials.")
-        raise SystemExit(1)
 
     # ── 2. Check file is parseable ────────────────────────────────────────────
     if not has_api_credentials():
-        click.echo(
-            click.style("✗ Credentials file exists but is missing PULLDB_API_KEY or PULLDB_API_SECRET.", fg="red"),
+        raise click.ClickException(
+            f"Credentials file exists but is missing PULLDB_API_KEY or PULLDB_API_SECRET.\n"
+            f"  File : {credentials_path}\n"
+            f"  Fix  : run 'pulldb register' to regenerate credentials."
         )
-        click.echo(f"  File: {credentials_path}")
-        click.echo("  Run 'pulldb register' to regenerate credentials.")
-        raise SystemExit(1)
 
     key_id, _ = get_api_credentials()
-    click.echo(f"  Credentials file : {credentials_path}")
-    click.echo(f"  Key ID           : {key_id}")
 
     # ── 3. Contact the server ─────────────────────────────────────────────────
     path = "/api/auth/validate-key"
+    base_url = "(not loaded)"
     try:
         base_url, timeout = _load_api_config()
         url = f"{base_url}{path}"
         headers = get_auth_headers(method="GET", path=path, body=None)
         response = requests_module.get(url, headers=headers, timeout=timeout, verify=_TLS_VERIFY)
     except RequestException as exc:
-        click.echo(
-            click.style(f"✗ Cannot connect to API at {base_url}: {exc}", fg="red"),
-        )
-        raise SystemExit(1) from exc
+        raise click.ClickException(
+            f"Cannot connect to API at {base_url}: {exc}"
+        ) from exc
 
     # ── 4. Interpret response ─────────────────────────────────────────────────
     if response.status_code == 200:
         data = response.json()
-        click.echo(
-            click.style("✓ Credentials are valid.", fg="green"),
-        )
+        encrypted = data.get("encryption_enabled", False)
+        enc_mark = click.style("✓ encrypted", fg="green") if encrypted else click.style("⚠ plaintext", fg="yellow")
+        click.echo(click.style("✓ Credentials are valid.", fg="green"))
+        click.echo(f"  File             : {credentials_path}")
+        click.echo(f"  Key ID           : {key_id}")
         click.echo(f"  Username         : {data.get('username', 'unknown')}")
         click.echo(f"  User code        : {data.get('user_code', 'unknown')}")
+        click.echo(f"  Server storage   : {enc_mark}")
     elif response.status_code == 401:
-        click.echo(
-            click.style("✗ Credentials rejected by server (401 Unauthorized).", fg="red"),
+        raise click.ClickException(
+            "Credentials rejected by server (401 Unauthorized).\n"
+            "  The key may be revoked, pending approval, or the secret may be wrong.\n"
+            "  Run 'pulldb register' from this machine to request a new key."
         )
-        click.echo("  The key may be revoked, pending approval, or the secret may be wrong.")
-        click.echo("  Run 'pulldb register' from this machine to request a new key.")
-        raise SystemExit(1)
     elif response.status_code == 403:
-        click.echo(
-            click.style("✗ Credentials rejected by server (403 Forbidden).", fg="red"),
+        raise click.ClickException(
+            "Credentials rejected by server (403 Forbidden).\n"
+            "  Your key may be pending admin approval.\n"
+            "  Ask an admin to run: pulldb-admin keys approve <key_id>"
         )
-        click.echo("  Your key may be pending admin approval.")
-        raise SystemExit(1)
     else:
-        click.echo(
-            click.style(f"✗ Unexpected server response: {response.status_code}", fg="red"),
+        raise click.ClickException(
+            f"Unexpected server response: HTTP {response.status_code}"
         )
-        raise SystemExit(1)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

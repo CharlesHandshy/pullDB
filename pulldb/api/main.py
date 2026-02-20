@@ -3795,7 +3795,9 @@ class ValidateKeyResponse(pydantic.BaseModel):
     valid: bool
     username: str
     user_code: str
-    key_id: str | None = None
+    encryption_enabled: bool
+    """True when the server has PULLDB_KEY_ENCRYPTION_KEY configured and
+    is storing new key_secrets encrypted at rest."""
 
 
 @app.get("/api/auth/validate-key", response_model=ValidateKeyResponse)
@@ -3809,11 +3811,13 @@ async def validate_api_key(user: AuthUser) -> ValidateKeyResponse:
     Requires a valid API key (HMAC or bearer token).  Returns 200 on success
     and 401 if the key is invalid, revoked, or pending approval.
     """
+    from pulldb.infra.key_encryption import get_encryption_key
+
     return ValidateKeyResponse(
         valid=True,
         username=user.username,
         user_code=user.user_code,
-        key_id=getattr(user, "key_id", None),
+        encryption_enabled=get_encryption_key() is not None,
     )
 
 
@@ -3848,7 +3852,7 @@ async def migrate_key_secrets(
         count = await run_in_threadpool(state.auth_repo.migrate_encrypt_existing_keys)
     except RuntimeError as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
 

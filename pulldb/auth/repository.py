@@ -1,8 +1,8 @@
-"""Authentication repository for password and session management.
+"""Authentication repository for password, session, and API key management.
 
-Phase 4: Handles password verification, session creation/validation,
-and 2FA verification. Separate from UserRepository to maintain
-single responsibility.
+Handles password verification, session creation/validation, 2FA verification,
+and API key lifecycle (create, verify, revoke, encrypt-at-rest migration).
+Separate from UserRepository to maintain single responsibility.
 
 HCA Layer: features (pulldb/auth/)
 """
@@ -346,7 +346,10 @@ class AuthRepository:
             approved_by: User ID of admin approving (required if auto_approve=True).
 
         Returns:
-            Tuple of (key_id, secret) - secret is only returned once!
+            Tuple of (key_id, secret) where *secret* is the raw plaintext value
+            returned only at creation time.  The secret is stored AES-256-GCM
+            encrypted at rest (when ``PULLDB_KEY_ENCRYPTION_KEY`` is configured)
+            and is retrievable only via ``get_api_key_secret()`` on the server.
         """
         from pulldb.auth.password import hash_password
 
@@ -604,32 +607,31 @@ class AuthRepository:
                 "Configure the encryption key before running migration."
             )
 
+        _BATCH = 500
         migrated = 0
         with self.pool.connection() as conn:
-            # Fetch all rows that are NOT yet encrypted
             read_cursor = TypedDictCursor(conn.cursor(dictionary=True))
             read_cursor.execute(
                 "SELECT key_id, key_secret FROM api_keys "
                 "WHERE key_secret NOT LIKE 'aes256gcm:%'"
             )
-            rows = read_cursor.fetchall()
-
             write_cursor = TypedTupleCursor(conn.cursor())
-            for row in rows:
-                key_id = row["key_id"]
-                plaintext = row["key_secret"]
-                if plaintext is None:
-                    continue
-                encrypted = encrypt_secret(str(plaintext))
-                write_cursor.execute(
-                    "UPDATE api_keys SET key_secret = %s WHERE key_id = %s",
-                    (encrypted, key_id),
-                )
-                migrated += 1
+            while batch := read_cursor.fetchmany(_BATCH):
+                for row in batch:
+                    key_id = row["key_id"]
+                    plaintext = row["key_secret"]
+                    if plaintext is None:
+                        continue
+                    encrypted = encrypt_secret(str(plaintext))
+                    write_cursor.execute(
+                        "UPDATE api_keys SET key_secret = %s WHERE key_id = %s",
+                        (encrypted, key_id),
+                    )
+                    migrated += 1
+                conn.commit()  # commit each batch
 
-            if migrated:
-                conn.commit()
-                logger.info("migrate_encrypt_existing_keys: encrypted %d key_secret rows", migrated)
+        if migrated:
+            logger.info("migrate_encrypt_existing_keys: encrypted %d key_secret rows", migrated)
 
         return migrated
 

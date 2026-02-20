@@ -35,6 +35,8 @@ import logging
 import os
 import secrets
 
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------
@@ -110,9 +112,6 @@ def encrypt_secret(plaintext: str) -> str:
     if key is None:
         return plaintext
 
-    # Import lazily so the rest of the module is importable without cryptography
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # type: ignore[import-untyped]
-
     nonce = secrets.token_bytes(_NONCE_BYTES)
     aesgcm = AESGCM(key)
     ciphertext_with_tag = aesgcm.encrypt(nonce, plaintext.encode(), None)
@@ -147,11 +146,11 @@ def decrypt_secret(value: str) -> str:
             "Configure the encryption key or restore a plaintext backup."
         )
 
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # type: ignore[import-untyped]
-
     blob_b64 = value[len(_PREFIX):]
     try:
-        blob = base64.urlsafe_b64decode(blob_b64 + "==")
+        stripped = blob_b64.rstrip("=")
+        padding = (4 - len(stripped) % 4) % 4
+        blob = base64.urlsafe_b64decode(stripped + "=" * padding)
     except Exception as exc:
         raise ValueError(f"Malformed encrypted secret (base64 error): {exc}") from exc
 

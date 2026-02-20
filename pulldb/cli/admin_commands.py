@@ -924,8 +924,10 @@ def users_reset_password(username: str, password: str | None) -> None:
 
 @click.group(name="keys", help="Manage API keys for CLI authentication")
 def keys_group() -> None:
-    """API Keys management command group."""
-    pass
+    """API Keys management command group.
+
+    Subcommands: pending, approve, revoke, list, encrypt-secrets
+    """
 
 
 @keys_group.command("pending")
@@ -1167,6 +1169,71 @@ def keys_list(username: str | None, show_all: bool, json_out: bool) -> None:
         click.echo(f"{key['key_id']:<40} {uname:<15} {host:<15} {status:<12} {last_used_str:<20}")
 
     click.echo(f"\nTotal: {len(keys)} key(s)")
+
+
+@keys_group.command("encrypt-secrets")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Report how many rows would be encrypted without making changes.",
+)
+def keys_encrypt_secrets(dry_run: bool) -> None:
+    """Encrypt all plaintext key_secret values in the database.
+
+    Iterates the api_keys table and AES-256-GCM encrypts every key_secret
+    value that does not already carry the 'aes256gcm:' prefix.  Rows that
+    are already encrypted are skipped — safe to call multiple times.
+
+    Requires PULLDB_KEY_ENCRYPTION_KEY to be set in the server environment.
+
+    \b
+    Examples:
+        pulldb-admin keys encrypt-secrets           # migrate all plaintext rows
+        pulldb-admin keys encrypt-secrets --dry-run # print count, no changes
+    """
+    from pulldb.infra.factory import get_auth_repository
+    from pulldb.infra.key_encryption import get_encryption_key
+
+    if get_encryption_key() is None:
+        raise click.ClickException(
+            "PULLDB_KEY_ENCRYPTION_KEY is not set in the server environment.\n"
+            "Configure the key before running encryption migration."
+        )
+
+    auth_repo = get_auth_repository()
+
+    if dry_run:
+        from pulldb.infra.mysql import TypedTupleCursor
+
+        try:
+            with auth_repo.pool.connection() as conn:
+                cur = TypedTupleCursor(conn.cursor())
+                cur.execute(
+                    "SELECT COUNT(*) FROM api_keys "
+                    "WHERE key_secret IS NOT NULL AND key_secret NOT LIKE 'aes256gcm:%'"
+                )
+                row = cur.fetchone()
+                pending = int(row[0]) if row else 0
+        except Exception as exc:
+            raise click.ClickException(f"Failed to count unencrypted rows: {exc}") from exc
+
+        if pending:
+            click.echo(
+                click.style(f"Dry run: {pending} row(s) would be encrypted.", fg="yellow")
+            )
+        else:
+            click.echo(click.style("Dry run: all rows are already encrypted.", fg="green"))
+        return
+
+    try:
+        count = auth_repo.migrate_encrypt_existing_keys()
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if count:
+        click.echo(click.style(f"✓ Encrypted {count} key_secret row(s).", fg="green"))
+    else:
+        click.echo(click.style("✓ All key_secret rows were already encrypted — no changes made.", fg="green"))
 
 
 # =============================================================================
