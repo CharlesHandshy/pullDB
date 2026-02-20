@@ -3798,6 +3798,10 @@ class ValidateKeyResponse(pydantic.BaseModel):
     encryption_enabled: bool
     """True when the server has PULLDB_KEY_ENCRYPTION_KEY configured and
     is storing new key_secrets encrypted at rest."""
+    rotation_in_progress: bool
+    """True when PULLDB_KEY_ENCRYPTION_KEY_OLD is also set, indicating a key
+    rotation is in progress.  Run 'pulldb-admin keys encrypt-secrets' to
+    complete the rotation, then remove PULLDB_KEY_ENCRYPTION_KEY_OLD."""
 
 
 @app.get("/api/auth/validate-key", response_model=ValidateKeyResponse)
@@ -3811,13 +3815,14 @@ async def validate_api_key(user: AuthUser) -> ValidateKeyResponse:
     Requires a valid API key (HMAC or bearer token).  Returns 200 on success
     and 401 if the key is invalid, revoked, or pending approval.
     """
-    from pulldb.infra.key_encryption import get_encryption_key
+    from pulldb.infra.key_encryption import get_encryption_key, get_old_encryption_key
 
     return ValidateKeyResponse(
         valid=True,
         username=user.username,
         user_code=user.user_code,
         encryption_enabled=get_encryption_key() is not None,
+        rotation_in_progress=get_old_encryption_key() is not None,
     )
 
 

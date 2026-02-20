@@ -1192,7 +1192,7 @@ def keys_encrypt_secrets(dry_run: bool) -> None:
         pulldb-admin keys encrypt-secrets --dry-run # print count, no changes
     """
     from pulldb.infra.factory import get_auth_repository
-    from pulldb.infra.key_encryption import get_encryption_key
+    from pulldb.infra.key_encryption import get_encryption_key, is_rotation_in_progress
 
     if get_encryption_key() is None:
         raise click.ClickException(
@@ -1201,6 +1201,7 @@ def keys_encrypt_secrets(dry_run: bool) -> None:
         )
 
     auth_repo = get_auth_repository()
+    rotation = is_rotation_in_progress()
 
     if dry_run:
         from pulldb.infra.mysql import TypedTupleCursor
@@ -1213,13 +1214,40 @@ def keys_encrypt_secrets(dry_run: bool) -> None:
                     "WHERE key_secret IS NOT NULL AND key_secret NOT LIKE 'aes256gcm:%'"
                 )
                 row = cur.fetchone()
-                pending = int(row[0]) if row else 0
+                plaintext_count = int(row[0]) if row else 0
+                if rotation:
+                    # Also count rows encrypted with old key
+                    cur.execute(
+                        "SELECT COUNT(*) FROM api_keys "
+                        "WHERE key_secret LIKE 'aes256gcm:%'"
+                    )
+                    row = cur.fetchone()
+                    encrypted_count = int(row[0]) if row else 0
+                else:
+                    encrypted_count = 0
         except Exception as exc:
-            raise click.ClickException(f"Failed to count unencrypted rows: {exc}") from exc
+            raise click.ClickException(f"Failed to count rows: {exc}") from exc
 
-        if pending:
+        if rotation:
             click.echo(
-                click.style(f"Dry run: {pending} row(s) would be encrypted.", fg="yellow")
+                click.style(
+                    "Rotation in progress — PULLDB_KEY_ENCRYPTION_KEY_OLD is set.",
+                    fg="yellow",
+                )
+            )
+            click.echo(
+                f"  Plaintext rows to encrypt:          {plaintext_count}"
+            )
+            click.echo(
+                f"  Encrypted rows to re-key (approx):  {encrypted_count}"
+            )
+            click.echo(
+                "  Run without --dry-run to complete the rotation,"
+                " then remove PULLDB_KEY_ENCRYPTION_KEY_OLD."
+            )
+        elif plaintext_count:
+            click.echo(
+                click.style(f"Dry run: {plaintext_count} row(s) would be encrypted.", fg="yellow")
             )
         else:
             click.echo(click.style("Dry run: all rows are already encrypted.", fg="green"))
