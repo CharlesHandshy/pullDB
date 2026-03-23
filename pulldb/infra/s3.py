@@ -552,7 +552,7 @@ def discover_latest_backup(
             missing_files=["tar archive"],
         )
 
-    candidates: list[tuple[datetime, str]] = []
+    candidates: list[tuple[datetime, int, str]] = []
     for key in keys:
         filename = key.rsplit("/", 1)[-1]
         parsed = parse_backup_filename(filename)

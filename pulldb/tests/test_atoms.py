@@ -38,7 +38,7 @@ from pulldb.worker.staging import (
 def test_atom_cp_tokens() -> None:
     """Verify tokenization loop logic."""
     # Case 1: Customer with dbhost and overwrite (lowercase only)
-    user, cust, is_qa, suffix, host, date, s3env, over = _tokenize(
+    user, cust, is_qa, suffix, host, date, s3env, over, custom_target = _tokenize(
         ["customer=acme", "dbhost=db1", "overwrite"]
     )
     assert cust == "acme"
@@ -51,7 +51,7 @@ def test_atom_cp_tokens() -> None:
     assert user is None
 
     # Case 2: QA Template
-    user, cust, is_qa, suffix, host, date, s3env, over = _tokenize(["qatemplate"])
+    user, cust, is_qa, suffix, host, date, s3env, over, custom_target = _tokenize(["qatemplate"])
     assert cust is None
     assert is_qa
     assert suffix is None
