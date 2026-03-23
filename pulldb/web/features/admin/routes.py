@@ -423,32 +423,32 @@ async def force_delete_user(
     Creates an async admin task that will be processed by the worker.
     """
     from pulldb.domain.models import AdminTaskType
-    from pulldb.infra.mysql import AdminTaskRepository
-    
+    from pulldb.infra.factory import get_admin_task_repository
+
     if user_id == admin.user_id:
         return {"success": False, "message": "Cannot delete your own account"}
-    
+
     try:
         # Parse JSON body
         body = await request.json()
         confirm_username = body.get("confirm_username", "")
         skip_database_drops = body.get("skip_database_drops", False)
         databases_to_drop = body.get("databases_to_drop", [])
-        
+
         # Get user to validate confirm_username
         user = state.user_repo.get_user_by_id(user_id)
         if not user:
             return {"success": False, "message": "User not found"}
-        
+
         # Validate confirmation
         if confirm_username != user.username:
             return {
                 "success": False,
                 "message": f"Username confirmation doesn't match. Expected '{user.username}'",
             }
-        
+
         # Create admin task
-        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+        admin_task_repo: Any = get_admin_task_repository(state.pool)
         
         # Build parameters
         parameters = {
@@ -484,10 +484,10 @@ async def get_admin_task_json(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Get admin task status as JSON for API polling."""
-    from pulldb.infra.mysql import AdminTaskRepository
-    
+    from pulldb.infra.factory import get_admin_task_repository
+
     try:
-        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+        admin_task_repo: Any = get_admin_task_repository(state.pool)
         task = admin_task_repo.get_task(task_id)
         
         if not task:
@@ -521,9 +521,9 @@ async def get_admin_task_page(
     admin: User = Depends(require_admin),
 ) -> Response:
     """Render admin task status page with HTMX polling."""
-    from pulldb.infra.mysql import AdminTaskRepository
-    
-    admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+    from pulldb.infra.factory import get_admin_task_repository
+
+    admin_task_repo: Any = get_admin_task_repository(state.pool)
     task = admin_task_repo.get_task(task_id)
     
     if not task:
@@ -1588,6 +1588,9 @@ def list_mysql_credential_secrets(prefix: str = "/pulldb/mysql/") -> list[dict[s
     Returns:
         List of dicts with 'name' (full path) and 'display' (short name) keys.
     """
+    from pulldb.infra.factory import is_simulation_mode
+    if is_simulation_mode():
+        return []  # No AWS credentials in simulation; avoid boto3 connection attempt
     import boto3
 
     # Secrets to exclude (service credentials, not host credentials)
@@ -2524,7 +2527,7 @@ async def api_rotate_host_secret(
     This is the Web UI API endpoint that wraps the secret rotation service.
     Returns JSON with rotation result, timing information, and any error details.
     """
-    from pulldb.domain.services.secret_rotation import rotate_host_secret
+    from pulldb.worker.secret_rotation import rotate_host_secret
     import time
 
     result_data: dict[str, Any] = {
@@ -3106,6 +3109,15 @@ async def sync_all_settings_to_env(
     if not db_settings:
         return {"success": False, "error": "No settings in database to sync"}
 
+    # Never write to .env in simulation mode — the production .env lives at
+    # /opt/pulldb.service/.env and must not be touched by a dev session.
+    from pulldb.infra.factory import is_simulation_mode as _is_sim
+    if _is_sim():
+        return {
+            "success": False,
+            "error": "Simulation mode: .env writes are disabled to protect the production environment",
+        }
+
     # Find .env file (shared infra — includes dev fallback)
     env_path = _find_env_file()
     if not env_path:
@@ -3222,8 +3234,11 @@ async def update_setting(
     # stays in sync with the database without requiring a separate
     # "Sync All" step.  Failures here are non-fatal — the DB is the
     # authoritative source; .env will catch up on next explicit sync.
+    # NEVER write to .env in simulation mode — the production .env at
+    # /opt/pulldb.service/.env must not be touched by a dev session.
+    from pulldb.infra.factory import is_simulation_mode as _is_sim
     env_synced = False
-    if meta and not meta.db_only:
+    if meta and not meta.db_only and not _is_sim():
         env_path = _find_env_file()
         if env_path:
             env_var = meta.env_var
@@ -3452,6 +3467,12 @@ async def sync_single_setting(
     env_path = _find_env_file()
 
     if direction == "db_to_env":
+        from pulldb.infra.factory import is_simulation_mode as _is_sim
+        if _is_sim():
+            return {
+                "success": False,
+                "error": "Simulation mode: .env writes are disabled to protect the production environment",
+            }
         # Copy DB value → .env file
         if not hasattr(state, "settings_repo") or not state.settings_repo:
             return {"success": False, "error": "Settings repository not available"}
@@ -4716,13 +4737,13 @@ async def start_user_orphan_scan(
     Returns immediately with task_id for status polling.
     """
     from pulldb.domain.models import AdminTaskType
-    from pulldb.infra.mysql import AdminTaskRepository
-    
+    from pulldb.infra.factory import get_admin_task_repository
+
     try:
         body = await request.json()
         specific_hosts = body.get("hosts")  # Optional: limit to specific hosts
-        
-        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+
+        admin_task_repo: Any = get_admin_task_repository(state.pool)
         
         parameters = {}
         if specific_hosts:
@@ -5254,16 +5275,16 @@ async def api_get_disallowed_users(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Get all disallowed usernames from database.
-    
+
     Returns both hardcoded and admin-added entries.
     """
-    from pulldb.infra.mysql import DisallowedUserRepository
-    
+    from pulldb.infra.factory import get_disallowed_user_repository
+
     if not hasattr(state, "job_repo") or not state.job_repo:
         return {"success": False, "message": "Database not available"}
-    
+
     try:
-        repo = DisallowedUserRepository(state.job_repo.pool)
+        repo: Any = get_disallowed_user_repository(state.pool)
         users = repo.get_all()
         
         return {
@@ -5290,26 +5311,26 @@ async def api_add_disallowed_user(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Add a username to the disallowed list.
-    
+
     Request body: {"username": "...", "reason": "..."}
     """
-    from pulldb.infra.mysql import DisallowedUserRepository
-    
+    from pulldb.infra.factory import get_disallowed_user_repository
+
     if not hasattr(state, "job_repo") or not state.job_repo:
         return {"success": False, "message": "Database not available"}
-    
+
     try:
         body = await request.json()
         username = body.get("username", "").strip().lower()
         reason = body.get("reason", "").strip() or None
-        
+
         if not username:
             return {"success": False, "message": "Username is required"}
-        
+
         if len(username) < 2:
             return {"success": False, "message": "Username must be at least 2 characters"}
-        
-        repo = DisallowedUserRepository(state.job_repo.pool)
+
+        repo: Any = get_disallowed_user_repository(state.pool)
         
         # Check if already exists
         if repo.exists(username):
@@ -5341,16 +5362,16 @@ async def api_remove_disallowed_user(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Remove a username from the disallowed list.
-    
+
     Only non-hardcoded entries can be removed.
     """
-    from pulldb.infra.mysql import DisallowedUserRepository
-    
+    from pulldb.infra.factory import get_disallowed_user_repository
+
     if not hasattr(state, "job_repo") or not state.job_repo:
         return {"success": False, "message": "Database not available"}
-    
+
     try:
-        repo = DisallowedUserRepository(state.job_repo.pool)
+        repo: Any = get_disallowed_user_repository(state.pool)
         success, message = repo.remove(username.lower())
         
         if success:
@@ -5382,13 +5403,13 @@ async def disallowed_users_page(
         DISALLOWED_USERS_HARDCODED,
         MIN_USERNAME_LENGTH,
     )
-    from pulldb.infra.mysql import DisallowedUserRepository
-    
+    from pulldb.infra.factory import get_disallowed_user_repository
+
     # Get database entries
     database_users = []
     if hasattr(state, "job_repo") and state.job_repo:
         try:
-            repo = DisallowedUserRepository(state.job_repo.pool)
+            repo: Any = get_disallowed_user_repository(state.pool)
             all_entries = repo.get_all()
             # Filter to non-hardcoded entries (database-added only)
             database_users = [
@@ -6100,7 +6121,7 @@ async def provision_overlord(
     
     Returns JSON with step-by-step results for UI display.
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import is_simulation_mode, get_audit_repository
@@ -6222,7 +6243,7 @@ async def test_overlord_connection(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Test connection to overlord using stored credentials."""
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import is_simulation_mode
@@ -6267,7 +6288,7 @@ async def check_overlord_host_change(
             "new_host": str,
         }
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import is_simulation_mode
@@ -6323,7 +6344,7 @@ async def cleanup_old_overlord_host(
     
     Returns JSON with step-by-step results for UI display.
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import is_simulation_mode, get_audit_repository
@@ -6416,7 +6437,7 @@ async def rotate_overlord_secret(
     
     Returns JSON with step-by-step results for UI display.
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import is_simulation_mode, get_audit_repository
@@ -6539,7 +6560,7 @@ async def deprovision_overlord(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Remove pullDB access to overlord database."""
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import is_simulation_mode, get_audit_repository

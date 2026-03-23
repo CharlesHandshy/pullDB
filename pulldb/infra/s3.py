@@ -83,7 +83,7 @@ class S3ClientProtocol(Protocol):
 
     def head_object(
         self, bucket: str, key: str, profile: str | None = None
-    ) -> "HeadObjectOutputTypeDef | dict[str, Any]":
+    ) -> HeadObjectOutputTypeDef | dict[str, Any]:
         """Return object metadata (HEAD request).
 
         Args:
@@ -101,7 +101,7 @@ class S3ClientProtocol(Protocol):
 
     def get_object(
         self, bucket: str, key: str, profile: str | None = None
-    ) -> "GetObjectOutputTypeDef | dict[str, Any]":
+    ) -> GetObjectOutputTypeDef | dict[str, Any]:
         """Return object with streaming body.
 
         Args:
@@ -138,24 +138,46 @@ class S3ClientProtocol(Protocol):
         ...
 
 
-BACKUP_FILENAME_REGEX = re.compile(
+# Old format (mydumper 0.9.x): daily_mydumper_<customer>_<ts>Z_<Day>_<host>.tar
+# e.g. daily_mydumper_acme_2026-03-23T07-39-14Z_Monday_db10.tar
+_FORMAT_V1 = re.compile(
     r"^daily_mydumper_(?P<target>.+?)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_[A-Za-z]+_(?:dbimp|db\d+)\.tar$"
 )
 
-# Regex for Production backups (legacy mydumper v0.9)
-# Bucket: pestroutes-rds-backup-prod-vpc-us-east-1-s3
-# Pattern: daily_mydumper_{target}_{ts}_{Day}_dbimp.tar
-PROD_BACKUP_REGEX = re.compile(
-    r"^daily_mydumper_(?P<target>.+?)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_[A-Za-z]+_(?:dbimp|db\d+)\.tar$"
+# New format (mydumper 0.21.1+): daily_mydumper_<host>_<ts>_<Day>_<customer>.tar
+# e.g. daily_mydumper_db10_2026-03-23T07-17-16_Monday_acme.tar
+_FORMAT_V2 = re.compile(
+    r"^daily_mydumper_(?:dbimp|db\d+)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})_[A-Za-z]+_(?P<target>.+?)\.tar$"
 )
 
-# Regex for Staging backups (mydumper v0.19+)
-# Bucket: pestroutesrdsdbs
-# Pattern: daily_mydumper_{target}_{ts}_{Day}_db1.tar (or dbN.tar)
-# Note: Also supports legacy dbimp format if present
-STAGING_BACKUP_REGEX = re.compile(
-    r"^daily_mydumper_(?P<target>.+?)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_[A-Za-z]+_(?:dbimp|db\d+)\.tar$"
-)
+# Backward-compatible alias — matches old format only.
+# Prefer parse_backup_filename() for new code.
+BACKUP_FILENAME_REGEX = _FORMAT_V1
+
+
+def parse_backup_filename(filename: str) -> tuple[str, str] | None:
+    """Parse a backup tar filename and return (target, ts_str).
+
+    Supports both naming conventions:
+    - Old (mydumper 0.9.x):   daily_mydumper_<customer>_<ts>Z_<Day>_<host>.tar
+    - New (mydumper 0.21.1+): daily_mydumper_<host>_<ts>_<Day>_<customer>.tar
+
+    Args:
+        filename: Basename of the tar file (not a full path).
+
+    Returns:
+        ``(target, ts_str)`` where *target* is the customer/database name and
+        *ts_str* is the ISO-8601 timestamp **without** a trailing ``Z``, e.g.
+        ``"2026-03-23T07-17-16"``.  Returns ``None`` for unrecognised names.
+    """
+    m = _FORMAT_V1.match(filename)
+    if m:
+        # V1 captures the Z inside the group — strip it for a uniform return value
+        return m.group("target"), m.group("ts").rstrip("Z")
+    m = _FORMAT_V2.match(filename)
+    if m:
+        return m.group("target"), m.group("ts")
+    return None
 
 
 @dataclass(slots=True)
@@ -507,25 +529,14 @@ def discover_latest_backup(
         },
     )
 
-    # Select regex based on bucket (for filename pattern matching only)
-    # NOTE: format_tag is determined AFTER extraction by analyzing backup contents
-    # (metadata file format), not by S3 bucket. Both buckets can have mixed formats.
-    if bucket == "pestroutes-rds-backup-prod-vpc-us-east-1-s3":
-        regex = PROD_BACKUP_REGEX
-    else:
-        # Default to staging regex for pestroutesrdsdbs and others
-        regex = STAGING_BACKUP_REGEX
-
     # format_tag will be determined post-extraction by _detect_backup_version()
     # Setting to None here - executor.py will detect after extraction
     format_tag = None
 
-    # Optimization: Filter S3 listing by target to avoid scanning entire bucket.
-    # This reduces the search space from all customers (thousands of objects)
-    # to just the specific target's backups.
-    # Note: Both production and staging buckets use a subdirectory per target:
-    # {prefix}{target}/daily_mydumper_{target}_...
-    search_prefix = f"{prefix}{target}/daily_mydumper_{target}_"
+    # Old format: {prefix}{target}/daily_mydumper_{target}_<ts>Z_<Day>_<host>.tar
+    # New format: {prefix}{target}/daily_mydumper_<host>_<ts>_<Day>_{target}.tar
+    # Both live under the same per-target prefix directory.
+    search_prefix = f"{prefix}{target}/"
 
     logger.info("Starting list_keys for bucket=%s prefix=%s", bucket, search_prefix)
     keys = s3.list_keys(bucket, search_prefix, profile=profile)
@@ -544,8 +555,8 @@ def discover_latest_backup(
     candidates: list[tuple[datetime, str]] = []
     for key in keys:
         filename = key.rsplit("/", 1)[-1]
-        match = regex.match(filename)
-        if not match:
+        parsed = parse_backup_filename(filename)
+        if not parsed:
             logger.warning("Regex mismatch: %s", filename)
             # Detect structurally similar filename with bad timestamp to
             # provide clearer diagnostic (test expectation).
@@ -558,11 +569,13 @@ def discover_latest_backup(
                     missing_files=["valid timestamp"],
                 )
             continue  # Ignore unrelated files
-        if match.group("target") != target:
+        file_target, ts_str = parsed
+        if file_target != target:
             continue
-        ts_str = match.group("ts")
+        # Format priority: 1 = new (0.21.1+, host-first), 0 = old (0.9.x, customer-first)
+        fmt_priority = 1 if _FORMAT_V2.match(filename) else 0
         try:
-            ts = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%SZ")
+            ts = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%S")
         except ValueError as e:
             # Malformed timestamp in an otherwise matching filename should
             # surface a specific validation error referencing timestamp.
@@ -571,7 +584,7 @@ def discover_latest_backup(
                 backup_key=key,
                 missing_files=["valid timestamp"],
             ) from e
-        candidates.append((ts, key))
+        candidates.append((ts, fmt_priority, key))
 
     if not candidates:
         raise BackupValidationError(
@@ -580,9 +593,11 @@ def discover_latest_backup(
             missing_files=[f"daily_mydumper_{target}_*.tar"],
         )
 
-    # Select newest by timestamp
-    candidates.sort(key=lambda x: x[0], reverse=True)
-    newest_ts, newest_key = candidates[0]
+    # Select best backup: prefer new format (V2) over old on the same calendar
+    # date; fall back to latest timestamp when dates differ.
+    # Sort key: (date DESC, format_priority DESC, timestamp DESC)
+    candidates.sort(key=lambda x: (x[0].date(), x[1], x[0]), reverse=True)
+    newest_ts, _fmt, newest_key = candidates[0]
 
     # Retrieve size for disk planning
     logger.info("Head object for %s", newest_key)

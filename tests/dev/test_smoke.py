@@ -148,6 +148,10 @@ class _FakeHostRepository:
         """Returns True - always has capacity in smoke test."""
         return True
 
+    def database_exists(self, hostname: str, db_name: str) -> bool:
+        """Returns False - no pre-existing database in smoke test."""
+        return False
+
 
 class _ResponseProtocol(Protocol):
     """Subset of methods returned by the patched requests module."""

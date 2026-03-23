@@ -138,8 +138,17 @@ exclude_dirs = ["tests", "pulldb/tests"]
 skips = ["B101"]  # Skip assert_used check (needed for tests)
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--tb=short",
+    "--strict-markers",
+    "-q",
+]
+asyncio_mode = "auto"
 markers = [
+    "unit: Fast unit tests (no I/O, all external calls mocked)",
     "integration: Integration tests (real database, real AWS)",
+    "slow: Tests that take > 1 second",
     "timeout: Test execution timeout (requires pytest-timeout)",
 ]
 
@@ -203,10 +212,17 @@ ignore_imports = [
     "pulldb.infra.* -> pulldb.domain.overlord",
     "pulldb.infra.* -> pulldb.domain.validation",
     "pulldb.infra.* -> pulldb.domain.color_schemas",
-    "pulldb.infra.* -> pulldb.domain.services.provisioning",
+    # DIP: infra.mysql_hosts uses PROTECTED_DATABASES constant from domain
+    "pulldb.infra.mysql_hosts -> pulldb.domain.constants",
+    # DIP: infra.bootstrap uses SETTING_REGISTRY (deferred import at runtime)
+    "pulldb.infra.bootstrap -> pulldb.domain.settings",
     # Transitive DIP: infra.factory → simulation/auth → domain
     "pulldb.infra.factory -> pulldb.simulation",
     "pulldb.infra.factory -> pulldb.auth.repository",
+    # TYPE_CHECKING only: factory.get_provisioning_service returns HostProvisioningService
+    "pulldb.infra.factory -> pulldb.worker.provisioning",
+    # Deprecated shim: domain.services re-exports from worker for backward compat
+    "pulldb.domain.services -> pulldb.worker.enqueue",
 ]
 
 # Widget boundary: worker.service must not import from pages-layer

@@ -1,11 +1,21 @@
-"""Domain services for pullDB business logic.
+"""Deprecated — import from pulldb.worker instead.
 
-HCA Layer: entities
+HCA Phase 2 migration: all domain/services/* files have moved to
+pulldb/worker/ (features layer).  This shim re-exports the most-used
+symbols for backward compatibility and emits a DeprecationWarning.
 """
 
 from __future__ import annotations
 
-from pulldb.domain.services.enqueue import (
+import warnings
+
+warnings.warn(
+    "pulldb.domain.services is deprecated; import from pulldb.worker instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
+from pulldb.worker.enqueue import (  # noqa: E402, F401
     EnqueueDeps,
     EnqueueResult,
     TargetResult,

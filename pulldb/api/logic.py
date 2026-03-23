@@ -30,7 +30,7 @@ from pulldb.domain.errors import (
 )
 
 # Re-export domain types that existing callers import from here
-from pulldb.domain.services.enqueue import (  # noqa: F401 — re-exports
+from pulldb.worker.enqueue import (  # noqa: F401 — re-exports
     TargetResult,
     check_concurrency_limits as _domain_check_concurrency_limits,
     check_host_active_capacity as _domain_check_host_active_capacity,

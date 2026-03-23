@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 import click
 
 from pulldb import __version__
-from pulldb.cli.auth import get_auth_headers, get_calling_username, get_current_username
+from pulldb.cli.auth import get_auth_headers, get_calling_username, get_current_username, has_api_credentials, get_api_credentials
 from pulldb.cli.parse import CLIParseError, parse_restore_args
 
 # Default timeout for CLI HTTP requests to API (seconds)
@@ -2683,6 +2683,92 @@ def setpass_cmd(ctx: click.Context, current_password: str, new_password: str) ->
 
     except RequestException as exc:
         raise click.ClickException(f"Cannot connect to API: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Config commands
+# ---------------------------------------------------------------------------
+
+
+@cli.group("config", help="Manage and verify pullDB client configuration.")
+def config_group() -> None:
+    """Grouped commands for inspecting and validating the client configuration."""
+
+
+@config_group.command("check", help="Check that locally-stored credentials are valid.")
+def config_check() -> None:
+    """Verify the stored API credentials against the pullDB server.
+
+    Reads ``~/.pulldb/credentials`` and sends a signed request to
+    ``GET /api/auth/validate-key``.  Reports whether the key is accepted by
+    the server, and shows the associated username so the user can confirm they
+    are using the correct account.
+
+    Exit codes:
+      0 - credentials present and accepted by the server
+      1 - credentials missing, rejected, or server unreachable
+    """
+    from pathlib import Path
+
+    # ── 1. Check file exists ─────────────────────────────────────────────────
+    credentials_path = Path.home() / ".pulldb" / "credentials"
+    if not credentials_path.exists():
+        raise click.ClickException(
+            f"No credentials file found.\n"
+            f"  Expected : {credentials_path}\n"
+            f"  Fix      : run 'pulldb register' to set up API credentials."
+        )
+
+    # ── 2. Check file is parseable ────────────────────────────────────────────
+    if not has_api_credentials():
+        raise click.ClickException(
+            f"Credentials file exists but is missing PULLDB_API_KEY or PULLDB_API_SECRET.\n"
+            f"  File : {credentials_path}\n"
+            f"  Fix  : run 'pulldb register' to regenerate credentials."
+        )
+
+    key_id, _ = get_api_credentials()
+
+    # ── 3. Contact the server ─────────────────────────────────────────────────
+    path = "/api/auth/validate-key"
+    base_url = "(not loaded)"
+    try:
+        base_url, timeout = _load_api_config()
+        url = f"{base_url}{path}"
+        headers = get_auth_headers(method="GET", path=path, body=None)
+        response = requests_module.get(url, headers=headers, timeout=timeout, verify=_TLS_VERIFY)
+    except RequestException as exc:
+        raise click.ClickException(
+            f"Cannot connect to API at {base_url}: {exc}"
+        ) from exc
+
+    # ── 4. Interpret response ─────────────────────────────────────────────────
+    if response.status_code == 200:
+        data = response.json()
+        encrypted = data.get("encryption_enabled", False)
+        enc_mark = click.style("✓ encrypted", fg="green") if encrypted else click.style("⚠ plaintext", fg="yellow")
+        click.echo(click.style("✓ Credentials are valid.", fg="green"))
+        click.echo(f"  File             : {credentials_path}")
+        click.echo(f"  Key ID           : {key_id}")
+        click.echo(f"  Username         : {data.get('username', 'unknown')}")
+        click.echo(f"  User code        : {data.get('user_code', 'unknown')}")
+        click.echo(f"  Server storage   : {enc_mark}")
+    elif response.status_code == 401:
+        raise click.ClickException(
+            "Credentials rejected by server (401 Unauthorized).\n"
+            "  The key may be revoked, pending approval, or the secret may be wrong.\n"
+            "  Run 'pulldb register' from this machine to request a new key."
+        )
+    elif response.status_code == 403:
+        raise click.ClickException(
+            "Credentials rejected by server (403 Forbidden).\n"
+            "  Your key may be pending admin approval.\n"
+            "  Ask an admin to run: pulldb-admin keys approve <key_id>"
+        )
+    else:
+        raise click.ClickException(
+            f"Unexpected server response: HTTP {response.status_code}"
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

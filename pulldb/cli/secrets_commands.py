@@ -524,7 +524,7 @@ def rotate_host_secret(
         pulldb-admin secrets rotate-host db.example.com  # By hostname
         pulldb-admin secrets rotate-host --length 48 mydb  # Custom length
     """
-    from pulldb.domain.services.secret_rotation import rotate_host_secret as do_rotation
+    from pulldb.worker.secret_rotation import rotate_host_secret as do_rotation
     from pulldb.infra.factory import get_host_repository
 
     # Look up host by alias, hostname, or id

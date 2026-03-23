@@ -41,6 +41,19 @@ logger = logging.getLogger(__name__)
 class SimulatedJobRepository:
     """In-memory implementation of JobRepository."""
 
+    # Sentinel so routes that do `AdminTaskRepository(state.job_repo.pool)` or
+    # `DisallowedUserRepository(state.job_repo.pool)` don't raise AttributeError.
+    # The constructors of those real repos accept None without crashing; only
+    # their *methods* (which open a DB connection) will fail — and all callers
+    # of those repos in admin/routes.py are wrapped in try/except, except for
+    # get_admin_task_page which is guarded separately (see routes.py).
+    pool = None
+
+    # Constants for stale running job recovery (mirroring real JobRepository)
+    STALE_RUNNING_TIMEOUT_MINUTES: ClassVar[int] = 15
+    STALE_RUNNING_PROCESS_CHECK_COUNT: ClassVar[int] = 3
+    STALE_RUNNING_PROCESS_CHECK_DELAY_SECONDS: ClassVar[float] = 2.0
+
     def __init__(self) -> None:
         """Initialize the repository with shared simulation state."""
         self.state = get_simulation_state()
@@ -775,6 +788,36 @@ class SimulatedJobRepository:
             updated = replace(job, options_json=options)
             self.state.jobs[job_id] = updated
 
+    @staticmethod
+    def _format_job_events(page: list) -> list[dict[str, Any]]:
+        """Format a list of JobEvent objects into API-ready dicts.
+
+        Shared by get_job_events_paginated() and get_job_events_by_offset().
+        """
+        def _format_ts(dt: datetime) -> str:
+            iso = dt.isoformat()
+            return iso.replace("+00:00", "Z") if iso.endswith("+00:00") else iso + "Z"
+
+        def _parse_detail(detail: str | None) -> dict | None:
+            if not detail:
+                return None
+            if detail.startswith("{"):
+                try:
+                    return json.loads(detail)
+                except json.JSONDecodeError:
+                    pass
+            return {"message": detail}
+
+        return [
+            {
+                "id": e.id,
+                "event_type": e.event_type,
+                "logged_at": _format_ts(e.logged_at),
+                "detail": _parse_detail(e.detail),
+            }
+            for e in page
+        ]
+
     def get_job_events_paginated(
         self,
         job_id: str,
@@ -813,31 +856,7 @@ class SimulatedJobRepository:
                 )
 
             page = filtered[:limit]
-
-            def _format_ts(dt: datetime) -> str:
-                iso = dt.isoformat()
-                return iso.replace("+00:00", "Z") if iso.endswith("+00:00") else iso + "Z"
-
-            def _parse_detail(detail: str | None) -> dict | None:
-                if not detail:
-                    return None
-                if detail.startswith("{"):
-                    try:
-                        return json.loads(detail)
-                    except json.JSONDecodeError:
-                        pass
-                return {"message": detail}
-
-            events = [
-                {
-                    "id": e.id,
-                    "event_type": e.event_type,
-                    "logged_at": _format_ts(e.logged_at),
-                    "detail": _parse_detail(e.detail),
-                }
-                for e in page
-            ]
-            return events, total_count
+            return self._format_job_events(page), total_count
 
     def get_job_events_by_offset(
         self,
@@ -864,31 +883,7 @@ class SimulatedJobRepository:
             reverse = order.lower() == "desc"
             sorted_events = sorted(all_events, key=lambda e: e.id, reverse=reverse)
             page = sorted_events[offset : offset + limit]
-
-            def _format_ts(dt: datetime) -> str:
-                iso = dt.isoformat()
-                return iso.replace("+00:00", "Z") if iso.endswith("+00:00") else iso + "Z"
-
-            def _parse_detail(detail: str | None) -> dict | None:
-                if not detail:
-                    return None
-                if detail.startswith("{"):
-                    try:
-                        return json.loads(detail)
-                    except json.JSONDecodeError:
-                        pass
-                return {"message": detail}
-
-            events = [
-                {
-                    "id": e.id,
-                    "event_type": e.event_type,
-                    "logged_at": _format_ts(e.logged_at),
-                    "detail": _parse_detail(e.detail),
-                }
-                for e in page
-            ]
-            return events, total_count
+            return self._format_job_events(page), total_count
 
     def prune_job_events_excluding(
         self,
@@ -1790,11 +1785,6 @@ class SimulatedJobRepository:
             
             return True
 
-    # Constants for stale running job recovery (mirroring real JobRepository)
-    STALE_RUNNING_TIMEOUT_MINUTES: ClassVar[int] = 15
-    STALE_RUNNING_PROCESS_CHECK_COUNT: ClassVar[int] = 3
-    STALE_RUNNING_PROCESS_CHECK_DELAY_SECONDS: ClassVar[float] = 2.0
-
     def get_candidate_stale_running_job(
         self,
         stale_timeout_minutes: int | None = None,
@@ -2694,6 +2684,44 @@ class SimulatedHostRepository:
         """Get all hosts (alias for get_all_hosts)."""
         return self.get_all_hosts()
 
+    def list_databases(self, hostname: str) -> list[str]:
+        """Return database names visible on a host in simulation mode.
+
+        The real implementation opens a direct MySQL connection to the host and
+        runs ``SHOW DATABASES``, filtering out system schemas.  In simulation
+        mode the worker never runs, so there is no live MySQL to query.
+        Instead we derive a plausible list from two sources:
+
+          1. ``state.staging_databases[hostname]`` — staging DBs created by the
+             simulated staging lifecycle.
+          2. ``state.jobs`` — target database names from completed/deployed jobs
+             on this host.
+
+        System schemas are always excluded.
+
+        Args:
+            hostname: Canonical hostname of the database server to query.
+
+        Returns:
+            Sorted list of database names, excluding system schemas.
+        """
+        _PROTECTED = frozenset({
+            'information_schema', 'mysql', 'performance_schema', 'sys', 'pulldb',
+        })
+        with self.state.lock:
+            dbs: set[str] = set()
+            # Source 1: staging databases
+            for db in self.state.staging_databases.get(hostname, set()):
+                if db.lower() not in _PROTECTED:
+                    dbs.add(db)
+            # Source 2: target names from jobs on this host
+            for job in self.state.jobs.values():
+                if getattr(job, 'dbhost', None) == hostname and getattr(job, 'target', None):
+                    db = job.target
+                    if db.lower() not in _PROTECTED:
+                        dbs.add(db)
+        return sorted(dbs)
+
     def database_exists(self, hostname: str, db_name: str) -> bool:
         """Check if a database exists on a host.
 
@@ -3424,44 +3452,56 @@ class SimulatedAuthRepository:
         return self.list_api_keys_for_user(user_id)
 
     def create_api_key(
-        self, 
-        user_id: str, 
+        self,
+        user_id: str,
         name: str | None = None,
         host_name: str | None = None,
+        created_from_ip: str | None = None,
+        auto_approve: bool = False,
+        approved_by: str | None = None,
     ) -> tuple[str, str]:
         """Create a new API key for a user.
-        
+
+        Mirrors the real AuthRepository.create_api_key signature.
+        In simulation mode the secret is stored in plaintext (no encryption
+        env var expected); the hash is stored as a sentinel string so that
+        verify_api_key() can skip bcrypt for dev speed.
+
         Args:
             user_id: UUID of the user.
             name: Optional name/description for the key.
             host_name: Optional hostname the key is for.
-            
+            created_from_ip: IP address of the request.
+            auto_approve: If True, approve the key immediately.
+            approved_by: User ID of the approver (used when auto_approve=True).
+
         Returns:
             Tuple of (key_id, secret). The secret is only returned once.
         """
-        import secrets
-        
+        import secrets  # local: avoid polluting module namespace with stdlib import
+
         key_id = "key_" + secrets.token_hex(16)
-        secret = "sec_" + secrets.token_hex(32)
-        
+        secret = secrets.token_hex(32)
+
+        now = datetime.now(UTC)
         with self.state.lock:
             self.state.api_keys[key_id] = {
                 "key_id": key_id,
                 "user_id": user_id,
-                "key_secret_hash": "$2b$12$SimulatedHash",
-                "key_secret": secret,  # In real DB, only hash is stored
+                "key_secret_hash": "$simulated$" + secret,  # sentinel; compared by verify_api_key
+                "key_secret": secret,  # plaintext — simulated env only
                 "name": name,
                 "host_name": host_name,
-                "created_from_ip": "127.0.0.1",
-                "is_active": True,
-                "created_at": datetime.now(UTC),
+                "created_from_ip": created_from_ip or "127.0.0.1",
+                "is_active": auto_approve,
+                "created_at": now,
                 "last_used_at": None,
                 "last_used_ip": None,
-                "approved_at": datetime.now(UTC),  # Auto-approve in simulation
-                "approved_by": user_id,
+                "approved_at": now if auto_approve else None,
+                "approved_by": approved_by if auto_approve else None,
                 "expires_at": None,
             }
-        
+
         return key_id, secret
 
     def revoke_api_key(self, key_id: str) -> bool:
@@ -3546,70 +3586,346 @@ class SimulatedAuthRepository:
             result.sort(key=lambda k: k.created_at or datetime.min.replace(tzinfo=UTC), reverse=True)
             return result
 
-    def get_all_api_keys(self) -> list[Any]:
-        """Get all API keys in the system.
-        
+    def get_all_api_keys(
+        self, include_inactive: bool = False, user_id: str | None = None
+    ) -> list[dict]:
+        """Get all API keys with filtering options.
+
+        Returns plain dicts to match the real AuthRepository return type
+        (which returns TypedDict rows from the MySQL cursor).
+        Sensitive fields key_secret and key_secret_hash are intentionally
+        excluded — matching what the real SQL SELECT omits.
+
+        Args:
+            include_inactive: If True, include revoked keys.
+            user_id: If provided, filter to keys for this user only.
+
         Returns:
-            List of all API key objects with user information.
+            List of dicts with keys: key_id, user_id, username, user_code,
+            name, host_name, is_active, approved_at, created_at,
+            created_from_ip, last_used_at, last_used_ip, expires_at.
         """
-        from dataclasses import dataclass as dc
-        
-        @dc
-        class ApiKeyInfo:
-            """Container for API key information."""
-            key_id: str
-            user_id: str
-            username: str | None
-            name: str | None
-            host_name: str | None
-            is_active: bool
-            approved_at: datetime | None
-            created_at: datetime | None
-            created_from_ip: str | None
-            last_used_at: datetime | None
-            last_used_ip: str | None
-            expires_at: datetime | None
-        
         with self.state.lock:
-            result: list[ApiKeyInfo] = []
-            for key_id, key_data in self.state.api_keys.items():
-                user_id = key_data.get('user_id', '')
-                user = self.state.users.get(user_id)
-                result.append(ApiKeyInfo(
-                    key_id=key_id,
-                    user_id=user_id,
-                    username=user.username if user else None,
-                    name=key_data.get('name'),
-                    host_name=key_data.get('host_name'),
-                    is_active=key_data.get('is_active', False),
-                    approved_at=key_data.get('approved_at'),
-                    created_at=key_data.get('created_at'),
-                    created_from_ip=key_data.get('created_from_ip'),
-                    last_used_at=key_data.get('last_used_at'),
-                    last_used_ip=key_data.get('last_used_ip'),
-                    expires_at=key_data.get('expires_at'),
-                ))
-            # Sort by created_at desc
-            result.sort(key=lambda k: k.created_at or datetime.min.replace(tzinfo=UTC), reverse=True)
+            result: list[dict] = []
+            for kid, key_data in self.state.api_keys.items():
+                if not include_inactive and not key_data.get('is_active', False):
+                    continue
+                if user_id and key_data.get('user_id') != user_id:
+                    continue
+                uid = key_data.get('user_id', '')
+                user = self.state.users.get(uid)
+                result.append({
+                    "key_id": kid,
+                    "user_id": uid,
+                    "username": user.username if user else None,
+                    "user_code": user.user_code if user else None,
+                    "name": key_data.get('name'),
+                    "host_name": key_data.get('host_name'),
+                    "is_active": key_data.get('is_active', False),
+                    "approved_at": key_data.get('approved_at'),
+                    "created_at": key_data.get('created_at'),
+                    "created_from_ip": key_data.get('created_from_ip'),
+                    "last_used_at": key_data.get('last_used_at'),
+                    "last_used_ip": key_data.get('last_used_ip'),
+                    "expires_at": key_data.get('expires_at'),
+                })
+            result.sort(
+                key=lambda k: k["created_at"] or datetime.min.replace(tzinfo=UTC),
+                reverse=True,
+            )
             return result
 
     def approve_api_key(self, key_id: str, approver_user_id: str) -> bool:
         """Approve an API key.
-        
+
         Args:
             key_id: ID of the key to approve.
             approver_user_id: User ID of the admin approving.
-            
+
         Returns:
-            True if approved, False if key not found.
+            True if approved, False if key not found or already approved.
+        """
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if key_data is None:
+                return False
+            if key_data.get('approved_at') is not None:
+                return False  # Already approved — mirrors real MySQL WHERE approved_at IS NULL
+            key_data['approved_at'] = datetime.now(UTC)
+            key_data['approved_by'] = approver_user_id
+            key_data['is_active'] = True
+            return True
+
+    def verify_api_key(self, key_id: str, secret: str) -> str | None:
+        """Verify an API key and return the associated user_id.
+
+        In simulation mode the stored sentinel hash ($simulated$<secret>) is
+        compared directly rather than using bcrypt, keeping dev server fast.
+
+        Args:
+            key_id: The public key identifier.
+            secret: The plaintext secret to verify.
+
+        Returns:
+            user_id if the key is valid, active, approved, and not expired.
+            None otherwise.
+        """
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if not key_data:
+                return None
+            if not key_data.get('is_active'):
+                return None
+            expires_at = key_data.get('expires_at')
+            if expires_at and expires_at < datetime.now(UTC):
+                return None
+            # Compare sentinel hash (simulated env only)
+            stored_hash = key_data.get('key_secret_hash', '')
+            expected_hash = "$simulated$" + secret
+            if stored_hash != expected_hash:
+                return None
+            # Update last_used_at
+            key_data['last_used_at'] = datetime.now(UTC)
+            return str(key_data.get('user_id'))
+
+    def get_api_key_secret_hash(self, key_id: str) -> str | None:
+        """Get the secret hash for an API key (for HMAC verification).
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            Secret hash if key is active and approved, None otherwise.
+
+        Raises:
+            KeyPendingApprovalError: If key exists but is not yet approved.
+        """
+        # Local import: avoid circular dependency (domain.errors → auth → simulation)
+        from pulldb.domain.errors import KeyPendingApprovalError
+
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if not key_data:
+                return None
+            if key_data.get('approved_at') is None:
+                raise KeyPendingApprovalError(key_id)
+            if not key_data.get('is_active'):
+                return None
+            expires_at = key_data.get('expires_at')
+            if expires_at and expires_at < datetime.now(UTC):
+                return None
+            val = key_data.get('key_secret_hash')
+            return str(val) if val is not None else None
+
+    def get_api_key_secret(self, key_id: str) -> str | None:
+        """Get the plaintext secret for an API key (for HMAC verification).
+
+        In simulation mode the plaintext secret is stored directly in state.
+        In production it would be decrypted by decrypt_secret().
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            Plaintext secret if key is active and approved, None if not found.
+
+        Raises:
+            KeyPendingApprovalError: If key exists but is not yet approved.
+            KeyRevokedError: If key has been revoked (is_active=False).
+        """
+        # Local import: avoid circular dependency (domain.errors → auth → simulation)
+        from pulldb.domain.errors import KeyPendingApprovalError, KeyRevokedError
+
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if not key_data:
+                return None
+            if key_data.get('approved_at') is None:
+                raise KeyPendingApprovalError(key_id)
+            if not key_data.get('is_active'):
+                raise KeyRevokedError(key_id)
+            expires_at = key_data.get('expires_at')
+            if expires_at and expires_at < datetime.now(UTC):
+                return None
+            val = key_data.get('key_secret')
+            return str(val) if val is not None else None
+
+    def reactivate_api_key(self, key_id: str) -> bool:
+        """Reactivate a revoked API key.
+
+        Only reactivates keys that have been previously approved.
+        Keys that were never approved must go through the approval process.
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            True if reactivated, False if not found or never approved.
+        """
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if not key_data:
+                return False
+            if key_data.get('approved_at') is None:
+                return False  # Never approved — mirrors real WHERE approved_at IS NOT NULL
+            key_data['is_active'] = True
+            return True
+
+    def delete_api_key(self, key_id: str) -> bool:
+        """Delete a single API key permanently.
+
+        Args:
+            key_id: The public key identifier to delete.
+
+        Returns:
+            True if deleted, False if not found.
         """
         with self.state.lock:
             if key_id in self.state.api_keys:
-                self.state.api_keys[key_id]['approved_at'] = datetime.now(UTC)
-                self.state.api_keys[key_id]['approved_by'] = approver_user_id
-                self.state.api_keys[key_id]['is_active'] = True
+                del self.state.api_keys[key_id]
                 return True
             return False
+
+    def delete_api_keys_for_user(self, user_id: str) -> int:
+        """Delete all API keys for a user.
+
+        Used when deleting a user account.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Number of keys deleted.
+        """
+        with self.state.lock:
+            to_delete = [
+                k for k, v in self.state.api_keys.items()
+                if v.get('user_id') == user_id
+            ]
+            for k in to_delete:
+                del self.state.api_keys[k]
+            return len(to_delete)
+
+    def count_pending_api_keys_by_user(self, user_id: str) -> int:
+        """Count pending API keys for a specific user.
+
+        Args:
+            user_id: The user ID to check.
+
+        Returns:
+            Number of pending (unapproved) keys for this user.
+        """
+        with self.state.lock:
+            return sum(
+                1 for v in self.state.api_keys.values()
+                if v.get('user_id') == user_id and v.get('approved_at') is None
+            )
+
+    def update_api_key_last_used(
+        self, key_id: str, ip_address: str | None = None
+    ) -> None:
+        """Update last_used_at and last_used_ip for an API key.
+
+        Args:
+            key_id: The public key identifier.
+            ip_address: IP address of the request (optional).
+        """
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if key_data:
+                key_data['last_used_at'] = datetime.now(UTC)
+                key_data['last_used_ip'] = ip_address
+
+    def delete_expired_pending_keys(self, max_age_days: int = 7) -> int:
+        """Delete pending keys that were never approved.
+
+        Args:
+            max_age_days: Maximum age in days for pending keys.
+
+        Returns:
+            Number of keys deleted.
+        """
+        # Cutoff is computed before acquiring the lock intentionally:
+        # we want a fixed point-in-time snapshot, not one that drifts
+        # if lock acquisition is delayed.
+        cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
+        with self.state.lock:
+            to_delete = [
+                k for k, v in self.state.api_keys.items()
+                if v.get('approved_at') is None
+                and v.get('created_at') is not None
+                and v['created_at'] < cutoff
+            ]
+            for k in to_delete:
+                del self.state.api_keys[k]
+            return len(to_delete)
+
+    def migrate_encrypt_existing_keys(self) -> int:
+        """No-op in simulation mode — returns 0.
+
+        The real implementation encrypts plaintext key_secret rows in MySQL.
+        Simulation stores secrets in plaintext by design (no PULLDB_KEY_ENCRYPTION_KEY
+        required in dev), so there is nothing to migrate.
+
+        Returns:
+            0 — no rows updated.
+        """
+        return 0
+
+    # =========================================================================
+    # Host↔User Assignment Methods (used by admin host detail page)
+    # =========================================================================
+
+    def count_users_for_host(self, host_id: str) -> int:
+        """Count users assigned to a specific host.
+
+        Mirrors: SELECT COUNT(*) FROM user_hosts WHERE host_id = %s
+
+        Args:
+            host_id: The ID of the host to count users for.
+
+        Returns:
+            Number of users with this host in their host assignment list.
+        """
+        with self.state.lock:
+            count = 0
+            for assignments in self.state.user_hosts.values():
+                for uh in assignments:
+                    if uh.get('host_id') == host_id:
+                        count += 1
+                        break  # count each user once even if assigned multiple times
+            return count
+
+    def get_users_for_host(self, host_id: str) -> list[dict]:
+        """Get all users assigned to a specific host.
+
+        Mirrors:
+            SELECT u.user_id, u.username, uh.is_default
+            FROM user_hosts uh
+            JOIN auth_users u ON u.user_id = uh.user_id
+            WHERE uh.host_id = %s
+            ORDER BY u.username
+
+        Args:
+            host_id: The ID of the host to get users for.
+
+        Returns:
+            List of dicts with user_id, username, is_default keys.
+        """
+        with self.state.lock:
+            result: list[dict] = []
+            for user_id, assignments in self.state.user_hosts.items():
+                for uh in assignments:
+                    if uh.get('host_id') == host_id:
+                        user = self.state.users.get(user_id)
+                        if user:
+                            result.append({
+                                'user_id': user.user_id,
+                                'username': user.username,
+                                'is_default': bool(uh.get('is_default', False)),
+                            })
+                        break  # each user appears once per host
+            return sorted(result, key=lambda u: u['username'])
 
 
 class SimulatedAuditRepository:

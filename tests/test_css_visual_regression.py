@@ -27,6 +27,10 @@ import pytest
 from pathlib import Path
 from typing import Generator
 
+# Guard: only run this test file when explicitly configured.
+# Prevents accidental S3 access in CI or local dev environments.
+pytestmark = pytest.mark.visual_regression
+
 # Playwright imports - will fail gracefully if not installed
 try:
     from playwright.sync_api import Page, sync_playwright, Browser
@@ -42,7 +46,9 @@ BASE_URL = os.environ.get("PULLDB_TEST_BASE_URL", "http://127.0.0.1:8000")
 VISUAL_THRESHOLD = float(os.environ.get("VISUAL_THRESHOLD", "0"))  # 0 = strict
 TEST_USERNAME = os.environ.get("PULLDB_TEST_USERNAME", "admin")
 TEST_PASSWORD = os.environ.get("PULLDB_TEST_PASSWORD", "admin")
-S3_BUCKET = os.environ.get("AWS_VISUAL_BASELINE_BUCKET", "pulldb-visual-baselines")
+# S3_BUCKET is intentionally None when the env var is not set.
+# This prevents accidental writes/reads to real S3 in unguarded environments.
+S3_BUCKET = os.environ.get("AWS_VISUAL_BASELINE_BUCKET")
 
 # Local directories
 SCREENSHOTS_DIR = Path(__file__).parent / "visual_screenshots"
@@ -121,12 +127,21 @@ def authenticated_page(page: Page) -> Page:
 
 def download_baseline(page_name: str, theme: str) -> Path | None:
     """Download baseline image from S3.
-    
+
     Returns local path if downloaded, None if not found.
+
+    Raises:
+        pytest.skip.Exception: If AWS_VISUAL_BASELINE_BUCKET is not set.
     """
+    if not S3_BUCKET:
+        pytest.skip(
+            "AWS_VISUAL_BASELINE_BUCKET env var not set — skipping S3 baseline download. "
+            "Set this variable to run visual regression tests."
+        )
+
     import boto3
     from botocore.exceptions import ClientError
-    
+
     s3 = boto3.client("s3")
     key = f"baselines/{page_name}_{theme}.png"
     local_path = SCREENSHOTS_DIR / f"baseline_{page_name}_{theme}.png"
@@ -143,17 +158,27 @@ def download_baseline(page_name: str, theme: str) -> Path | None:
 
 
 def upload_baseline(page_name: str, theme: str, local_path: Path) -> None:
-    """Upload baseline image to S3."""
+    """Upload baseline image to S3.
+
+    Raises:
+        pytest.skip.Exception: If AWS_VISUAL_BASELINE_BUCKET is not set.
+    """
+    if not S3_BUCKET:
+        pytest.skip(
+            "AWS_VISUAL_BASELINE_BUCKET env var not set — skipping S3 baseline upload. "
+            "Set this variable to update visual regression baselines."
+        )
+
     import boto3
-    
+
     s3 = boto3.client("s3")
     key = f"baselines/{page_name}_{theme}.png"
-    
+
     s3.upload_file(
         str(local_path),
         S3_BUCKET,
         key,
-        ExtraArgs={"ContentType": "image/png"}
+        ExtraArgs={"ContentType": "image/png"},
     )
     print(f"  Uploaded baseline: s3://{S3_BUCKET}/{key}")
 

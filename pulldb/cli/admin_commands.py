@@ -924,8 +924,10 @@ def users_reset_password(username: str, password: str | None) -> None:
 
 @click.group(name="keys", help="Manage API keys for CLI authentication")
 def keys_group() -> None:
-    """API Keys management command group."""
-    pass
+    """API Keys management command group.
+
+    Subcommands: pending, approve, revoke, list, encrypt-secrets
+    """
 
 
 @keys_group.command("pending")
@@ -1167,6 +1169,115 @@ def keys_list(username: str | None, show_all: bool, json_out: bool) -> None:
         click.echo(f"{key['key_id']:<40} {uname:<15} {host:<15} {status:<12} {last_used_str:<20}")
 
     click.echo(f"\nTotal: {len(keys)} key(s)")
+
+
+@keys_group.command("encrypt-secrets")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Report how many rows would be encrypted without making changes.",
+)
+def keys_encrypt_secrets(dry_run: bool) -> None:
+    """Encrypt plaintext key_secret values; re-key old-key rows during rotation.
+
+    In normal mode: iterates the api_keys table and AES-256-GCM encrypts every
+    key_secret that does not already carry the 'aes256gcm:' prefix.  Already-
+    encrypted rows are skipped.
+
+    In rotation mode (PULLDB_KEY_ENCRYPTION_KEY_OLD is also set): all non-NULL
+    rows are inspected.  Rows encrypted with the old key are re-encrypted with
+    the primary key.  Rows already using the primary key are skipped.
+    Safe to call multiple times in either mode.
+
+    Requires PULLDB_KEY_ENCRYPTION_KEY to be set in the server environment.
+
+    \b
+    Examples:
+        pulldb-admin keys encrypt-secrets           # migrate / complete rotation
+        pulldb-admin keys encrypt-secrets --dry-run # print counts, no changes
+    """
+    from pulldb.infra.factory import get_auth_repository
+    from pulldb.infra.key_encryption import get_encryption_key, is_rotation_in_progress
+
+    if get_encryption_key() is None:
+        raise click.ClickException(
+            "PULLDB_KEY_ENCRYPTION_KEY is not set in the server environment.\n"
+            "Configure the key before running encryption migration."
+        )
+
+    try:
+        rotation = is_rotation_in_progress()
+    except ValueError as exc:
+        raise click.ClickException(
+            f"PULLDB_KEY_ENCRYPTION_KEY_OLD is invalid: {exc}\n"
+            "Ensure it is a base64url-encoded 32-byte key, or unset it to disable rotation mode."
+        ) from exc
+
+    auth_repo = get_auth_repository()
+
+    if dry_run:
+        from pulldb.infra.mysql import TypedTupleCursor
+
+        try:
+            with auth_repo.pool.connection() as conn:
+                cur = TypedTupleCursor(conn.cursor())
+                cur.execute(
+                    "SELECT COUNT(*) FROM api_keys "
+                    "WHERE key_secret IS NOT NULL AND key_secret NOT LIKE 'aes256gcm:%'"
+                )
+                row = cur.fetchone()
+                plaintext_count = int(row[0]) if row else 0
+                if rotation:
+                    # Also count rows encrypted with old key
+                    cur.execute(
+                        "SELECT COUNT(*) FROM api_keys "
+                        "WHERE key_secret LIKE 'aes256gcm:%'"
+                    )
+                    row = cur.fetchone()
+                    encrypted_count = int(row[0]) if row else 0
+                else:
+                    encrypted_count = 0
+        except Exception as exc:
+            raise click.ClickException(f"Failed to count rows: {exc}") from exc
+
+        if rotation:
+            click.echo(
+                click.style(
+                    "Rotation in progress — PULLDB_KEY_ENCRYPTION_KEY_OLD is set.",
+                    fg="yellow",
+                )
+            )
+            click.echo(
+                f"  Plaintext rows to encrypt:    {plaintext_count}"
+            )
+            click.echo(
+                f"  Encrypted rows (total):       {encrypted_count}"
+            )
+            click.echo(
+                "  Note: the encrypted count includes rows already using the new key;"
+                " only old-key rows will be updated."
+            )
+            click.echo(
+                "  Run without --dry-run to complete the rotation,"
+                " then remove PULLDB_KEY_ENCRYPTION_KEY_OLD."
+            )
+        elif plaintext_count:
+            click.echo(
+                click.style(f"Dry run: {plaintext_count} row(s) would be encrypted.", fg="yellow")
+            )
+        else:
+            click.echo(click.style("Dry run: all rows are already encrypted.", fg="green"))
+        return
+
+    try:
+        count = auth_repo.migrate_encrypt_existing_keys()
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if count:
+        click.echo(click.style(f"✓ Encrypted {count} key_secret row(s).", fg="green"))
+    else:
+        click.echo(click.style("✓ All key_secret rows were already encrypted — no changes made.", fg="green"))
 
 
 # =============================================================================
@@ -1740,7 +1851,7 @@ def overlord_provision(
             --host overlord.example.com \\
             --admin-user root
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import (
@@ -1846,7 +1957,7 @@ def overlord_test(json_out: bool) -> None:
     
     Tests connectivity using the configured credential_ref from settings.
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import (
@@ -1936,7 +2047,7 @@ def overlord_deprovision(
     3. Clear overlord settings
     4. Disable overlord feature
     """
-    from pulldb.domain.services.overlord_provisioning import (
+    from pulldb.worker.overlord_provisioning import (
         OverlordProvisioningService,
     )
     from pulldb.infra.factory import (

@@ -56,6 +56,24 @@ def isolated_runner() -> CliRunner:
 
 
 # ---------------------------------------------------------------------------
+# Simulation State Reset (SECURITY: prevents cross-test contamination)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def reset_simulation_state() -> None:
+    """Reset all simulation state before every test in tests/qa/admin/.
+
+    SECURITY: Calls reset_simulation() instead of state.clear() to ensure
+    the event bus and scenario manager are also reset, not just the data
+    dictionaries. Prevents state leakage between tests.
+    """
+    from pulldb.simulation.core.state import reset_simulation
+
+    reset_simulation()
+
+
+# ---------------------------------------------------------------------------
 # Admin Authorization Bypass Fixture
 # ---------------------------------------------------------------------------
 

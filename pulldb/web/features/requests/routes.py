@@ -46,8 +46,8 @@ async def requests_page(
         "declined": 0,
     }
     
-    # Check for simulation mode - pool will be None
-    simulation_mode = is_simulation_mode() or state.pool is None
+    # Check for simulation mode
+    simulation_mode = is_simulation_mode()
     
     if not simulation_mode:
         try:
@@ -100,8 +100,8 @@ async def get_requests_api(
     """
     from pulldb.worker.feature_request_service import FeatureRequestService
     
-    # Check for simulation mode - pool will be None
-    if is_simulation_mode() or state.pool is None:
+    # Check for simulation mode
+    if is_simulation_mode():
         return {
             "rows": [],
             "totalCount": 0,
@@ -206,8 +206,8 @@ async def get_distinct_values_api(
     """
     from pulldb.worker.feature_request_service import FeatureRequestService
     
-    # Check for simulation mode - pool will be None
-    if is_simulation_mode() or state.pool is None:
+    # Check for simulation mode
+    if is_simulation_mode():
         # Return static status values for simulation mode
         if column == "status":
             return ["open", "in_progress", "complete", "declined"]
@@ -231,8 +231,8 @@ async def vote_api(
     """Cast or change a vote on a feature request."""
     from pulldb.worker.feature_request_service import FeatureRequestService
     
-    # Check for simulation mode - pool will be None
-    if is_simulation_mode() or state.pool is None:
+    # Check for simulation mode
+    if is_simulation_mode():
         return SIMULATION_MODE_ERROR
     
     try:
@@ -270,8 +270,8 @@ async def create_request_api(
     from pulldb.domain.feature_request import FeatureRequestCreate
     from pulldb.worker.feature_request_service import FeatureRequestService
     
-    # Check for simulation mode - pool will be None
-    if is_simulation_mode() or state.pool is None:
+    # Check for simulation mode
+    if is_simulation_mode():
         return SIMULATION_MODE_ERROR
     
     try:
@@ -319,8 +319,8 @@ async def update_request_api(
     )
     from pulldb.worker.feature_request_service import FeatureRequestService
     
-    # Check for simulation mode - pool will be None
-    if is_simulation_mode() or state.pool is None:
+    # Check for simulation mode
+    if is_simulation_mode():
         return SIMULATION_MODE_ERROR
     
     # Check primary admin - only the first installed admin can change status
@@ -367,8 +367,8 @@ async def delete_request_api(
     """Delete/withdraw a feature request (owner or admin only)."""
     from pulldb.worker.feature_request_service import FeatureRequestService
     
-    # Check for simulation mode - pool will be None
-    if is_simulation_mode() or state.pool is None:
+    # Check for simulation mode
+    if is_simulation_mode():
         return SIMULATION_MODE_ERROR
     
     try:
@@ -407,8 +407,8 @@ async def get_notes_api(
     """Get all notes for a feature request."""
     from pulldb.worker.feature_request_service import FeatureRequestService
     
-    # Check for simulation mode - pool will be None
-    if is_simulation_mode() or state.pool is None:
+    # Check for simulation mode
+    if is_simulation_mode():
         return {"notes": [], "simulation_mode": True}
     
     try:
@@ -445,8 +445,8 @@ async def add_note_api(
     from pulldb.domain.feature_request import NoteCreate
     from pulldb.worker.feature_request_service import FeatureRequestService
     
-    # Check for simulation mode - pool will be None
-    if is_simulation_mode() or state.pool is None:
+    # Check for simulation mode
+    if is_simulation_mode():
         return SIMULATION_MODE_ERROR
     
     try:
@@ -495,8 +495,8 @@ async def delete_note_api(
     """Delete a note (own notes only, unless admin)."""
     from pulldb.worker.feature_request_service import FeatureRequestService
     
-    # Check for simulation mode - pool will be None
-    if is_simulation_mode() or state.pool is None:
+    # Check for simulation mode
+    if is_simulation_mode():
         return SIMULATION_MODE_ERROR
     
     try:

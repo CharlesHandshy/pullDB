@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pulldb.domain.services.secret_rotation import (
+from pulldb.worker.secret_rotation import (
     DEFAULT_PASSWORD_LENGTH,
     PASSWORD_ALPHABET,
     RotationResult,
@@ -117,7 +117,7 @@ class TestRotationResult:
 class TestMySQLConnectionTest:
     """Test MySQL connection testing function."""
 
-    @patch("pulldb.domain.services.secret_rotation.mysql.connector.connect")
+    @patch("pulldb.worker.secret_rotation.mysql.connector.connect")
     def test_connection_success(self, mock_connect: MagicMock) -> None:
         """Test successful connection."""
         mock_conn = MagicMock()
@@ -134,7 +134,7 @@ class TestMySQLConnectionTest:
         assert error is None
         mock_conn.close.assert_called_once()
 
-    @patch("pulldb.domain.services.secret_rotation.mysql.connector.connect")
+    @patch("pulldb.worker.secret_rotation.mysql.connector.connect")
     def test_connection_with_alter_user_check(self, mock_connect: MagicMock) -> None:
         """Test connection with ALTER USER privilege check."""
         mock_conn = MagicMock()
@@ -155,7 +155,7 @@ class TestMySQLConnectionTest:
         assert error is None
         mock_cursor.execute.assert_called_with("SHOW GRANTS FOR CURRENT_USER()")
 
-    @patch("pulldb.domain.services.secret_rotation.mysql.connector.connect")
+    @patch("pulldb.worker.secret_rotation.mysql.connector.connect")
     def test_connection_lacks_privilege(self, mock_connect: MagicMock) -> None:
         """Test connection with insufficient privileges."""
         mock_conn = MagicMock()
@@ -203,7 +203,7 @@ class TestRotateHostSecret:
         assert result.success is False
         assert result.phase == "validation"
 
-    @patch("pulldb.domain.services.secret_rotation.CredentialResolver")
+    @patch("pulldb.worker.secret_rotation.CredentialResolver")
     def test_aws_fetch_failure(self, mock_resolver_class: MagicMock) -> None:
         """Test handling AWS fetch failure."""
         mock_resolver = MagicMock()
@@ -220,10 +220,10 @@ class TestRotateHostSecret:
         assert result.phase == "fetch_credentials"
         assert "AWS" in result.message
 
-    @patch("pulldb.domain.services.secret_rotation.safe_upsert_single_secret")
-    @patch("pulldb.domain.services.secret_rotation._test_mysql_connection")
-    @patch("pulldb.domain.services.secret_rotation._alter_mysql_password")
-    @patch("pulldb.domain.services.secret_rotation.CredentialResolver")
+    @patch("pulldb.worker.secret_rotation.safe_upsert_single_secret")
+    @patch("pulldb.worker.secret_rotation._test_mysql_connection")
+    @patch("pulldb.worker.secret_rotation._alter_mysql_password")
+    @patch("pulldb.worker.secret_rotation.CredentialResolver")
     def test_full_rotation_success(
         self,
         mock_resolver_class: MagicMock,
@@ -271,10 +271,10 @@ class TestRotateHostSecret:
         assert "Successfully" in result.message
         assert "total" in result.timing
 
-    @patch("pulldb.domain.services.secret_rotation.safe_upsert_single_secret")
-    @patch("pulldb.domain.services.secret_rotation._test_mysql_connection")
-    @patch("pulldb.domain.services.secret_rotation._alter_mysql_password")
-    @patch("pulldb.domain.services.secret_rotation.CredentialResolver")
+    @patch("pulldb.worker.secret_rotation.safe_upsert_single_secret")
+    @patch("pulldb.worker.secret_rotation._test_mysql_connection")
+    @patch("pulldb.worker.secret_rotation._alter_mysql_password")
+    @patch("pulldb.worker.secret_rotation.CredentialResolver")
     def test_mysql_update_failure(
         self,
         mock_resolver_class: MagicMock,
@@ -307,10 +307,10 @@ class TestRotateHostSecret:
         # AWS should NOT be called
         mock_upsert.assert_not_called()
 
-    @patch("pulldb.domain.services.secret_rotation.safe_upsert_single_secret")
-    @patch("pulldb.domain.services.secret_rotation._test_mysql_connection")
-    @patch("pulldb.domain.services.secret_rotation._alter_mysql_password")
-    @patch("pulldb.domain.services.secret_rotation.CredentialResolver")
+    @patch("pulldb.worker.secret_rotation.safe_upsert_single_secret")
+    @patch("pulldb.worker.secret_rotation._test_mysql_connection")
+    @patch("pulldb.worker.secret_rotation._alter_mysql_password")
+    @patch("pulldb.worker.secret_rotation.CredentialResolver")
     def test_aws_update_failure_manual_fix(
         self,
         mock_resolver_class: MagicMock,

@@ -21,8 +21,8 @@ from datetime import datetime
 
 import click
 
-from pulldb.domain.services.discovery import format_size
-from pulldb.infra.s3 import BACKUP_FILENAME_REGEX, S3Client
+from pulldb.infra.s3 import S3Client, parse_backup_filename
+from pulldb.worker.discovery import format_size
 
 
 # =============================================================================
@@ -107,9 +107,9 @@ def _extract_date_from_key(key: str) -> str | None:
         YYYYMMDD string or None if not parseable.
     """
     filename = key.rsplit("/", 1)[-1]
-    match = BACKUP_FILENAME_REGEX.match(filename)
-    if match:
-        ts_str = match.group("ts")  # e.g., "2026-01-01T06-18-55Z"
+    parsed = parse_backup_filename(filename)
+    if parsed:
+        _, ts_str = parsed  # e.g., "2026-01-01T06-18-55"
         # Extract date part
         date_part = ts_str[:10].replace("-", "")
         return date_part

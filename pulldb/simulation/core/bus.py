@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections import deque
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +84,7 @@ class SimulationEventBus:
         """
         self._lock = threading.RLock()
         self._subscribers: dict[EventType | None, list[EventCallback]] = {}
-        self._history: list[SimulationEvent] = []
+        self._history: deque[SimulationEvent] = deque(maxlen=max_history)
         self._max_history = max_history
         self._console_logging = False
 
@@ -140,10 +142,8 @@ class SimulationEventBus:
         )
 
         with self._lock:
-            # Add to history
+            # Add to history (deque enforces maxlen automatically)
             self._history.append(event)
-            if len(self._history) > self._max_history:
-                self._history = self._history[-self._max_history :]
 
             # Console logging
             if self._console_logging:

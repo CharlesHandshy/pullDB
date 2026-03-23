@@ -9,13 +9,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 import unittest
 
 from pulldb.simulation.adapters.mock_s3 import MockS3Client, S3Error
-from pulldb.simulation.core.state import get_simulation_state
+from pulldb.simulation.core.state import get_simulation_state, reset_simulation
 
 
 class TestMockS3Client(unittest.TestCase):
     def setUp(self):
+        reset_simulation()
         self.state = get_simulation_state()
-        self.state.clear()
         self.client = MockS3Client()
 
     def test_list_keys(self):

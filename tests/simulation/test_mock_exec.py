@@ -10,13 +10,13 @@ import unittest
 import time
 
 from pulldb.simulation.adapters.mock_exec import MockProcessExecutor
-from pulldb.simulation.core.state import get_simulation_state
+from pulldb.simulation.core.state import get_simulation_state, reset_simulation
 
 
 class TestMockProcessExecutor(unittest.TestCase):
     def setUp(self):
+        reset_simulation()
         self.state = get_simulation_state()
-        self.state.clear()
         # Use fast_mode=False to test delays
         self.executor = MockProcessExecutor(fast_mode=False)
         self.executor.default_config.delay_seconds = 0.01

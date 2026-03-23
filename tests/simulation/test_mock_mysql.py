@@ -16,13 +16,13 @@ from pulldb.simulation.adapters.mock_mysql import (
     SimulatedSettingsRepository,
     SimulatedUserRepository,
 )
-from pulldb.simulation.core.state import get_simulation_state
+from pulldb.simulation.core.state import get_simulation_state, reset_simulation
 
 
 class TestMockRepositories(unittest.TestCase):
     def setUp(self):
+        reset_simulation()
         self.state = get_simulation_state()
-        self.state.clear()
         
         self.job_repo = SimulatedJobRepository()
         self.user_repo = SimulatedUserRepository()
@@ -137,8 +137,8 @@ class TestPruneJobEvents(unittest.TestCase):
     """Tests for job event pruning methods."""
 
     def setUp(self):
+        reset_simulation()
         self.state = get_simulation_state()
-        self.state.clear()
         self.job_repo = SimulatedJobRepository()
         self.user_repo = SimulatedUserRepository()
 
@@ -346,8 +346,8 @@ class TestCleanupStagingDatabases(unittest.TestCase):
 
     def setUp(self):
         """Reset simulation state before each test."""
+        reset_simulation()
         self.state = get_simulation_state()
-        self.state.clear()
         
         # Create repositories
         self.job_repo = SimulatedJobRepository()
@@ -475,8 +475,8 @@ class TestSimulatedUserRepositoryDelete(unittest.TestCase):
     """Tests for delete_user functionality in SimulatedUserRepository."""
 
     def setUp(self):
+        reset_simulation()
         self.state = get_simulation_state()
-        self.state.clear()
         self.user_repo = SimulatedUserRepository()
         self.job_repo = SimulatedJobRepository()
 
@@ -557,8 +557,8 @@ class TestOrphanDetectionSimulation(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures."""
+        reset_simulation()
         self.state = get_simulation_state()
-        self.state.clear()
         
         self.job_repo = SimulatedJobRepository()
         self.user_repo = SimulatedUserRepository()
@@ -574,7 +574,8 @@ class TestOrphanDetectionSimulation(unittest.TestCase):
         """Clean up after tests."""
         import os
         os.environ.pop("PULLDB_SIMULATION", None)
-        self.state.clear()
+        # Full reset ensures event bus and scenario manager are also cleaned
+        reset_simulation()
 
     def test_staging_database_with_active_job_not_orphan(self) -> None:
         """A staging database WITH an active job should NOT be classified as orphan.

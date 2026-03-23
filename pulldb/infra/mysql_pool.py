@@ -9,13 +9,14 @@ HCA Layer: shared (pulldb/infra/)
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any, cast
 
-import mysql.connector
+import mysql.connector  # noqa: F401 — retained for callers that import it from here
 from mysql.connector.abstracts import MySQLConnectionAbstract
-from mysql.connector.pooling import PooledMySQLConnection
+from mysql.connector.pooling import MySQLConnectionPool, PooledMySQLConnection
 
 logger = logging.getLogger(__name__)
 
@@ -169,35 +170,62 @@ class TypedTupleCursor:
 
 
 class MySQLPool:
-    """Very small wrapper around mysql.connector.connect for early prototype.
+    """MySQL connection pool backed by mysql.connector.pooling.MySQLConnectionPool.
 
-    Will be replaced with a real pooled implementation and per-host connections.
+    Each call to connection(), transaction(), dict_cursor(), or tuple_cursor()
+    draws a pre-established connection from the pool (no new TCP handshake per
+    query) and returns it automatically when the context manager exits.
+
+    Pool size is controlled by the PULLDB_MYSQL_POOL_SIZE environment variable
+    (default 5) or the pool_size constructor argument.
+
+    HCA Layer: shared (pulldb/infra/)
     """
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        pool_name: str = "pulldb",
+        pool_size: int | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Initialize MySQL connection pool.
 
         Args:
-            **kwargs: Connection parameters passed to mysql.connector.connect().
+            pool_name: Unique name for this pool (required by mysql-connector).
+            pool_size: Number of persistent connections to maintain.  Defaults
+                to the PULLDB_MYSQL_POOL_SIZE env var, falling back to 5.
+            **kwargs: Connection parameters forwarded to MySQLConnectionPool
+                (host, user, password, database, port, unix_socket, …).
         """
-        self._kwargs = kwargs
+        if pool_size is None:
+            pool_size = int(os.getenv("PULLDB_MYSQL_POOL_SIZE", "5"))
+        self._pool: MySQLConnectionPool = MySQLConnectionPool(
+            pool_name=pool_name,
+            pool_size=pool_size,
+            **kwargs,
+        )
+        logger.debug(
+            "MySQLPool '%s' initialised with pool_size=%d", pool_name, pool_size
+        )
 
     @contextmanager
     def connection(self) -> Iterator[PooledMySQLConnection | MySQLConnectionAbstract]:
         """Get a database connection from the pool.
 
+        The connection is returned to the pool when the context manager exits.
+
         Yields:
             MySQL connection object with automatic cleanup.
         """
-        conn = mysql.connector.connect(**self._kwargs)
+        conn = self._pool.get_connection()
         try:
             yield conn
         finally:
-            conn.close()
+            conn.close()  # returns to pool
 
     @contextmanager
     def transaction(self) -> Iterator[PooledMySQLConnection | MySQLConnectionAbstract]:
-        """Get a database connection with explicit transaction control.
+        """Get a pooled connection with explicit transaction control.
 
         Disables autocommit for manual transaction management. Commits on
         successful exit, rolls back on exception. Used for atomic operations
@@ -213,7 +241,7 @@ class MySQLPool:
             ...     cursor.execute("UPDATE ...")
             ...     # Commits automatically on exit
         """
-        conn = mysql.connector.connect(**self._kwargs)
+        conn = self._pool.get_connection()
         conn.autocommit = False  # type: ignore[union-attr]
         try:
             yield conn
@@ -222,14 +250,15 @@ class MySQLPool:
             conn.rollback()
             raise
         finally:
-            conn.close()
+            conn.close()  # returns to pool
 
     @contextmanager
     def dict_cursor(self) -> Iterator[TypedDictCursor]:
-        """Get a typed dictionary cursor with automatic cleanup.
+        """Get a typed dictionary cursor backed by a pooled connection.
 
         This is the preferred way to query when you need to access columns by name.
         The cursor's fetchone() returns dict[str, Any] | None with proper typing.
+        The underlying connection is returned to the pool on exit.
 
         Yields:
             TypedDictCursor with properly typed fetch methods.
@@ -241,37 +270,36 @@ class MySQLPool:
             ...     if row:
             ...         print(row.get("name"))  # Type-safe access
         """
-        conn = mysql.connector.connect(**self._kwargs)
+        conn = self._pool.get_connection()
         try:
-            raw_cursor = TypedDictCursor(conn.cursor(dictionary=True))
-            cursor = TypedDictCursor(raw_cursor)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             try:
                 yield cursor
             finally:
                 cursor.close()
         finally:
-            conn.close()
+            conn.close()  # returns to pool
 
     @contextmanager
     def tuple_cursor(self) -> Iterator[TypedTupleCursor]:
-        """Get a typed tuple cursor with automatic cleanup.
+        """Get a typed tuple cursor backed by a pooled connection.
 
         This is for queries where positional access is acceptable.
         The cursor's fetchone() returns tuple[Any, ...] | None with proper typing.
+        The underlying connection is returned to the pool on exit.
 
         Yields:
             TypedTupleCursor with properly typed fetch methods.
         """
-        conn = mysql.connector.connect(**self._kwargs)
+        conn = self._pool.get_connection()
         try:
-            raw_cursor = TypedTupleCursor(conn.cursor())
-            cursor = TypedTupleCursor(raw_cursor)
+            cursor = TypedTupleCursor(conn.cursor())
             try:
                 yield cursor
             finally:
                 cursor.close()
         finally:
-            conn.close()
+            conn.close()  # returns to pool
 
 
 def build_default_pool(
@@ -280,6 +308,8 @@ def build_default_pool(
     password: str,
     database: str,
     unix_socket: str | None = None,
+    pool_name: str = "pulldb",
+    pool_size: int | None = None,
 ) -> MySQLPool:
     """Build a MySQL connection pool with default configuration.
 
@@ -289,6 +319,9 @@ def build_default_pool(
         password: MySQL password.
         database: Database name.
         unix_socket: Optional Unix socket path (overrides host/port if provided).
+        pool_name: Unique name for this pool instance.
+        pool_size: Number of persistent connections.  Defaults to
+            PULLDB_MYSQL_POOL_SIZE env var (fallback 5).
 
     Returns:
         Configured MySQLPool instance.
@@ -301,4 +334,4 @@ def build_default_pool(
     }
     if unix_socket:
         kwargs["unix_socket"] = unix_socket
-    return MySQLPool(**kwargs)
+    return MySQLPool(pool_name=pool_name, pool_size=pool_size, **kwargs)

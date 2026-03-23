@@ -535,6 +535,11 @@ async def get_optional_user(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="User account is disabled",
                 )
+            if user and user.locked:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Account is locked",
+                )
             if user:
                 return user
 
@@ -543,23 +548,19 @@ async def get_optional_user(
 
 
 def validate_job_submission_user(
-    authenticated_user: "User | None",
+    authenticated_user: "User",
     request_username: str,
 ) -> None:
     """Validate that job submission is authorized for the given user.
 
     Args:
-        authenticated_user: The authenticated user (or None if unauthenticated).
+        authenticated_user: The authenticated user making the request.
         request_username: The username in the job request.
 
     Raises:
         HTTPException 403: If authenticated but submitting for a different user
                           and not an admin.
     """
-    if authenticated_user is None:
-        # No auth provided - allow in trusted mode (backwards compat)
-        return
-
     # Admins and service accounts can submit jobs for anyone
     from pulldb.domain.models import UserRole
     if authenticated_user.role in (UserRole.ADMIN, UserRole.SERVICE):

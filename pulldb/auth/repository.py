@@ -1,8 +1,8 @@
-"""Authentication repository for password and session management.
+"""Authentication repository for password, session, and API key management.
 
-Phase 4: Handles password verification, session creation/validation,
-and 2FA verification. Separate from UserRepository to maintain
-single responsibility.
+Handles password verification, session creation/validation, 2FA verification,
+and API key lifecycle (create, verify, revoke, encrypt-at-rest migration).
+Separate from UserRepository to maintain single responsibility.
 
 HCA Layer: features (pulldb/auth/)
 """
@@ -16,6 +16,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from pulldb.domain.errors import KeyPendingApprovalError, KeyRevokedError, LockedUserError
+from pulldb.infra.key_encryption import (
+    decrypt_secret,
+    encrypt_secret,
+    get_encryption_key,
+    get_old_encryption_key,
+    is_encrypted,
+    reencrypt_if_needed,
+)
 from pulldb.infra.mysql import MySQLPool, TypedDictCursor, TypedTupleCursor
 
 logger = logging.getLogger(__name__)
@@ -345,7 +353,10 @@ class AuthRepository:
             approved_by: User ID of admin approving (required if auto_approve=True).
 
         Returns:
-            Tuple of (key_id, secret) - secret is only returned once!
+            Tuple of (key_id, secret) where *secret* is the raw plaintext value
+            returned only at creation time.  The secret is stored AES-256-GCM
+            encrypted at rest (when ``PULLDB_KEY_ENCRYPTION_KEY`` is configured)
+            and is retrievable only via ``get_api_key_secret()`` on the server.
         """
         from pulldb.auth.password import hash_password
 
@@ -357,6 +368,9 @@ class AuthRepository:
 
         # Hash the secret for audit purposes
         secret_hash = hash_password(secret)
+
+        # Encrypt the secret at rest (passthrough when key not configured)
+        stored_secret = encrypt_secret(secret)
 
         # Determine approval status
         is_active = auto_approve
@@ -372,7 +386,7 @@ class AuthRepository:
                          host_name, created_from_ip, is_active, approved_at, approved_by, created_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, UTC_TIMESTAMP(6), %s, UTC_TIMESTAMP(6))
                     """,
-                    (key_id, user_id, secret_hash, secret, name, host_name, created_from_ip, approved_by),
+                    (key_id, user_id, secret_hash, stored_secret, name, host_name, created_from_ip, approved_by),
                 )
             else:
                 cursor.execute(
@@ -382,7 +396,7 @@ class AuthRepository:
                          host_name, created_from_ip, is_active, created_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, UTC_TIMESTAMP(6))
                     """,
-                    (key_id, user_id, secret_hash, secret, name, host_name, created_from_ip),
+                    (key_id, user_id, secret_hash, stored_secret, name, host_name, created_from_ip),
                 )
             conn.commit()
 
@@ -575,7 +589,94 @@ class AuthRepository:
                 return None
 
             secret = row.get("key_secret")
-            return str(secret) if secret is not None else None
+            if secret is None:
+                return None
+            return decrypt_secret(str(secret))
+
+    def migrate_encrypt_existing_keys(self) -> int:
+        """Encrypt plaintext ``key_secret`` rows and re-encrypt old-key rows.
+
+        **Normal mode** (only ``PULLDB_KEY_ENCRYPTION_KEY`` set):
+        Iterates rows whose ``key_secret`` does not carry the ``aes256gcm:``
+        prefix and encrypts them in-place.  Already-encrypted rows are skipped.
+
+        **Rotation mode** (both ``PULLDB_KEY_ENCRYPTION_KEY`` and
+        ``PULLDB_KEY_ENCRYPTION_KEY_OLD`` set):
+        Iterates *all* non-NULL rows.  Plaintext rows are encrypted.
+        Rows encrypted with the old key are transparently re-encrypted with
+        the primary key.  Rows already using the primary key are skipped.
+        Once this method returns 0 (nothing changed), the pass is complete:
+        every row in the table is encrypted with the primary key.  At that
+        point remove ``PULLDB_KEY_ENCRYPTION_KEY_OLD`` and restart the service
+        to retire the old key.  A single call drains the entire table via
+        the ``fetchmany`` loop, so "returned 0" and "rotation complete" are
+        equivalent — there is no need to run the method a second time to
+        confirm.
+
+        This method is idempotent — safe to call multiple times.
+
+        Returns:
+            The number of rows updated during this call.
+
+        Raises:
+            RuntimeError: If ``PULLDB_KEY_ENCRYPTION_KEY`` is not configured.
+        """
+        if get_encryption_key() is None:
+            raise RuntimeError(
+                "Cannot migrate: PULLDB_KEY_ENCRYPTION_KEY is not set. "
+                "Configure the encryption key before running migration."
+            )
+
+        rotation_mode = get_old_encryption_key() is not None
+
+        _BATCH = 500
+        migrated = 0
+        with self.pool.connection() as conn:
+            read_cursor = TypedDictCursor(conn.cursor(dictionary=True))
+            if rotation_mode:
+                # Full scan: also re-encrypt rows currently using the old key
+                read_cursor.execute(
+                    "SELECT key_id, key_secret FROM api_keys "
+                    "WHERE key_secret IS NOT NULL"
+                )
+            else:
+                # Fast path: only rows that haven't been encrypted yet
+                read_cursor.execute(
+                    "SELECT key_id, key_secret FROM api_keys "
+                    "WHERE key_secret NOT LIKE 'aes256gcm:%'"
+                )
+            write_cursor = TypedTupleCursor(conn.cursor())
+            while batch := read_cursor.fetchmany(_BATCH):
+                for row in batch:
+                    key_id = row["key_id"]
+                    raw = row["key_secret"]
+                    if raw is None:
+                        continue
+                    raw_str = str(raw)
+                    if is_encrypted(raw_str):
+                        # Already encrypted — re-encrypt only if using old key
+                        new_val, changed = reencrypt_if_needed(raw_str)
+                        if not changed:
+                            continue
+                        updated_val = new_val
+                    else:
+                        # Plaintext row — encrypt with primary key
+                        updated_val = encrypt_secret(raw_str)
+                    write_cursor.execute(
+                        "UPDATE api_keys SET key_secret = %s WHERE key_id = %s",
+                        (updated_val, key_id),
+                    )
+                    migrated += 1
+                conn.commit()  # commit each batch
+
+        if migrated:
+            logger.info(
+                "migrate_encrypt_existing_keys: updated %d key_secret row(s)%s",
+                migrated,
+                " (rotation pass)" if rotation_mode else "",
+            )
+
+        return migrated
 
     def revoke_api_key(self, key_id: str) -> bool:
         """Revoke an API key (mark inactive).

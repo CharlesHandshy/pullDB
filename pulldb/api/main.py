@@ -40,7 +40,7 @@ from pulldb.api.schemas import (
 from pulldb.api.types import APIState
 from pulldb.domain.config import Config
 from pulldb.domain.models import Job, JobStatus, User
-from pulldb.domain.services.discovery import DiscoveryService
+from pulldb.worker.discovery import DiscoveryService
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
 from pulldb.infra.mysql import (
@@ -238,6 +238,11 @@ def _initialize_real_state() -> APIState:
             logger.warning("Overlord connection available but audit_repo missing - manager disabled")
     except Exception as e:
         logger.warning(f"Failed to initialize overlord manager: {e}")
+
+    # Emit encryption / rotation status to the log once at startup so operators
+    # can verify key configuration without querying the API.
+    from pulldb.infra.key_encryption import log_startup_state
+    log_startup_state()
 
     return APIState(
         config=config,
@@ -622,7 +627,7 @@ async def register_user(
         validate_username_format,
         validate_username_not_disallowed,
     )
-    from pulldb.infra.mysql import DisallowedUserRepository
+    from pulldb.infra.factory import get_disallowed_user_repository
 
     if not state.auth_repo:
         raise HTTPException(
@@ -648,15 +653,14 @@ async def register_user(
             detail=exc.message,
         ) from exc
 
-    # Check database disallowed list (if pool available)
-    if state.pool is not None:
-        disallowed_repo = DisallowedUserRepository(state.pool)
-        is_disallowed, reason = disallowed_repo.is_disallowed(request.username)
-        if is_disallowed:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Username '{request.username}' is not allowed: {reason}",
-            )
+    # Check database disallowed list
+    disallowed_repo = get_disallowed_user_repository(state.pool)
+    is_disallowed, reason = disallowed_repo.is_disallowed(request.username)
+    if is_disallowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Username '{request.username}' is not allowed: {reason}",
+        )
 
     # Check if user already exists
     existing_user = await run_in_threadpool(
@@ -3314,7 +3318,7 @@ def _rotate_host_secret(
     user: User,
 ) -> RotateHostSecretResponse:
     """Execute host secret rotation."""
-    from pulldb.domain.services.secret_rotation import rotate_host_secret
+    from pulldb.worker.secret_rotation import rotate_host_secret
 
     # Get host
     if not hasattr(state, "host_repo") or not state.host_repo:
@@ -3784,6 +3788,103 @@ async def get_user_api_keys(
     )
 
 
+# ---------------------------------------------------------------------------
+# API Key Validation & Migration
+# ---------------------------------------------------------------------------
+
+
+class ValidateKeyResponse(pydantic.BaseModel):
+    """Response for GET /api/auth/validate-key."""
+
+    valid: bool
+    username: str
+    user_code: str
+    encryption_enabled: bool
+    """True when the server has PULLDB_KEY_ENCRYPTION_KEY configured and
+    is storing new key_secrets encrypted at rest."""
+    rotation_in_progress: bool
+    """True when PULLDB_KEY_ENCRYPTION_KEY_OLD is also set, indicating a key
+    rotation is in progress.  Run 'pulldb-admin keys encrypt-secrets' to
+    complete the rotation, then remove PULLDB_KEY_ENCRYPTION_KEY_OLD."""
+
+
+@app.get("/api/auth/validate-key", response_model=ValidateKeyResponse)
+async def validate_api_key(user: AuthUser) -> ValidateKeyResponse:
+    """Validate the caller's API key credentials.
+
+    Authenticates via the normal HMAC / bearer mechanism then returns a
+    minimal confirmation.  Clients can use this to verify that locally-stored
+    credentials are still valid and accepted by the server.
+
+    Requires a valid API key (HMAC or bearer token).  Returns 200 on success
+    and 401 if the key is invalid, revoked, or pending approval.
+    """
+    from pulldb.infra.key_encryption import get_encryption_key, get_old_encryption_key
+
+    encryption_enabled = get_encryption_key() is not None
+    try:
+        rotation_in_progress = get_old_encryption_key() is not None
+    except ValueError:
+        # Misconfigured old key — treat as absent so auth keeps working;
+        # the misconfiguration will surface as an ERROR in log_startup_state().
+        logger.warning(
+            "validate_api_key: %s is set but invalid — treated as absent",
+            "PULLDB_KEY_ENCRYPTION_KEY_OLD",
+        )
+        rotation_in_progress = False
+
+    return ValidateKeyResponse(
+        valid=True,
+        username=user.username,
+        user_code=user.user_code,
+        encryption_enabled=encryption_enabled,
+        rotation_in_progress=rotation_in_progress,
+    )
+
+
+class MigrateKeySecretsResponse(pydantic.BaseModel):
+    """Response for POST /api/admin/migrate-key-secrets."""
+
+    migrated: int
+    message: str
+
+
+@app.post("/api/admin/migrate-key-secrets", response_model=MigrateKeySecretsResponse)
+async def migrate_key_secrets(
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> MigrateKeySecretsResponse:
+    """Encrypt all plaintext key_secret rows in the api_keys table (admin only).
+
+    Iterates the ``api_keys`` table and AES-256-GCM encrypts every
+    ``key_secret`` value that does not already carry the ``aes256gcm:`` prefix.
+    Safe to call multiple times — already-encrypted rows are skipped.
+
+    Requires ``PULLDB_KEY_ENCRYPTION_KEY`` to be configured on the server.
+    Returns the count of rows that were encrypted during this call.
+    """
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    try:
+        count = await run_in_threadpool(state.auth_repo.migrate_encrypt_existing_keys)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    if count:
+        msg = f"Successfully encrypted {count} key_secret row(s)."
+    else:
+        msg = "All key_secret rows were already encrypted — no changes made."
+
+    return MigrateKeySecretsResponse(migrated=count, message=msg)
+
+
 def create_app() -> fastapi.FastAPI:
     return app
 
@@ -4105,311 +4206,23 @@ async def search_backups(
 
 
 # =============================================================================
-# Feature Requests API
+# Feature Requests API  (extracted to pulldb/api/routers/feature_requests.py)
 # =============================================================================
 
+# NOTE: schemas and routes live in the router module; imported here for
+# backward compatibility if anything imports them from pulldb.api.main.
+from pulldb.api.routers.feature_requests import (  # noqa: E402, F401
+    FeatureRequestResponse,
+    FeatureRequestListResponse,
+    FeatureRequestCreateRequest,
+    FeatureRequestUpdateRequest,
+    VoteRequest,
+    FeatureRequestStatsResponse,
+    create_feature_requests_router,
+)
 
-class FeatureRequestResponse(pydantic.BaseModel):
-    """Response for a single feature request."""
-
-    request_id: str
-    title: str
-    description: str | None
-    status: str
-    vote_score: int
-    upvote_count: int
-    downvote_count: int
-    created_at: str
-    updated_at: str
-    completed_at: str | None
-    admin_response: str | None
-    submitted_by_username: str | None
-    submitted_by_user_code: str | None
-    user_vote: int | None = None  # Current user's vote: 1, -1, or None
-
-
-class FeatureRequestListResponse(pydantic.BaseModel):
-    """Paginated list of feature requests."""
-
-    requests: list[FeatureRequestResponse]
-    total: int
-    limit: int
-    offset: int
-
-
-class FeatureRequestCreateRequest(pydantic.BaseModel):
-    """Request to create a new feature request."""
-
-    title: str = pydantic.Field(..., min_length=5, max_length=200)
-    description: str | None = pydantic.Field(None, max_length=2000)
-
-
-class FeatureRequestUpdateRequest(pydantic.BaseModel):
-    """Request to update a feature request (primary admin only)."""
-
-    status: str | None = None  # open, in_progress, complete, rejected
-    admin_response: str | None = pydantic.Field(None, max_length=2000)
-
-
-class VoteRequest(pydantic.BaseModel):
-    """Request to cast a vote."""
-
-    vote_value: int = pydantic.Field(..., ge=0, le=1)  # 0 (remove), 1 (vote)
-
-
-class FeatureRequestStatsResponse(pydantic.BaseModel):
-    """Statistics for feature requests."""
-
-    total: int
-    open: int
-    in_progress: int
-    complete: int
-    declined: int
-
-
-# Module-level cache for feature service (APIState is immutable NamedTuple)
-_feature_service_cache: FeatureRequestService | None = None
-
-
-def _get_feature_service(state: APIState) -> FeatureRequestService:
-    """Get or create feature request service."""
-    global _feature_service_cache
-    from pulldb.worker.feature_request_service import FeatureRequestService
-    # Service needs async pool, create lazily
-    if _feature_service_cache is None:
-        if state.pool is None:
-            raise RuntimeError("FeatureRequestService requires database pool")
-        _feature_service_cache = FeatureRequestService(state.pool)
-    return _feature_service_cache
-
-
-@app.get("/api/feature-requests/stats", response_model=FeatureRequestStatsResponse)
-async def get_feature_request_stats(
-    user: AuthUser,
-    state: APIState = Depends(get_api_state),
-) -> FeatureRequestStatsResponse:
-    """Get feature request statistics."""
-    service = _get_feature_service(state)
-    stats = await service.get_stats()
-    return FeatureRequestStatsResponse(
-        total=stats.total,
-        open=stats.open,
-        in_progress=stats.in_progress,
-        complete=stats.complete,
-        declined=stats.declined,
-    )
-
-
-@app.get("/api/feature-requests", response_model=FeatureRequestListResponse)
-async def list_feature_requests(
-    user: AuthUser,
-    status_filter: str | None = fastapi.Query(None, description="Comma-separated statuses to filter"),
-    sort_by: str = fastapi.Query("vote_score", description="Sort column: vote_score, created_at, status"),
-    sort_order: str = fastapi.Query("desc", description="Sort direction: asc, desc"),
-    limit: int = fastapi.Query(100, ge=1, le=500),
-    offset: int = fastapi.Query(0, ge=0),
-    state: APIState = Depends(get_api_state),
-) -> FeatureRequestListResponse:
-    """List feature requests with filtering and pagination."""
-    service = _get_feature_service(state)
-    
-    status_list = status_filter.split(",") if status_filter else None
-    
-    requests, total = await service.list_requests(
-        current_user_id=user.user_id,
-        status_filter=status_list,
-        sort_by=sort_by,
-        sort_order=sort_order,
-        limit=limit,
-        offset=offset,
-    )
-    
-    return FeatureRequestListResponse(
-        requests=[
-            FeatureRequestResponse(
-                request_id=r.request_id,
-                title=r.title,
-                description=r.description,
-                status=r.status.value,
-                vote_score=r.vote_score,
-                upvote_count=r.upvote_count,
-                downvote_count=r.downvote_count,
-                created_at=r.created_at.isoformat(),
-                updated_at=r.updated_at.isoformat(),
-                completed_at=r.completed_at.isoformat() if r.completed_at else None,
-                admin_response=r.admin_response,
-                submitted_by_username=r.submitted_by_username,
-                submitted_by_user_code=r.submitted_by_user_code,
-                user_vote=r.user_vote,
-            )
-            for r in requests
-        ],
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
-
-
-@app.get("/api/feature-requests/{request_id}", response_model=FeatureRequestResponse)
-async def get_feature_request(
-    request_id: str,
-    user: AuthUser,
-    state: APIState = Depends(get_api_state),
-) -> FeatureRequestResponse:
-    """Get a single feature request by ID."""
-    service = _get_feature_service(state)
-    r = await service.get_request(request_id, user.user_id)
-    
-    if not r:
-        raise HTTPException(status_code=404, detail="Feature request not found")
-    
-    return FeatureRequestResponse(
-        request_id=r.request_id,
-        title=r.title,
-        description=r.description,
-        status=r.status.value,
-        vote_score=r.vote_score,
-        upvote_count=r.upvote_count,
-        downvote_count=r.downvote_count,
-        created_at=r.created_at.isoformat(),
-        updated_at=r.updated_at.isoformat(),
-        completed_at=r.completed_at.isoformat() if r.completed_at else None,
-        admin_response=r.admin_response,
-        submitted_by_username=r.submitted_by_username,
-        submitted_by_user_code=r.submitted_by_user_code,
-        user_vote=r.user_vote,
-    )
-
-
-@app.post("/api/feature-requests", response_model=FeatureRequestResponse, status_code=201)
-async def create_feature_request(
-    data: FeatureRequestCreateRequest,
-    user: AuthUser,
-    state: APIState = Depends(get_api_state),
-) -> FeatureRequestResponse:
-    """Create a new feature request."""
-    from pulldb.domain.feature_request import FeatureRequestCreate
-    
-    service = _get_feature_service(state)
-    r = await service.create_request(
-        FeatureRequestCreate(title=data.title, description=data.description),
-        user.user_id,
-    )
-    
-    return FeatureRequestResponse(
-        request_id=r.request_id,
-        title=r.title,
-        description=r.description,
-        status=r.status.value,
-        vote_score=r.vote_score,
-        upvote_count=r.upvote_count,
-        downvote_count=r.downvote_count,
-        created_at=r.created_at.isoformat(),
-        updated_at=r.updated_at.isoformat(),
-        completed_at=r.completed_at.isoformat() if r.completed_at else None,
-        admin_response=r.admin_response,
-        submitted_by_username=r.submitted_by_username,
-        submitted_by_user_code=r.submitted_by_user_code,
-        user_vote=r.user_vote,
-    )
-
-
-@app.patch("/api/feature-requests/{request_id}", response_model=FeatureRequestResponse)
-async def update_feature_request(
-    request_id: str,
-    data: FeatureRequestUpdateRequest,
-    user: AdminUser,  # Admin only
-    state: APIState = Depends(get_api_state),
-) -> FeatureRequestResponse:
-    """Update a feature request status/response (admin only)."""
-    from pulldb.domain.feature_request import FeatureRequestStatus, FeatureRequestUpdate
-    
-    service = _get_feature_service(state)
-    
-    # Validate status if provided
-    status_enum = None
-    if data.status:
-        try:
-            status_enum = FeatureRequestStatus(data.status)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid status: {data.status}. Valid values: open, in_progress, complete, rejected"
-            )
-    
-    r = await service.update_request(
-        request_id,
-        FeatureRequestUpdate(status=status_enum, admin_response=data.admin_response),
-    )
-    
-    if not r:
-        raise HTTPException(status_code=404, detail="Feature request not found")
-    
-    return FeatureRequestResponse(
-        request_id=r.request_id,
-        title=r.title,
-        description=r.description,
-        status=r.status.value,
-        vote_score=r.vote_score,
-        upvote_count=r.upvote_count,
-        downvote_count=r.downvote_count,
-        created_at=r.created_at.isoformat(),
-        updated_at=r.updated_at.isoformat(),
-        completed_at=r.completed_at.isoformat() if r.completed_at else None,
-        admin_response=r.admin_response,
-        submitted_by_username=r.submitted_by_username,
-        submitted_by_user_code=r.submitted_by_user_code,
-        user_vote=r.user_vote,
-    )
-
-
-@app.post("/api/feature-requests/{request_id}/vote", response_model=FeatureRequestResponse)
-async def vote_on_feature_request(
-    request_id: str,
-    data: VoteRequest,
-    user: AuthUser,
-    state: APIState = Depends(get_api_state),
-) -> FeatureRequestResponse:
-    """Cast or change vote on a feature request.
-    
-    vote_value: 1 = upvote, -1 = downvote, 0 = remove vote
-    """
-    service = _get_feature_service(state)
-    r = await service.vote(request_id, user.user_id, data.vote_value)
-    
-    if not r:
-        raise HTTPException(status_code=404, detail="Feature request not found")
-    
-    return FeatureRequestResponse(
-        request_id=r.request_id,
-        title=r.title,
-        description=r.description,
-        status=r.status.value,
-        vote_score=r.vote_score,
-        upvote_count=r.upvote_count,
-        downvote_count=r.downvote_count,
-        created_at=r.created_at.isoformat(),
-        updated_at=r.updated_at.isoformat(),
-        completed_at=r.completed_at.isoformat() if r.completed_at else None,
-        admin_response=r.admin_response,
-        submitted_by_username=r.submitted_by_username,
-        submitted_by_user_code=r.submitted_by_user_code,
-        user_vote=r.user_vote,
-    )
-
-
-@app.delete("/api/feature-requests/{request_id}", status_code=204)
-async def delete_feature_request(
-    request_id: str,
-    user: AdminUser,  # Admin only
-    state: APIState = Depends(get_api_state),
-) -> None:
-    """Delete a feature request (admin only)."""
-    service = _get_feature_service(state)
-    deleted = await service.delete_request(request_id)
-    
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Feature request not found")
+_feature_requests_router = create_feature_requests_router(get_api_state)
+app.include_router(_feature_requests_router)
 
 
 def main(argv: list[str] | None = None) -> int:
