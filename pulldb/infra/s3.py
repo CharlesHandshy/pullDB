@@ -572,6 +572,8 @@ def discover_latest_backup(
         file_target, ts_str = parsed
         if file_target != target:
             continue
+        # Format priority: 1 = new (0.21.1+, host-first), 0 = old (0.9.x, customer-first)
+        fmt_priority = 1 if _FORMAT_V2.match(filename) else 0
         try:
             ts = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%S")
         except ValueError as e:
@@ -582,7 +584,7 @@ def discover_latest_backup(
                 backup_key=key,
                 missing_files=["valid timestamp"],
             ) from e
-        candidates.append((ts, key))
+        candidates.append((ts, fmt_priority, key))
 
     if not candidates:
         raise BackupValidationError(
@@ -591,9 +593,11 @@ def discover_latest_backup(
             missing_files=[f"daily_mydumper_{target}_*.tar"],
         )
 
-    # Select newest by timestamp
-    candidates.sort(key=lambda x: x[0], reverse=True)
-    newest_ts, newest_key = candidates[0]
+    # Select best backup: prefer new format (V2) over old on the same calendar
+    # date; fall back to latest timestamp when dates differ.
+    # Sort key: (date DESC, format_priority DESC, timestamp DESC)
+    candidates.sort(key=lambda x: (x[0].date(), x[1], x[0]), reverse=True)
+    newest_ts, _fmt, newest_key = candidates[0]
 
     # Retrieve size for disk planning
     logger.info("Head object for %s", newest_key)

@@ -69,27 +69,28 @@ def test_discovery_selects_newest_backup(moto_s3: None, s3_client: S3Client) -> 
     prefix = "daily/stg/"
     target = "cust123"
 
-    # Older old-format backup
+    # Old-format backup from previous day
     _put_object(
         s3_client,
         bucket,
         f"{prefix}{target}/daily_mydumper_{target}_2024-01-01T00-00-00Z_Mon_dbimp.tar",
     )
-    # Newer old-format backup
+    # Old-format backup from today — has a *later* intra-day timestamp than V2 below
     _put_object(
         s3_client,
         bucket,
         f"{prefix}{target}/daily_mydumper_{target}_2024-01-02T12-30-45Z_Tue_dbimp.tar",
     )
-    # Even newer new-format (mydumper 0.21.1+) backup — should win
+    # New-format (V2) backup from today — earlier timestamp but newer format; should win
     _put_object(
         s3_client,
         bucket,
-        f"{prefix}{target}/daily_mydumper_db10_2024-01-03T07-00-00_Wed_{target}.tar",
+        f"{prefix}{target}/daily_mydumper_db10_2024-01-02T07-00-00_Tue_{target}.tar",
     )
 
     spec = discover_latest_backup(s3_client, bucket, prefix, target)
-    assert "2024-01-03T07-00-00" in spec.key
+    # V2 (new format) should be selected even though it has an earlier timestamp
+    assert "db10_2024-01-02T07-00-00" in spec.key
 
 
 def test_discovery_no_objects_raises(moto_s3: None, s3_client: S3Client) -> None:
