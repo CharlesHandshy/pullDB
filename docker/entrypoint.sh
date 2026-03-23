@@ -246,11 +246,28 @@ init_fresh() {
 }
 
 # ---------------------------------------------------------------------------
-# BOOT SCENARIO 2: Upgrade (import from blue's dump)
+# BOOT SCENARIO 2: Volume-copy upgrade
+# MySQL data directory was copied directly from the previous container.
+# Data is already present — just apply any new schema migrations and
+# re-create service users from .env (users are not in the data copy).
+# ---------------------------------------------------------------------------
+init_from_volume_copy() {
+    log "Boot scenario: VOLUME COPY — data directory already present"
+    mysql_start_wait
+
+    log "Applying any new schema migrations..."
+    apply_schema
+
+    ensure_mysql_users
+    mysql_stop
+}
+
+# ---------------------------------------------------------------------------
+# BOOT SCENARIO 3: Upgrade via mysqldump (legacy / fallback)
 # ---------------------------------------------------------------------------
 init_from_dump() {
     local dump_file="$1"
-    log "Boot scenario: UPGRADE — importing from ${dump_file}"
+    log "Boot scenario: DUMP IMPORT — importing from ${dump_file}"
     mysql_start_wait
 
     log "Creating database..."
@@ -260,7 +277,7 @@ init_from_dump() {
     mysql pulldb_service < "$dump_file" || die "Failed to import dump: ${dump_file}"
     log "Dump imported"
 
-    log "Applying any new schema files..."
+    log "Applying any new schema migrations..."
     apply_schema
 
     ensure_mysql_users
@@ -280,9 +297,15 @@ main() {
         log "Boot scenario: RESTART — skipping init"
 
     elif [[ -n "${PULLDB_IMPORT_DUMP:-}" ]]; then
-        # Upgrade: import dump from blue
+        # Upgrade via dump (legacy / fallback)
         [[ -f "$PULLDB_IMPORT_DUMP" ]] || die "PULLDB_IMPORT_DUMP set but file not found: ${PULLDB_IMPORT_DUMP}"
         init_from_dump "$PULLDB_IMPORT_DUMP"
+        touch "$MARKER"
+
+    elif [[ -d "/var/lib/mysql/pulldb_service" ]]; then
+        # Volume-copy upgrade: MySQL data directory was copied from previous container.
+        # Data is present; apply migrations and re-create service users, then proceed.
+        init_from_volume_copy
         touch "$MARKER"
 
     else

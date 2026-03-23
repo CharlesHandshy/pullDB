@@ -27,8 +27,16 @@ services:
       - /etc/pulldb:/etc/pulldb:ro
       # Persistent data — work dirs, logs
       - /mnt/data:/mnt/data
-      # Upgrade dump injection (only needed during green spin-up)
-      - /tmp/pulldb-upgrade:/tmp/pulldb-upgrade:ro
+      # MySQL data directory.
+      # Fresh install / restart: leave PULLDB_MYSQL_DATA_DIR unset → named volume (Docker managed).
+      # Volume-copy upgrade: upgrade.sh sets this to /tmp/pulldb-upgrade/mysql-data (bind mount).
+      - ${PULLDB_MYSQL_DATA_DIR:-pulldb_mysql_data}:/var/lib/mysql
+
+volumes:
+  pulldb_mysql_data:
+    # Docker-managed named volume.  Used on fresh installs and normal restarts.
+    # upgrade.sh overrides this with a bind-mount path via PULLDB_MYSQL_DATA_DIR.
+    external: false
 
     healthcheck:
       test: ["CMD", "curl", "-fsk", "https://localhost:8080/api/health"]
