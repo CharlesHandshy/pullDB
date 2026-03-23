@@ -14,9 +14,12 @@ HCA Layer: features (pulldb/simulation/)
 
 from pulldb.simulation.adapters.mock_exec import MockCommandConfig, MockProcessExecutor
 from pulldb.simulation.adapters.mock_mysql import (
+    SimulatedAdminTaskRepository,
     SimulatedAuditRepository,
     SimulatedAuthRepository,
+    SimulatedDisallowedUserRepository,
     SimulatedHostRepository,
+    SimulatedJobHistorySummaryRepository,
     SimulatedJobRepository,
     SimulatedSettingsRepository,
     SimulatedUserRepository,
@@ -57,9 +60,12 @@ __all__ = [
     "MockCommandConfig",
     "MockProcessExecutor",
     "MockS3Client",
+    "SimulatedAdminTaskRepository",
     "SimulatedAuditRepository",
     "SimulatedAuthRepository",
+    "SimulatedDisallowedUserRepository",
     "SimulatedHostRepository",
+    "SimulatedJobHistorySummaryRepository",
     "SimulatedJobRepository",
     "SimulatedSettingsRepository",
     "SimulatedUserRepository",

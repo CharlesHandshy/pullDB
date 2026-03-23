@@ -423,36 +423,32 @@ async def force_delete_user(
     Creates an async admin task that will be processed by the worker.
     """
     from pulldb.domain.models import AdminTaskType
-    from pulldb.infra.mysql import AdminTaskRepository
-    
+    from pulldb.infra.factory import get_admin_task_repository
+
     if user_id == admin.user_id:
         return {"success": False, "message": "Cannot delete your own account"}
-    
+
     try:
         # Parse JSON body
         body = await request.json()
         confirm_username = body.get("confirm_username", "")
         skip_database_drops = body.get("skip_database_drops", False)
         databases_to_drop = body.get("databases_to_drop", [])
-        
+
         # Get user to validate confirm_username
         user = state.user_repo.get_user_by_id(user_id)
         if not user:
             return {"success": False, "message": "User not found"}
-        
+
         # Validate confirmation
         if confirm_username != user.username:
             return {
                 "success": False,
                 "message": f"Username confirmation doesn't match. Expected '{user.username}'",
             }
-        
+
         # Create admin task
-        if getattr(state.job_repo, 'pool', None) is None:
-            from pulldb.simulation.adapters.mock_mysql import SimulatedAdminTaskRepository
-            admin_task_repo: Any = SimulatedAdminTaskRepository()
-        else:
-            admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+        admin_task_repo: Any = get_admin_task_repository(state.pool)
         
         # Build parameters
         parameters = {
@@ -488,14 +484,10 @@ async def get_admin_task_json(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Get admin task status as JSON for API polling."""
-    from pulldb.infra.mysql import AdminTaskRepository
-    
+    from pulldb.infra.factory import get_admin_task_repository
+
     try:
-        if getattr(state.job_repo, 'pool', None) is None:
-            from pulldb.simulation.adapters.mock_mysql import SimulatedAdminTaskRepository
-            admin_task_repo: Any = SimulatedAdminTaskRepository()
-        else:
-            admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+        admin_task_repo: Any = get_admin_task_repository(state.pool)
         task = admin_task_repo.get_task(task_id)
         
         if not task:
@@ -529,16 +521,9 @@ async def get_admin_task_page(
     admin: User = Depends(require_admin),
 ) -> Response:
     """Render admin task status page with HTMX polling."""
-    from pulldb.infra.mysql import AdminTaskRepository
+    from pulldb.infra.factory import get_admin_task_repository
 
-    # In simulation mode state.job_repo.pool is None (no live MySQL).  Fall
-    # back to SimulatedAdminTaskRepository so the task status page works in
-    # dev without crashing.
-    if getattr(state.job_repo, 'pool', None) is None:
-        from pulldb.simulation.adapters.mock_mysql import SimulatedAdminTaskRepository
-        admin_task_repo: Any = SimulatedAdminTaskRepository()
-    else:
-        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+    admin_task_repo: Any = get_admin_task_repository(state.pool)
     task = admin_task_repo.get_task(task_id)
     
     if not task:
@@ -4752,17 +4737,13 @@ async def start_user_orphan_scan(
     Returns immediately with task_id for status polling.
     """
     from pulldb.domain.models import AdminTaskType
-    from pulldb.infra.mysql import AdminTaskRepository
-    
+    from pulldb.infra.factory import get_admin_task_repository
+
     try:
         body = await request.json()
         specific_hosts = body.get("hosts")  # Optional: limit to specific hosts
-        
-        if getattr(state.job_repo, 'pool', None) is None:
-            from pulldb.simulation.adapters.mock_mysql import SimulatedAdminTaskRepository
-            admin_task_repo: Any = SimulatedAdminTaskRepository()
-        else:
-            admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+
+        admin_task_repo: Any = get_admin_task_repository(state.pool)
         
         parameters = {}
         if specific_hosts:
@@ -5294,20 +5275,16 @@ async def api_get_disallowed_users(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Get all disallowed usernames from database.
-    
+
     Returns both hardcoded and admin-added entries.
     """
-    from pulldb.infra.mysql import DisallowedUserRepository
-    
+    from pulldb.infra.factory import get_disallowed_user_repository
+
     if not hasattr(state, "job_repo") or not state.job_repo:
         return {"success": False, "message": "Database not available"}
-    
+
     try:
-        if getattr(state.job_repo, 'pool', None) is None:
-            from pulldb.simulation.adapters.mock_mysql import SimulatedDisallowedUserRepository
-            repo: Any = SimulatedDisallowedUserRepository()
-        else:
-            repo = DisallowedUserRepository(state.job_repo.pool)
+        repo: Any = get_disallowed_user_repository(state.pool)
         users = repo.get_all()
         
         return {
@@ -5334,30 +5311,26 @@ async def api_add_disallowed_user(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Add a username to the disallowed list.
-    
+
     Request body: {"username": "...", "reason": "..."}
     """
-    from pulldb.infra.mysql import DisallowedUserRepository
-    
+    from pulldb.infra.factory import get_disallowed_user_repository
+
     if not hasattr(state, "job_repo") or not state.job_repo:
         return {"success": False, "message": "Database not available"}
-    
+
     try:
         body = await request.json()
         username = body.get("username", "").strip().lower()
         reason = body.get("reason", "").strip() or None
-        
+
         if not username:
             return {"success": False, "message": "Username is required"}
-        
+
         if len(username) < 2:
             return {"success": False, "message": "Username must be at least 2 characters"}
-        
-        if getattr(state.job_repo, 'pool', None) is None:
-            from pulldb.simulation.adapters.mock_mysql import SimulatedDisallowedUserRepository
-            repo: Any = SimulatedDisallowedUserRepository()
-        else:
-            repo = DisallowedUserRepository(state.job_repo.pool)
+
+        repo: Any = get_disallowed_user_repository(state.pool)
         
         # Check if already exists
         if repo.exists(username):
@@ -5389,20 +5362,16 @@ async def api_remove_disallowed_user(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Remove a username from the disallowed list.
-    
+
     Only non-hardcoded entries can be removed.
     """
-    from pulldb.infra.mysql import DisallowedUserRepository
-    
+    from pulldb.infra.factory import get_disallowed_user_repository
+
     if not hasattr(state, "job_repo") or not state.job_repo:
         return {"success": False, "message": "Database not available"}
-    
+
     try:
-        if getattr(state.job_repo, 'pool', None) is None:
-            from pulldb.simulation.adapters.mock_mysql import SimulatedDisallowedUserRepository
-            repo: Any = SimulatedDisallowedUserRepository()
-        else:
-            repo = DisallowedUserRepository(state.job_repo.pool)
+        repo: Any = get_disallowed_user_repository(state.pool)
         success, message = repo.remove(username.lower())
         
         if success:
@@ -5434,17 +5403,13 @@ async def disallowed_users_page(
         DISALLOWED_USERS_HARDCODED,
         MIN_USERNAME_LENGTH,
     )
-    from pulldb.infra.mysql import DisallowedUserRepository
-    
+    from pulldb.infra.factory import get_disallowed_user_repository
+
     # Get database entries
     database_users = []
     if hasattr(state, "job_repo") and state.job_repo:
         try:
-            if getattr(state.job_repo, 'pool', None) is None:
-                from pulldb.simulation.adapters.mock_mysql import SimulatedDisallowedUserRepository
-                repo: Any = SimulatedDisallowedUserRepository()
-            else:
-                repo = DisallowedUserRepository(state.job_repo.pool)
+            repo: Any = get_disallowed_user_repository(state.pool)
             all_entries = repo.get_all()
             # Filter to non-hardcoded entries (database-added only)
             database_users = [

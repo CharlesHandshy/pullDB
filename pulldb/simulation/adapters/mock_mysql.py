@@ -49,6 +49,11 @@ class SimulatedJobRepository:
     # get_admin_task_page which is guarded separately (see routes.py).
     pool = None
 
+    # Constants for stale running job recovery (mirroring real JobRepository)
+    STALE_RUNNING_TIMEOUT_MINUTES: ClassVar[int] = 15
+    STALE_RUNNING_PROCESS_CHECK_COUNT: ClassVar[int] = 3
+    STALE_RUNNING_PROCESS_CHECK_DELAY_SECONDS: ClassVar[float] = 2.0
+
     def __init__(self) -> None:
         """Initialize the repository with shared simulation state."""
         self.state = get_simulation_state()
@@ -783,6 +788,36 @@ class SimulatedJobRepository:
             updated = replace(job, options_json=options)
             self.state.jobs[job_id] = updated
 
+    @staticmethod
+    def _format_job_events(page: list) -> list[dict[str, Any]]:
+        """Format a list of JobEvent objects into API-ready dicts.
+
+        Shared by get_job_events_paginated() and get_job_events_by_offset().
+        """
+        def _format_ts(dt: datetime) -> str:
+            iso = dt.isoformat()
+            return iso.replace("+00:00", "Z") if iso.endswith("+00:00") else iso + "Z"
+
+        def _parse_detail(detail: str | None) -> dict | None:
+            if not detail:
+                return None
+            if detail.startswith("{"):
+                try:
+                    return json.loads(detail)
+                except json.JSONDecodeError:
+                    pass
+            return {"message": detail}
+
+        return [
+            {
+                "id": e.id,
+                "event_type": e.event_type,
+                "logged_at": _format_ts(e.logged_at),
+                "detail": _parse_detail(e.detail),
+            }
+            for e in page
+        ]
+
     def get_job_events_paginated(
         self,
         job_id: str,
@@ -821,31 +856,7 @@ class SimulatedJobRepository:
                 )
 
             page = filtered[:limit]
-
-            def _format_ts(dt: datetime) -> str:
-                iso = dt.isoformat()
-                return iso.replace("+00:00", "Z") if iso.endswith("+00:00") else iso + "Z"
-
-            def _parse_detail(detail: str | None) -> dict | None:
-                if not detail:
-                    return None
-                if detail.startswith("{"):
-                    try:
-                        return json.loads(detail)
-                    except json.JSONDecodeError:
-                        pass
-                return {"message": detail}
-
-            events = [
-                {
-                    "id": e.id,
-                    "event_type": e.event_type,
-                    "logged_at": _format_ts(e.logged_at),
-                    "detail": _parse_detail(e.detail),
-                }
-                for e in page
-            ]
-            return events, total_count
+            return self._format_job_events(page), total_count
 
     def get_job_events_by_offset(
         self,
@@ -872,31 +883,7 @@ class SimulatedJobRepository:
             reverse = order.lower() == "desc"
             sorted_events = sorted(all_events, key=lambda e: e.id, reverse=reverse)
             page = sorted_events[offset : offset + limit]
-
-            def _format_ts(dt: datetime) -> str:
-                iso = dt.isoformat()
-                return iso.replace("+00:00", "Z") if iso.endswith("+00:00") else iso + "Z"
-
-            def _parse_detail(detail: str | None) -> dict | None:
-                if not detail:
-                    return None
-                if detail.startswith("{"):
-                    try:
-                        return json.loads(detail)
-                    except json.JSONDecodeError:
-                        pass
-                return {"message": detail}
-
-            events = [
-                {
-                    "id": e.id,
-                    "event_type": e.event_type,
-                    "logged_at": _format_ts(e.logged_at),
-                    "detail": _parse_detail(e.detail),
-                }
-                for e in page
-            ]
-            return events, total_count
+            return self._format_job_events(page), total_count
 
     def prune_job_events_excluding(
         self,
@@ -1797,11 +1784,6 @@ class SimulatedJobRepository:
             self.append_job_event(job_id, "force_deleted", event_detail)
             
             return True
-
-    # Constants for stale running job recovery (mirroring real JobRepository)
-    STALE_RUNNING_TIMEOUT_MINUTES: ClassVar[int] = 15
-    STALE_RUNNING_PROCESS_CHECK_COUNT: ClassVar[int] = 3
-    STALE_RUNNING_PROCESS_CHECK_DELAY_SECONDS: ClassVar[float] = 2.0
 
     def get_candidate_stale_running_job(
         self,

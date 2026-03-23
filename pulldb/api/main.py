@@ -627,7 +627,7 @@ async def register_user(
         validate_username_format,
         validate_username_not_disallowed,
     )
-    from pulldb.infra.mysql import DisallowedUserRepository
+    from pulldb.infra.factory import get_disallowed_user_repository
 
     if not state.auth_repo:
         raise HTTPException(
@@ -653,15 +653,14 @@ async def register_user(
             detail=exc.message,
         ) from exc
 
-    # Check database disallowed list (if pool available)
-    if state.pool is not None:
-        disallowed_repo = DisallowedUserRepository(state.pool)
-        is_disallowed, reason = disallowed_repo.is_disallowed(request.username)
-        if is_disallowed:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Username '{request.username}' is not allowed: {reason}",
-            )
+    # Check database disallowed list
+    disallowed_repo = get_disallowed_user_repository(state.pool)
+    is_disallowed, reason = disallowed_repo.is_disallowed(request.username)
+    if is_disallowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Username '{request.username}' is not allowed: {reason}",
+        )
 
     # Check if user already exists
     existing_user = await run_in_threadpool(

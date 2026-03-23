@@ -26,7 +26,7 @@ from pulldb.domain.interfaces import (
 
 if TYPE_CHECKING:
     from pulldb.worker.provisioning import HostProvisioningService
-    from pulldb.infra.mysql import JobHistorySummaryRepository, MySQLPool
+    from pulldb.infra.mysql import AdminTaskRepository, JobHistorySummaryRepository, MySQLPool
 
 
 def get_mode() -> str:
@@ -79,10 +79,15 @@ def get_process_executor() -> ProcessExecutor:
 
 def get_auth_repository() -> AuthRepository:
     """Get AuthRepository implementation.
-    
+
     Returns:
         AuthRepository for password and session management.
     """
+    if is_simulation_mode():
+        from pulldb.simulation import SimulatedAuthRepository
+
+        return SimulatedAuthRepository()
+
     from pulldb.auth.repository import AuthRepository as AuthRepositoryImpl
 
     pool = _get_real_mysql_pool()
@@ -131,25 +136,43 @@ def get_settings_repository() -> SettingsRepository:
     return MySQLSettingsRepository(pool)
 
 
-def get_disallowed_user_repository() -> DisallowedUserRepository:
+def get_disallowed_user_repository(pool: "MySQLPool | None" = None) -> DisallowedUserRepository:
     """Get DisallowedUserRepository implementation."""
-    # No simulation mode for this repository (simple lookup)
+    if is_simulation_mode():
+        from pulldb.simulation import SimulatedDisallowedUserRepository
+
+        return SimulatedDisallowedUserRepository()
+
     from pulldb.infra.mysql import DisallowedUserRepository as DisallowedUserRepoImpl
 
-    pool = _get_real_mysql_pool()
-    return DisallowedUserRepoImpl(pool)
+    _pool = pool or _get_real_mysql_pool()
+    return DisallowedUserRepoImpl(_pool)
+
+
+def get_admin_task_repository(pool: "MySQLPool | None" = None) -> "AdminTaskRepository":
+    """Get AdminTaskRepository implementation."""
+    if is_simulation_mode():
+        from pulldb.simulation import SimulatedAdminTaskRepository
+
+        return SimulatedAdminTaskRepository()  # type: ignore[return-value]
+
+    from pulldb.infra.mysql import AdminTaskRepository as AdminTaskRepoImpl
+
+    _pool = pool or _get_real_mysql_pool()
+    return AdminTaskRepoImpl(_pool)  # type: ignore[return-value]
 
 
 def get_job_history_summary_repository() -> "JobHistorySummaryRepository | None":
     """Get JobHistorySummaryRepository implementation.
-    
+
     Returns:
-        Repository for job history summary operations,
-        or None in simulation mode.
+        Repository for job history summary operations.
     """
     if is_simulation_mode():
-        return None
-    
+        from pulldb.simulation import SimulatedJobHistorySummaryRepository
+
+        return SimulatedJobHistorySummaryRepository()  # type: ignore[return-value]
+
     from pulldb.infra.mysql import JobHistorySummaryRepository
 
     pool = _get_real_mysql_pool()
@@ -158,14 +181,14 @@ def get_job_history_summary_repository() -> "JobHistorySummaryRepository | None"
 
 def get_audit_repository() -> AuditRepository | None:
     """Get AuditRepository implementation.
-    
+
     Returns:
-        AuditRepository for logging administrative actions,
-        or None in simulation mode.
+        AuditRepository for logging administrative actions.
     """
     if is_simulation_mode():
-        # Return None in simulation mode - audit logging is optional
-        return None
+        from pulldb.simulation import SimulatedAuditRepository
+
+        return SimulatedAuditRepository()
 
     from pulldb.infra.mysql import AuditRepository as AuditRepositoryImpl
 
@@ -175,17 +198,22 @@ def get_audit_repository() -> AuditRepository | None:
 
 def get_provisioning_service(actor_user_id: str) -> "HostProvisioningService":
     """Get HostProvisioningService instance.
-    
+
     Creates a configured provisioning service with all dependencies injected.
     Used by both CLI (pulldb-admin hosts provision) and Web UI.
-    
+
+    Simulation-safe: get_host_repository() and get_audit_repository() both
+    return simulated implementations when is_simulation_mode() is True.
+    Callers in the web layer should guard with is_simulation_mode() before
+    invoking service methods that would perform real I/O.
+
     Args:
         actor_user_id: UUID of the user performing operations.
             Used for audit logging.
-    
+
     Returns:
         HostProvisioningService instance ready for use.
-    
+
     Example:
         >>> from pulldb.infra.factory import get_provisioning_service
         >>>

@@ -195,16 +195,24 @@ def test_cleanup_orphaned_staging_drop_permission_error() -> None:
 
     with mock.patch("mysql.connector.connect") as mock_connect:
         mock_cursor = mock_connect.return_value.cursor.return_value
-        # Mock SHOW DATABASES
+        # Mock SHOW DATABASES and processlist
         mock_cursor.fetchall.side_effect = [
             [("target_000000000000",)],  # SHOW DATABASES (first call)
             [],  # SELECT db FROM information_schema.processlist
         ]
+        # _has_pulldb_table creates its own cursor (same mock_cursor) and
+        # calls fetchone; return a row so the orphan passes ownership check.
+        mock_cursor.fetchone.return_value = ("1",)
 
-        # Mock DROP DATABASE to raise
+        # Mock execute calls in order:
+        #   1. SHOW DATABASES
+        #   2. SELECT db FROM information_schema.processlist
+        #   3. _has_pulldb_table: SELECT 1 FROM information_schema.TABLES
+        #   4. DROP DATABASE IF EXISTS — raises access-denied error
         mock_cursor.execute.side_effect = [
             None,  # SHOW DATABASES
             None,  # SELECT db FROM information_schema.processlist
+            None,  # _has_pulldb_table ownership check
             mysql.connector.Error(msg="Access denied for DROP"),  # DROP
         ]
 
