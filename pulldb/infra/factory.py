@@ -9,7 +9,7 @@ HCA Layer: shared
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pulldb.domain.interfaces import (
     AuditRepository,
@@ -25,8 +25,12 @@ from pulldb.domain.interfaces import (
 
 
 if TYPE_CHECKING:
+    from pulldb.infra.mysql import (
+        AdminTaskRepository,
+        JobHistorySummaryRepository,
+        MySQLPool,
+    )
     from pulldb.worker.provisioning import HostProvisioningService
-    from pulldb.infra.mysql import AdminTaskRepository, JobHistorySummaryRepository, MySQLPool
 
 
 def get_mode() -> str:
@@ -136,7 +140,9 @@ def get_settings_repository() -> SettingsRepository:
     return MySQLSettingsRepository(pool)
 
 
-def get_disallowed_user_repository(pool: "MySQLPool | None" = None) -> DisallowedUserRepository:
+def get_disallowed_user_repository(
+    pool: MySQLPool | None = None,
+) -> DisallowedUserRepository:
     """Get DisallowedUserRepository implementation."""
     if is_simulation_mode():
         from pulldb.simulation import SimulatedDisallowedUserRepository
@@ -149,7 +155,7 @@ def get_disallowed_user_repository(pool: "MySQLPool | None" = None) -> Disallowe
     return DisallowedUserRepoImpl(_pool)
 
 
-def get_admin_task_repository(pool: "MySQLPool | None" = None) -> "AdminTaskRepository":
+def get_admin_task_repository(pool: MySQLPool | None = None) -> AdminTaskRepository:
     """Get AdminTaskRepository implementation."""
     if is_simulation_mode():
         from pulldb.simulation import SimulatedAdminTaskRepository
@@ -162,7 +168,7 @@ def get_admin_task_repository(pool: "MySQLPool | None" = None) -> "AdminTaskRepo
     return AdminTaskRepoImpl(_pool)  # type: ignore[return-value]
 
 
-def get_job_history_summary_repository() -> "JobHistorySummaryRepository | None":
+def get_job_history_summary_repository() -> JobHistorySummaryRepository | None:
     """Get JobHistorySummaryRepository implementation.
 
     Returns:
@@ -196,7 +202,7 @@ def get_audit_repository() -> AuditRepository | None:
     return AuditRepositoryImpl(pool)
 
 
-def get_provisioning_service(actor_user_id: str) -> "HostProvisioningService":
+def get_provisioning_service(actor_user_id: str) -> HostProvisioningService:
     """Get HostProvisioningService instance.
 
     Creates a configured provisioning service with all dependencies injected.
@@ -236,7 +242,7 @@ def get_provisioning_service(actor_user_id: str) -> "HostProvisioningService":
     )
 
 
-def _get_real_mysql_pool() -> "MySQLPool":
+def _get_real_mysql_pool() -> MySQLPool:
     """Create real MySQL connection pool."""
     from pulldb.infra.mysql import MySQLPool
     from pulldb.infra.secrets import CredentialResolver
