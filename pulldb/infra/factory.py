@@ -54,7 +54,7 @@ def get_job_repository() -> JobRepository:
     from pulldb.infra.mysql import JobRepository as MySQLJobRepository
 
     pool = _get_real_mysql_pool()
-    return MySQLJobRepository(pool)  # type: ignore[return-value]
+    return MySQLJobRepository(pool)
 
 
 def get_s3_client(profile: str | None = None, region: str | None = None) -> S3Client:
@@ -116,7 +116,7 @@ def get_host_repository() -> HostRepository:
     if is_simulation_mode():
         from pulldb.simulation import SimulatedHostRepository
 
-        return SimulatedHostRepository()  # type: ignore[return-value]
+        return SimulatedHostRepository()
 
     from pulldb.infra.mysql import HostRepository as MySQLHostRepository
     from pulldb.infra.secrets import CredentialResolver
@@ -124,7 +124,7 @@ def get_host_repository() -> HostRepository:
     pool = _get_real_mysql_pool()
     aws_profile = os.getenv("PULLDB_AWS_PROFILE")
     resolver = CredentialResolver(aws_profile=aws_profile)
-    return MySQLHostRepository(pool, resolver)  # type: ignore[return-value]
+    return MySQLHostRepository(pool, resolver)
 
 
 def get_settings_repository() -> SettingsRepository:
@@ -165,7 +165,7 @@ def get_admin_task_repository(pool: MySQLPool | None = None) -> AdminTaskReposit
     from pulldb.infra.mysql import AdminTaskRepository as AdminTaskRepoImpl
 
     _pool = pool or _get_real_mysql_pool()
-    return AdminTaskRepoImpl(_pool)  # type: ignore[return-value]
+    return AdminTaskRepoImpl(_pool)
 
 
 def get_job_history_summary_repository() -> JobHistorySummaryRepository | None:
