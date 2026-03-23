@@ -167,6 +167,12 @@ fi
 dpkg-deb --build "$WORKDIR" "$PKGNAME"
 echo "Built $PKGNAME (Version=${VERSION})"
 
+# Copy the one-step installer alongside the .deb so they ship together
+if [[ -f "install-pulldb-server.sh" ]]; then
+    cp install-pulldb-server.sh .
+    echo "Included install-pulldb-server.sh alongside ${PKGNAME}"
+fi
+
 # GPG sign the package (if GPG_KEY_ID is set)
 if [[ -n "${GPG_KEY_ID:-}" ]]; then
     if command -v dpkg-sig &>/dev/null; then

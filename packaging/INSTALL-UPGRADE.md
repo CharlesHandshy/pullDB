@@ -1,70 +1,25 @@
 # pullDB Installation & Upgrade Guide
 
-> **Version**: 1.0.0 | **Last Updated**: January 6, 2026
+> **Version**: 1.3.0 | **Last Updated**: March 2026
 
-This guide covers installing and upgrading pullDB packages on a database server.
+This guide covers installing and upgrading pullDB on a database server, including Docker-based stations.
 
-> **Note**: Fresh installs automatically create an admin user with a random password.
-> Save the credentials displayed during installation!
+> **IMPORTANT**: Fresh installs automatically create an admin user with a random password.
+> Save the credentials displayed at the end of installation — they are shown once and also
+> written to `/opt/pulldb.service/ADMIN_CREDENTIALS.txt` (root-readable only).
 
 ---
 
 ## System Requirements
 
-### Recommended
-
 | Component | Requirement |
 |-----------|-------------|
 | **Operating System** | Ubuntu 22.04 LTS or Ubuntu 24.04 LTS |
-| **Python** | 3.12+ (included in Ubuntu 22.04+) |
-| **MySQL** | 8.0+ |
-| **Disk Space** | 50GB+ for work directory |
-| **Memory** | 4GB+ RAM |
-
-### Legacy Support (Ubuntu 20.04)
-
-Ubuntu 20.04 ships with Python 3.8, but pullDB requires Python 3.12+.
-
-**Option 1: Build Python 3.12 from source** (recommended for Ubuntu 20.04):
-
-```bash
-# Install build dependencies
-sudo apt-get update
-sudo apt-get install -y build-essential zlib1g-dev libncurses5-dev \
-    libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev \
-    libsqlite3-dev wget libbz2-dev
-
-# Download Python 3.12
-cd /tmp
-wget https://www.python.org/ftp/python/3.12.4/Python-3.12.4.tgz
-tar -xf Python-3.12.4.tgz
-cd Python-3.12.4
-
-# Build and install (takes ~10 minutes)
-./configure --enable-optimizations --prefix=/usr/local
-make -j$(nproc)
-sudo make altinstall
-
-# Verify installation
-python3.12 --version
-# Python 3.12.4
-
-# Now install pullDB
-sudo dpkg -i pulldb-client_*.deb
-# or
-sudo dpkg -i pulldb_*.deb
-```
-
-> **Note**: `make altinstall` installs Python 3.12 alongside system Python 3.8.
-> System Python remains unchanged. Ubuntu 20.04 will reach end of standard support
-> in April 2025; consider upgrading to Ubuntu 22.04 LTS.
-
-**Option 2: Upgrade to Ubuntu 22.04** (recommended for production):
-
-Ubuntu 22.04 includes Python 3.10 by default, and Python 3.12 is available via:
-```bash
-sudo apt-get install python3.12 python3.12-venv
-```
+| **Python** | 3.12+ (installed automatically by `preinst` via deadsnakes PPA) |
+| **MySQL** | 8.0+ — **must be running before `dpkg -i`** (see Prerequisites) |
+| **openssl** | Required for TLS certificate generation — **must be installed before `dpkg -i`** |
+| **Disk Space** | 50 GB+ for work directory |
+| **Memory** | 4 GB+ RAM |
 
 ---
 
@@ -72,49 +27,75 @@ sudo apt-get install python3.12 python3.12-venv
 
 | Package | Purpose | Install Path |
 |---------|---------|--------------|
-| `pulldb` | Full server (worker + API + web) | `/opt/pulldb.service` |
-| `pulldb-client` | CLI only (no services) | `/opt/pulldb.client` |
+| `pulldb` | Full server (worker + API + web UI) | `/opt/pulldb.service` |
+| `pulldb-client` | CLI only (no background services) | `/opt/pulldb.client` |
 
 ---
 
-## Quick Reference
+## Prerequisites (Required Before `dpkg -i`)
 
-| Task | Command |
-|------|---------|
-| Install server package | `sudo dpkg -i pulldb_X.X.X_amd64.deb` |
-| Install CLI client | `sudo dpkg -i pulldb-client_X.X.X_amd64.deb` |
-| Check schema status | `sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations"` |
-| Check all services | `sudo systemctl status pulldb-worker pulldb-api pulldb-web` |
-| View settings | `sudo /opt/pulldb.service/venv/bin/pulldb-admin settings list` |
+The `pulldb` server package has two hard dependencies that are **not automatically installed
+by dpkg** and will cause the install to fail if absent. Install them first on any system,
+including Docker.
 
----
+### 1. `software-properties-common` (Pre-Depends — blocks unpack if missing)
 
-## Fresh Installation
+The package has `Pre-Depends: software-properties-common`. dpkg enforces Pre-Depends before
+it unpacks the package — before any script runs. If this package is not installed, `dpkg -i`
+fails immediately:
 
-### Server Package (Full Install)
-
-#### Step 1: Install the Package
-
-```bash
-sudo dpkg -i pulldb_1.0.0_amd64.deb
+```
+dpkg: error processing archive pulldb_1.3.0_amd64.deb
+  pre-dependency problem — not installing pulldb:
+  pulldb pre-depends on software-properties-common; however:
+    Package software-properties-common is not installed.
 ```
 
-The package will:
-- Create Linux system user `pulldb_service`
-- Install files to `/opt/pulldb.service/`
-- Create `pulldb_service` database and apply schema (if MySQL accessible)
-- **Create initial admin user with random password** (displayed at end of install)
-- **Create `pulldb_service` service account** (for systemd scheduled tasks)
-- Set up systemd services (enabled but may not start without config)
+### 2. `openssl` (Required for TLS — postinst exits if missing)
 
-> **IMPORTANT**: Save the admin credentials displayed at the end of installation!
-> They are also saved to `/opt/pulldb.service/ADMIN_CREDENTIALS.txt` (root-only readable).
+The postinst generates a self-signed TLS certificate. If `openssl` is not present, the
+entire install aborts with `FATAL: Failed to generate TLS certificate`.
 
-**Note on Service Account**: The `pulldb_service` account in the database is a Service Bootstrap/CLI Admin Account (sbcacc). It allows systemd services like `pulldb-retention.timer` to execute admin CLI commands. This account has no password and cannot be used for web login.
+### 3. MySQL 8.0+ server (Required for schema — postinst exits if not running)
 
-#### Step 2: Configure Environment
+The postinst creates the `pulldb_service` database and applies the schema. If MySQL is not
+running and reachable via Unix socket, the install aborts with `FATAL: Cannot connect to MySQL`.
 
-Edit the configuration file:
+### Install all prerequisites in one step
+
+```bash
+sudo apt-get update
+sudo apt-get install -y software-properties-common openssl ca-certificates mysql-server
+sudo service mysql start   # or: sudo systemctl start mysql
+```
+
+---
+
+## Fresh Installation — Standard Ubuntu Server
+
+Use the one-step installer. Copy `install-pulldb-server.sh` alongside the `.deb` file and run:
+
+```bash
+sudo ./install-pulldb-server.sh pulldb_1.3.0_amd64.deb
+```
+
+The script handles everything in order:
+1. Installs `software-properties-common`, `openssl`, `ca-certificates` (prerequisites that block `dpkg -i` if absent)
+2. Installs and starts `mysql-server` if not already running
+3. Installs the `.deb` package (Python 3.12 auto-installed via deadsnakes PPA)
+4. Applies schema to remote MySQL if needed (sidecar scenario)
+5. Replaces placeholder MySQL passwords with randomly generated ones and writes them to `.env`
+6. Generates a session secret and writes it to `.env`
+7. Starts `pulldb-api` and `pulldb-worker`
+
+At the end it prints the admin credentials and service URLs.
+
+> **IMPORTANT**: Save the admin credentials — they are displayed once and stored in
+> `/opt/pulldb.service/ADMIN_CREDENTIALS.txt` (root-readable only).
+
+### After install: configure environment
+
+Edit `/opt/pulldb.service/.env` to set your AWS and S3 details, then restart services:
 
 ```bash
 sudo nano /opt/pulldb.service/.env
@@ -122,85 +103,165 @@ sudo nano /opt/pulldb.service/.env
 
 Required settings:
 ```bash
-# AWS credentials (for Secrets Manager access)
 PULLDB_AWS_PROFILE=pr-dev
 AWS_DEFAULT_REGION=us-east-1
-
-# Coordination database secret
 PULLDB_COORDINATION_SECRET=aws-secretsmanager:/pulldb/mysql/coordination-db
-
-# MySQL users
-PULLDB_API_MYSQL_USER=pulldb_api
-PULLDB_WORKER_MYSQL_USER=pulldb_worker
 ```
 
-### Step 3: Verify Database Schema
-
-The package installer automatically applies all schema files from `schema/pulldb_service/`.
-To verify the schema was applied correctly:
-
+Or use the interactive wizard:
 ```bash
-# Check applied schema files
-sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
+sudo /opt/pulldb.service/scripts/configure-pulldb.sh
 ```
 
-### Step 4: Start Services
-
+Then restart:
 ```bash
-sudo systemctl start pulldb-worker
-sudo systemctl start pulldb-api
-
-# Verify they're running
-sudo systemctl status pulldb-worker pulldb-api
+sudo systemctl restart pulldb-api pulldb-worker
 ```
 
-### Step 6: Verify Installation
+### Enable the web UI
+
+The web UI is not auto-started. Enable it once:
 
 ```bash
-# Check settings are loading
-sudo /opt/pulldb.service/venv/bin/pulldb-admin settings list
-
-# Check version
-sudo /opt/pulldb.service/venv/bin/pulldb --version
-```
-
----
-
-### Web UI Service
-
-The web UI is included in the server package and runs on port 8000.
-
-#### Enable the Web Service
-
-```bash
-# Enable and start the web UI
 sudo systemctl enable --now pulldb-web
-
-# Verify it's running
-sudo systemctl status pulldb-web
 ```
 
-The web UI uses the same configuration file as the server (`/opt/pulldb.service/.env`).
+Access at `https://<server-ip>:8000`.
 
-#### Access the Web UI
+> **Note**: The server uses a self-signed TLS certificate. Your browser will show a security
+> warning on first access. Accept the exception, or import the certificate from
+> `/opt/pulldb.service/tls/cert.pem` into your system or browser trust store.
 
-Open a browser and navigate to:
+### Verify the install
+
+```bash
+# Tables
+sudo mysql -e "SHOW TABLES IN pulldb_service"
+
+# Users created
+sudo mysql -e "SELECT username, role FROM pulldb_service.auth_users"
+
+# Services running
+sudo systemctl status pulldb-api pulldb-worker
 ```
-http://<server-ip>:8000
-```
-
-Log in with the admin credentials displayed during installation (or check `/opt/pulldb.service/ADMIN_CREDENTIALS.txt`).
 
 ---
 
-### CLI Client Package (CLI Only)
+## Fresh Installation — Docker Station
+
+This section covers deploying pullDB on a Docker station running a minimal Ubuntu image.
+The key differences from a bare-metal install:
+
+- **Do not build the package on the target** — copy a pre-built `.deb` from the build machine
+- **No `sudo`** — Docker containers run as root by default; `sudo` is typically not installed
+- **systemd is not running** in a standard Docker container — services must be managed manually
+  or the container must be configured for systemd (e.g., `--privileged` with `systemd` as PID 1)
+- **MySQL must be pre-installed or provided as a sidecar** — the postinst cannot start MySQL for you
+
+### Option A: Single container (MySQL + pullDB together)
+
+Suitable for development/testing stations. Copy the installer and `.deb` into the image
+and run the one-step installer:
+
+```dockerfile
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Copy the pre-built package and installer (built on dev machine via `make server`)
+COPY pulldb_1.3.0_amd64.deb install-pulldb-server.sh /tmp/
+
+# Run the one-step installer
+# --yes skips the "Continue? [Y/n]" prompt
+# The installer installs prerequisites, MySQL, the package, sets passwords, and starts services
+RUN chmod +x /tmp/install-pulldb-server.sh \
+    && /tmp/install-pulldb-server.sh --yes /tmp/pulldb_1.3.0_amd64.deb \
+    && rm /tmp/pulldb_1.3.0_amd64.deb /tmp/install-pulldb-server.sh
+
+EXPOSE 8000 8080
+```
+
+> **Systemd note**: Without systemd, the installer detects the Docker environment and
+> starts `pulldb-api` and `pulldb-worker` directly as background processes.
+> To start the web UI: `exec /opt/pulldb.service/venv/bin/pulldb-web`
+
+### Option B: Sidecar MySQL (docker-compose)
+
+If MySQL runs in a separate container, pass `--skip-mysql` and `--mysql-host` so the
+installer connects to the sidecar for schema application instead of using the Unix socket:
+
+```yaml
+# docker-compose.yml
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: pulldb_service
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      retries: 10
+
+  pulldb:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+```
+
+```dockerfile
+# Dockerfile
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY pulldb_1.3.0_amd64.deb install-pulldb-server.sh /tmp/
+
+RUN chmod +x /tmp/install-pulldb-server.sh \
+    && /tmp/install-pulldb-server.sh \
+        --yes \
+        --skip-mysql \
+        --mysql-host db \
+        --mysql-root-pass rootpass \
+        /tmp/pulldb_1.3.0_amd64.deb \
+    && rm /tmp/pulldb_1.3.0_amd64.deb /tmp/install-pulldb-server.sh
+
+EXPOSE 8000 8080
+```
+
+The installer will:
+- Skip local MySQL install
+- Connect to `db:3306` to apply schema (since postinst cannot reach remote MySQL)
+- Set MySQL user passwords on the remote host
+- Write connection details to `.env`
+
+### Verifying the Docker install
+
+```bash
+# Check the Python module loaded correctly
+/opt/pulldb.service/venv/bin/python -c "import pulldb; print('OK')"
+
+# Check CLI
+/usr/local/bin/pulldb --version
+
+# Check database tables
+mysql -e "SHOW TABLES IN pulldb_service"
+```
+
+---
+
+## CLI Client Package (CLI Only)
 
 For systems that only need CLI access (no background services):
 
 ```bash
-sudo dpkg -i pulldb-client_1.0.0_amd64.deb
+# The client installer handles Python 3.12 automatically
+sudo ./install-pulldb-client.sh pulldb-client_1.3.0_amd64.deb
 
-# Verify installation
+# Or manually:
+sudo apt-get install -y software-properties-common
+sudo dpkg -i pulldb-client_1.3.0_amd64.deb
+
+# Verify
 pulldb --help
 ```
 
@@ -208,136 +269,80 @@ pulldb --help
 
 ## Upgrading
 
-> **Note**: The package installer automatically applies new schema files during installation.
+> **Important**: Schema upgrades are **not automatic**. The postinst detects an existing
+> schema and skips all SQL application. New schema files introduced in an upgrade must be
+> applied manually before restarting services.
 
 ### Standard Upgrade Process
 
 ```bash
-# Step 1: Install the new package (schema applied automatically)
-sudo dpkg -i pulldb_0.0.4_amd64.deb
+# Step 1: Stop services before installing new package
+sudo systemctl stop pulldb-worker pulldb-api pulldb-web
 
-# Step 2: Verify schema was updated
-sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
+# Step 2: Install the new package
+sudo dpkg -i pulldb_1.3.0_amd64.deb
 
-# Step 3: Restart services (to pick up code changes)
-sudo systemctl restart pulldb-worker pulldb-api
+# Step 3: Apply any new schema files manually (see "Schema Upgrades" below)
 
-# Step 4: Verify
-sudo /opt/pulldb.service/venv/bin/pulldb --version
+# Step 4: Restart services
+sudo systemctl start pulldb-api pulldb-worker
+
+# Step 5: Verify
+/opt/pulldb.service/venv/bin/pulldb --version
 sudo /opt/pulldb.service/venv/bin/pulldb-admin settings list
 ```
 
-### Using the Upgrade Script
+### Schema Upgrades (Manual)
 
-For convenience, there's an upgrade script that handles service restarts:
-
-```bash
-# Install package first
-sudo dpkg -i pulldb_0.0.4_amd64.deb
-
-# Then run upgrade script
-sudo /opt/pulldb.service/scripts/upgrade_pulldb.sh
-```
-
-The upgrade script will:
-1. Stop the worker service
-2. Update Python packages
-3. Restart the worker service
-
-### Rollback (if needed)
-
-If an upgrade fails:
+The installer does not apply schema changes to existing installations. To find and apply
+new schema files introduced in an upgrade:
 
 ```bash
-# Check what schema files are applied
-sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
+# See what tables exist now
+sudo mysql -e "SHOW TABLES IN pulldb_service"
 
-# Install previous version
-sudo dpkg -i pulldb_0.0.3_amd64.deb
+# Apply a specific new schema file
+sudo mysql pulldb_service < /opt/pulldb.service/schema/pulldb_service/00_tables/<new_file>.sql
+
+# Apply all files in a category (safe — all files use CREATE TABLE IF NOT EXISTS / INSERT IGNORE)
+for f in /opt/pulldb.service/schema/pulldb_service/00_tables/*.sql; do
+    echo "Applying $f..."
+    sudo mysql pulldb_service < "$f"
+done
 ```
+
+Schema files are safe to re-apply:
+- Tables: `CREATE TABLE IF NOT EXISTS` — skipped if already present
+- Views: `CREATE OR REPLACE VIEW` — updated in place
+- Seed data: `INSERT IGNORE` — skipped if already present
+- Users: `CREATE USER IF NOT EXISTS` — skipped if already present
+
+### Rollback
+
+```bash
+# Reinstall the previous version
+sudo dpkg -i pulldb_1.2.0_amd64.deb
+sudo systemctl restart pulldb-api pulldb-worker
+```
+
+No schema downgrade tooling exists. If a new schema file added columns or tables, they
+persist after rollback but are ignored by the older code.
 
 ---
 
-## Command Reference (Full Paths)
+## Quick Reference
 
-### Schema Commands
-
-```bash
-# Check applied schema files
-sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
-
-# List schema files in package
-ls -la /opt/pulldb.service/schema/pulldb_service/*.sql
-```
-
-### Admin Commands
-
-```bash
-# List all settings
-sudo /opt/pulldb.service/venv/bin/pulldb-admin settings list
-
-# Get specific setting
-sudo /opt/pulldb.service/venv/bin/pulldb-admin settings get <key>
-
-# Set a value (updates both db and .env)
-sudo /opt/pulldb.service/venv/bin/pulldb-admin settings set <key> <value>
-
-# Show differences between db and .env
-sudo /opt/pulldb.service/venv/bin/pulldb-admin settings diff
-
-# Sync database → .env
-sudo /opt/pulldb.service/venv/bin/pulldb-admin settings pull
-
-# Sync .env → database
-sudo /opt/pulldb.service/venv/bin/pulldb-admin settings push
-
-# List jobs
-sudo /opt/pulldb.service/venv/bin/pulldb-admin jobs list
-
-# List active jobs only
-sudo /opt/pulldb.service/venv/bin/pulldb-admin jobs list --active
-```
-
-### Service Commands
-
-```bash
-# Start services
-sudo systemctl start pulldb-worker
-sudo systemctl start pulldb-api
-
-# Stop services
-sudo systemctl stop pulldb-worker
-sudo systemctl stop pulldb-api
-
-# Restart services
-sudo systemctl restart pulldb-worker pulldb-api
-
-# Check status
-sudo systemctl status pulldb-worker pulldb-api
-
-# View logs
-sudo journalctl -u pulldb-worker -f
-sudo journalctl -u pulldb-api -f
-
-# View recent errors
-sudo journalctl -u pulldb-worker -p err --since "1 hour ago"
-```
-
-### Utility Scripts
-
-```bash
-# Interactive configuration wizard
-sudo /opt/pulldb.service/scripts/configure-pulldb.sh
-
-# Validate service installation
-sudo /opt/pulldb.service/scripts/service-validate.sh
-
-# Monitor active jobs
-sudo /opt/pulldb.service/scripts/monitor_jobs.py
-
-# Uninstall (removes package, keeps data)
-sudo /opt/pulldb.service/scripts/uninstall_pulldb.sh
-```
+| Task | Command |
+|------|---------|
+| Install server (one step) | `sudo ./install-pulldb-server.sh pulldb_1.3.0_amd64.deb` |
+| Install server (Docker, local MySQL) | `./install-pulldb-server.sh --yes pulldb_1.3.0_amd64.deb` |
+| Install server (Docker, sidecar MySQL) | `./install-pulldb-server.sh --yes --skip-mysql --mysql-host db pulldb_*.deb` |
+| Install CLI client | `sudo dpkg -i pulldb-client_1.3.0_amd64.deb` |
+| Show all database tables | `sudo mysql -e "SHOW TABLES IN pulldb_service"` |
+| Check all services | `sudo systemctl status pulldb-worker pulldb-api pulldb-web` |
+| View settings | `sudo /opt/pulldb.service/venv/bin/pulldb-admin settings list` |
+| Read admin credentials | `sudo cat /opt/pulldb.service/ADMIN_CREDENTIALS.txt` |
+| Re-run configuration wizard | `sudo /opt/pulldb.service/scripts/configure-pulldb.sh` |
 
 ---
 
@@ -348,80 +353,175 @@ sudo /opt/pulldb.service/scripts/uninstall_pulldb.sh
 | `/opt/pulldb.service/` | Main installation directory |
 | `/opt/pulldb.service/.env` | Environment configuration |
 | `/opt/pulldb.service/venv/` | Python virtual environment |
+| `/opt/pulldb.service/tls/` | Self-signed TLS certificate and key |
 | `/opt/pulldb.service/scripts/` | Utility scripts |
-| `/opt/pulldb.service/schema/pulldb_service/` | Database schema files |
+| `/opt/pulldb.service/schema/pulldb_service/` | Database schema files (subdirs: `00_tables/` `01_views/` `02_seed/` `03_users/`) |
 | `/opt/pulldb.service/bin/` | Binary tools (myloader) |
-| `/opt/pulldb.service/logs/` | Application logs |
-| `/opt/pulldb.service/work/` | Working directory for restores |
-| `/mnt/data/work/pulldb.service/` | Default work directory (configurable) |
+| `/opt/pulldb.service/ADMIN_CREDENTIALS.txt` | Initial admin password (root-readable, delete after saving) |
+| `/mnt/data/work/pulldb.service/` | Default work directory for restore operations (configurable) |
 | `/mnt/data/logs/pulldb.service/` | Default log directory (configurable) |
+| `/usr/local/bin/pulldb` | CLI symlink |
+| `/usr/local/bin/pulldb-admin` | Admin CLI wrapper (auto-escalates to `pulldb_service` user) |
+| `/etc/sudoers.d/pulldb-admin` | Passwordless sudo rule for `pulldb-admin` |
+
+---
+
+## Service Management
+
+```bash
+# Start / stop / restart
+sudo systemctl start pulldb-api pulldb-worker
+sudo systemctl stop pulldb-api pulldb-worker
+sudo systemctl restart pulldb-api pulldb-worker
+
+# Enable web UI (not auto-enabled)
+sudo systemctl enable --now pulldb-web
+
+# Enable scheduled cleanup (not auto-enabled)
+sudo systemctl enable --now pulldb-retention.timer
+
+# View logs
+sudo journalctl -u pulldb-worker -f
+sudo journalctl -u pulldb-api -f
+sudo journalctl -u pulldb-worker -p err --since "1 hour ago"
+
+# Multi-worker mode
+sudo systemctl start pulldb-worker@1 pulldb-worker@2
+```
+
+---
+
+## Admin Commands
+
+```bash
+# List all settings
+sudo /opt/pulldb.service/venv/bin/pulldb-admin settings list
+
+# Sync database settings to .env
+sudo /opt/pulldb.service/venv/bin/pulldb-admin settings pull --yes
+
+# Sync .env to database
+sudo /opt/pulldb.service/venv/bin/pulldb-admin settings push
+
+# Show differences between database and .env
+sudo /opt/pulldb.service/venv/bin/pulldb-admin settings diff
+
+# List jobs
+sudo /opt/pulldb.service/venv/bin/pulldb-admin jobs list
+
+# List active jobs only
+sudo /opt/pulldb.service/venv/bin/pulldb-admin jobs list --active
+```
 
 ---
 
 ## Troubleshooting
 
-### Package Installation Fails
+### Package installation fails — Pre-Depends error
 
-```bash
-# Check for dependency issues
-sudo apt-get install -f
-
-# View package info
-dpkg -I pulldb_0.0.4_amd64.deb
-
-# View package contents
-dpkg -c pulldb_0.0.4_amd64.deb
+```
+dpkg: error: pulldb pre-depends on software-properties-common
 ```
 
-### Schema Update Fails
-
+**Fix:**
 ```bash
-# Check applied schema files
-sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
-
-# List available schema files
-ls -la /opt/pulldb.service/schema/pulldb_service/*.sql
-
-# Manually apply a specific schema file (if needed)
-sudo mysql pulldb_service < /opt/pulldb.service/schema/pulldb_service/00716_api_keys_host_tracking.sql
+sudo apt-get install -y software-properties-common
+sudo dpkg -i pulldb_1.3.0_amd64.deb
 ```
 
-### Services Won't Start
+### Package installation fails — TLS certificate error
+
+```
+FATAL: Failed to generate TLS certificate
+```
+
+**Fix:**
+```bash
+sudo apt-get install -y openssl
+sudo dpkg -i pulldb_1.3.0_amd64.deb
+```
+
+### Package installation fails — MySQL not running
+
+```
+FATAL: Cannot connect to MySQL
+```
+
+**Fix:**
+```bash
+sudo apt-get install -y mysql-server
+sudo systemctl start mysql
+sudo dpkg -i pulldb_1.3.0_amd64.deb
+```
+
+### Services won't start
 
 ```bash
 # Check logs
 sudo journalctl -u pulldb-worker -n 50 --no-pager
+sudo journalctl -u pulldb-api -n 50 --no-pager
 
 # Validate configuration
 sudo /opt/pulldb.service/scripts/service-validate.sh
 
-# Check .env file
+# Inspect .env
 sudo cat /opt/pulldb.service/.env
 
 # Test Python import
 sudo /opt/pulldb.service/venv/bin/python -c "import pulldb; print('OK')"
 ```
 
-### Settings Not Loading
+### TLS certificate not trusted by browser or CLI
+
+The self-signed certificate is added to the system trust store during install. If it was
+not trusted (e.g., `update-ca-certificates` failed):
+
+```bash
+sudo cp /opt/pulldb.service/tls/cert.pem /usr/local/share/ca-certificates/pulldb-service.crt
+sudo update-ca-certificates
+```
+
+To regenerate the certificate (e.g., if the server IP changed):
+
+```bash
+sudo rm /opt/pulldb.service/tls/cert.pem /opt/pulldb.service/tls/key.pem
+sudo dpkg-reconfigure pulldb
+```
+
+### Web UI shows SSL error
+
+The web UI runs on HTTPS (port 8000), not HTTP. Use:
+```
+https://<server-ip>:8000
+```
+not `http://`.
+
+### Settings not loading after upgrade
 
 ```bash
 # Check what's in .env
 sudo grep -v '^#' /opt/pulldb.service/.env | grep -v '^$'
 
-# Check database connection
-sudo /opt/pulldb.service/venv/bin/pulldb-admin settings list
-
-# Audit differences
+# Sync from database
 sudo /opt/pulldb.service/venv/bin/pulldb-admin settings diff
+sudo /opt/pulldb.service/venv/bin/pulldb-admin settings pull --yes
+```
+
+### Schema check shows no migrations
+
+The `schema_migrations` table is not populated by the installer. Use `SHOW TABLES` instead:
+```bash
+sudo mysql -e "SHOW TABLES IN pulldb_service"
 ```
 
 ---
 
-## Version History
+## Known Limitations
 
-| Version | Date | Key Changes |
-|---------|------|-------------|
-| 0.0.4 | 2025-11-28 | Settings sync (pull/push/diff), AWS region fix |
-| 0.0.3 | 2025-11-27 | Phase 2 concurrency controls |
-| 0.0.2 | 2025-11-20 | Phase 1 cancellation support |
-| 0.0.1 | 2025-11-15 | Initial release |
+| Limitation | Detail |
+|---|---|
+| Schema upgrades are manual | The postinst skips schema application on existing installs. New SQL files must be applied manually. |
+| MySQL service user passwords | Seeded with placeholder values (`CHANGE_ME_API`, `CHANGE_ME_WORKER`). Change immediately after install. |
+| Sidecar MySQL not supported by postinst | Postinst connects via Unix socket only. For remote MySQL, apply schema manually. |
+| `schema_migrations` table always empty | The table exists but is not written to by the installer. Do not rely on it to verify schema state. |
+| systemd required for auto-start | Services do not start automatically in Docker without systemd. Start binaries directly in the container entrypoint. |
