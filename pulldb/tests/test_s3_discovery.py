@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+
 """HCA Layer: tests."""
 
 from collections.abc import Generator
@@ -11,7 +12,12 @@ import pytest
 from moto import mock_aws
 
 from pulldb.domain.errors import BackupValidationError
-from pulldb.infra.s3 import BACKUP_FILENAME_REGEX, S3Client, discover_latest_backup
+from pulldb.infra.s3 import (
+    BACKUP_FILENAME_REGEX,
+    S3Client,
+    discover_latest_backup,
+    parse_backup_filename,
+)
 
 
 @pytest.fixture
@@ -63,21 +69,27 @@ def test_discovery_selects_newest_backup(moto_s3: None, s3_client: S3Client) -> 
     prefix = "daily/stg/"
     target = "cust123"
 
-    # Old backup
+    # Older old-format backup
     _put_object(
         s3_client,
         bucket,
         f"{prefix}{target}/daily_mydumper_{target}_2024-01-01T00-00-00Z_Mon_dbimp.tar",
     )
-    # New backup
+    # Newer old-format backup
     _put_object(
         s3_client,
         bucket,
         f"{prefix}{target}/daily_mydumper_{target}_2024-01-02T12-30-45Z_Tue_dbimp.tar",
     )
+    # Even newer new-format (mydumper 0.21.1+) backup — should win
+    _put_object(
+        s3_client,
+        bucket,
+        f"{prefix}{target}/daily_mydumper_db10_2024-01-03T07-00-00_Wed_{target}.tar",
+    )
 
     spec = discover_latest_backup(s3_client, bucket, prefix, target)
-    assert spec.key.endswith("2024-01-02T12-30-45Z_Tue_dbimp.tar")
+    assert "2024-01-03T07-00-00" in spec.key
 
 
 def test_discovery_no_objects_raises(moto_s3: None, s3_client: S3Client) -> None:
@@ -121,15 +133,24 @@ def test_discovery_no_matching_target(moto_s3: None, s3_client: S3Client) -> Non
 
     with pytest.raises(BackupValidationError) as exc:
         discover_latest_backup(s3_client, bucket, prefix, target)
-    assert f"s3://{bucket}/{prefix}{target}/daily_mydumper_{target}_" in str(exc.value)
+    assert f"s3://{bucket}/{prefix}{target}/" in str(exc.value)
 
 
 def test_filename_regex_valid() -> None:
-    """Regex matches valid filename and extracts target."""
-    filename = "daily_mydumper_acme_2024-10-15T06-22-10Z_Tue_dbimp.tar"
-    match = BACKUP_FILENAME_REGEX.match(filename)
+    """Regex matches valid filename and extracts target — both formats."""
+    # Old format
+    old_filename = "daily_mydumper_acme_2024-10-15T06-22-10Z_Tue_dbimp.tar"
+    match = BACKUP_FILENAME_REGEX.match(old_filename)
     assert match
     assert match.group("target") == "acme"
 
+    result = parse_backup_filename(old_filename)
+    assert result == ("acme", "2024-10-15T06-22-10")
 
-# End of file
+    # New format (mydumper 0.21.1+)
+    new_filename = "daily_mydumper_db10_2026-03-23T07-17-16_Monday_acme.tar"
+    result = parse_backup_filename(new_filename)
+    assert result == ("acme", "2026-03-23T07-17-16")
+
+    # Unrecognised
+    assert parse_backup_filename("daily_mydumper_acme.tar") is None

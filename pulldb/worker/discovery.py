@@ -10,13 +10,14 @@ import fnmatch
 import json
 import os
 import time
-from typing import Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.logging import get_logger
-from pulldb.infra.s3 import BACKUP_FILENAME_REGEX, S3Client
+from pulldb.infra.s3 import S3Client, parse_backup_filename
+
 
 logger = get_logger("pulldb.domain.services.discovery")
 
@@ -120,7 +121,7 @@ class DiscoveryService:
         except Exception:
             # Graceful fallback to full customer list
             logger.debug("Failed to get lean simulation customers", exc_info=True)
-        
+
         # Full simulation - use standard customer list
         return [
             "actionpest",
@@ -149,7 +150,7 @@ class DiscoveryService:
         mock_customers = self._get_simulation_customers()
         query_lower = query.lower()
         # Filter: only include customers with lowercase letters only (a-z)
-        matches = [c for c in mock_customers 
+        matches = [c for c in mock_customers
                    if query_lower in c.lower() and c.isalpha() and c.islower()]
         return sorted(matches)[:limit]
 
@@ -174,7 +175,7 @@ class DiscoveryService:
         # Filter: only include customers with lowercase letters only (a-z)
         # Exclude any customers with uppercase, numbers, symbols, etc.
         matches = sorted(
-            [c for c in customer_set 
+            [c for c in customer_set
              if query_lower in c.lower() and c.isalpha() and c.islower()],
             key=lambda x: (not x.lower().startswith(query_lower), x),
         )[:limit]
@@ -344,7 +345,7 @@ class DiscoveryService:
             # Search with query prefix for faster results
             query_lower = query.lower()
             search_prefix = f"{prefix}{query_lower}"
-            
+
             # list_prefixes returns suffixes after search_prefix, reconstruct full names
             suffixes = s3.list_prefixes(
                 bucket, search_prefix, profile=profile, max_results=500
@@ -700,13 +701,13 @@ class DiscoveryService:
         results: list[BackupInfo],
     ) -> None:
         filename = key.rsplit("/", 1)[-1]
-        match = BACKUP_FILENAME_REGEX.match(filename)
-        if not match:
+        parsed = parse_backup_filename(filename)
+        if not parsed:
             return
 
-        ts_str = match.group("ts")
+        _, ts_str = parsed
         try:
-            ts = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%SZ")
+            ts = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%S")
         except ValueError:
             return
 

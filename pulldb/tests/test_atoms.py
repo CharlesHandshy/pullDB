@@ -6,6 +6,7 @@ ensuring "full functionality tests from the atoms backwards".
 
 from __future__ import annotations
 
+
 """HCA Layer: tests."""
 
 import os
@@ -19,11 +20,11 @@ from pulldb.domain.config import (
     _parse_extra_args,
     _parse_positive_float,
     _parse_positive_int,
+    parse_s3_bucket_path,
 )
-from pulldb.domain.config import parse_s3_bucket_path
 from pulldb.domain.errors import StagingError
 from pulldb.domain.restore_models import MyLoaderSpec
-from pulldb.infra.s3 import BACKUP_FILENAME_REGEX
+from pulldb.infra.s3 import BACKUP_FILENAME_REGEX, parse_backup_filename
 from pulldb.worker.downloader import _stream_download
 from pulldb.worker.post_sql import _discover_scripts
 from pulldb.worker.restore import build_myloader_command
@@ -68,16 +69,33 @@ def test_atom_cp_tokens() -> None:
 
 # --- Atom: s3_regex ---
 def test_atom_s3_regex() -> None:
-    """Verify S3 filename regex parsing."""
-    # Valid
-    fname = "daily_mydumper_acme_2024-10-15T06-22-10Z_Tue_dbimp.tar"
-    match = BACKUP_FILENAME_REGEX.match(fname)
+    """Verify S3 filename regex parsing — both old and new formats."""
+    # Old format (mydumper 0.9.x): customer first, Z-suffixed timestamp, host last
+    old_fname = "daily_mydumper_acme_2024-10-15T06-22-10Z_Tue_dbimp.tar"
+    match = BACKUP_FILENAME_REGEX.match(old_fname)
     assert match
     assert match.group("target") == "acme"
     assert match.group("ts") == "2024-10-15T06-22-10Z"
 
+    # parse_backup_filename strips the Z
+    result = parse_backup_filename(old_fname)
+    assert result == ("acme", "2024-10-15T06-22-10")
+
+    # Old format with dbN suffix
+    db_fname = "daily_mydumper_bigcustomer_2026-03-23T07-39-14Z_Monday_db10.tar"
+    assert parse_backup_filename(db_fname) == ("bigcustomer", "2026-03-23T07-39-14")
+
+    # New format (mydumper 0.21.1+): host first, no Z, customer last
+    new_fname = "daily_mydumper_db10_2026-03-23T07-17-16_Monday_acme.tar"
+    assert parse_backup_filename(new_fname) == ("acme", "2026-03-23T07-17-16")
+
+    new_dbimp = "daily_mydumper_dbimp_2026-03-23T07-17-16_Monday_bigcustomer.tar"
+    assert parse_backup_filename(new_dbimp) == ("bigcustomer", "2026-03-23T07-17-16")
+
     # Invalid
     assert not BACKUP_FILENAME_REGEX.match("daily_mydumper_acme.tar")
+    assert parse_backup_filename("daily_mydumper_acme.tar") is None
+    assert parse_backup_filename("not_a_backup.tar") is None
 
 
 # --- Atom: wd_stream ---

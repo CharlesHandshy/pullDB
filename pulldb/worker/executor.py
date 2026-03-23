@@ -28,10 +28,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+
 # Heartbeat suppression: skip heartbeat if meaningful event was emitted within this window
 HEARTBEAT_SUPPRESSION_WINDOW_SECONDS = 30.0
 
-from pulldb.domain.config import Config, S3BackupLocationConfig
+from pulldb.domain.config import Config, S3BackupLocationConfig, parse_s3_bucket_path
 from pulldb.domain.errors import (
     BackupDiscoveryError,
     CancellationError,
@@ -39,14 +40,12 @@ from pulldb.domain.errors import (
     ExtractionError,
     TargetCollisionError,
 )
-from pulldb.domain.config import parse_s3_bucket_path
 from pulldb.domain.models import Job
 from pulldb.domain.restore_models import ExtractionStats, MyLoaderResult
 from pulldb.infra.logging import get_logger
 from pulldb.infra.mysql_utils import quote_identifier
 from pulldb.infra.s3 import (
     BackupSpec,
-    S3Client,
     S3ClientProtocol,
     discover_latest_backup,
 )
@@ -256,7 +255,7 @@ def pre_flight_verify_target_overwrite_safe(
             row = None
 
         db_owner_code = str(row[0]) if row and row[0] else None  # type: ignore[index]
-        
+
         if db_owner_code and db_owner_code != job.owner_user_code:
             # CROSS-USER DATABASE - ABSOLUTE BLOCK
             logger.error(
@@ -397,7 +396,7 @@ def _safe_extract_with_progress(
     last_progress_files = 0
     last_progress_time = time.monotonic()
     start_time = last_progress_time
-    
+
     # Collect file sizes for extraction stats
     file_sizes: dict[str, int] = {}
 
@@ -1344,8 +1343,11 @@ class WorkerJobExecutor:
         Raises:
             BackupDiscoveryError: If backup not found (either user-selected or auto-discovery).
         """
-        from pulldb.domain.config import find_location_for_backup_path, parse_backup_path
-        from pulldb.infra.s3 import BACKUP_FILENAME_REGEX
+        from pulldb.domain.config import (
+            find_location_for_backup_path,
+            parse_backup_path,
+        )
+        from pulldb.infra.s3 import parse_backup_filename
 
         options = job.options_json or {}
 
@@ -1402,13 +1404,12 @@ class WorkerJobExecutor:
 
             # Parse timestamp and target from filename
             filename = key.rsplit("/", 1)[-1] if "/" in key else key
-            match = BACKUP_FILENAME_REGEX.match(filename)
-            if match:
-                target = match.group("target")
-                ts_str = match.group("ts")
-                # Parse timestamp: 2024-01-02T12-30-45Z -> datetime
+            parsed = parse_backup_filename(filename)
+            if parsed:
+                target, ts_str = parsed
+                # Parse timestamp: 2024-01-02T12-30-45 -> datetime
                 try:
-                    timestamp = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%SZ").replace(tzinfo=UTC)
+                    timestamp = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%S").replace(tzinfo=UTC)
                 except ValueError:
                     timestamp = datetime.now(UTC)
             else:
@@ -1566,12 +1567,12 @@ class WorkerJobExecutor:
         Returns:
             Dict with error type, detail message, and optionally stdout/stderr.
         """
+        from pulldb.domain.errors import JobExecutionError
         from pulldb.infra.exec import (
             CommandAbortedError,
             CommandTimeoutError,
             redact_sensitive_data,
         )
-        from pulldb.domain.errors import JobExecutionError
 
         result: dict[str, Any] = {
             "error": exc.__class__.__name__,
