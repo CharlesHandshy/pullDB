@@ -1,0 +1,38 @@
+# =============================================================================
+# pullDB — Docker Compose service definition
+# =============================================================================
+# Do NOT edit ports or image directly. Set variables in .env.compose.
+#
+# Active/candidate colors are managed by upgrade.sh using project names:
+#   docker compose -p pulldb-blue  --env-file compose/.env.blue  up -d
+#   docker compose -p pulldb-green --env-file compose/.env.green up -d
+# =============================================================================
+services:
+  pulldb:
+    image: ${PULLDB_IMAGE:?Set PULLDB_IMAGE in .env.compose}
+    container_name: ${CONTAINER_NAME:?Set CONTAINER_NAME in .env.compose}
+    restart: unless-stopped
+
+    ports:
+      - "${PORT_WEB:-8000}:8000"
+      - "${PORT_API:-8080}:8080"
+
+    environment:
+      # Upgrade: set to the path of the dump file inside the container.
+      # Leave empty for fresh install and restarts.
+      PULLDB_IMPORT_DUMP: ${PULLDB_IMPORT_DUMP:-}
+
+    volumes:
+      # Persistent config — survives container replacement
+      - /etc/pulldb:/etc/pulldb:ro
+      # Persistent data — work dirs, logs
+      - /mnt/data:/mnt/data
+      # Upgrade dump injection (only needed during green spin-up)
+      - /tmp/pulldb-upgrade:/tmp/pulldb-upgrade:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 90s

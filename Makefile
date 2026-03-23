@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PIP ?= pip
 
-.PHONY: all wheel client server server-signed client-signed all-signed clean help dev-install changes lint
+.PHONY: all wheel client server server-signed client-signed all-signed clean help dev-install changes lint image push deploy
 
 help:
 	@echo "pullDB Build System"
@@ -20,6 +20,11 @@ help:
 	@echo "  make client-signed    - Build signed client .deb (requires GPG_KEY_ID)"
 	@echo "  make all-signed       - Build wheel + all signed .deb packages"
 	@echo "  make clean            - Remove all build artifacts"
+	@echo ""
+	@echo "Docker / ECR Targets (requires ECR_REGISTRY and ECR_REGION env vars):"
+	@echo "  make image            - Build Docker image (tags as pulldb:<version>)"
+	@echo "  make push             - ECR login + push image (requires dev IAM permissions)"
+	@echo "  make deploy HOST=...  - SSH to HOST and run upgrade.sh with latest image"
 	@echo ""
 	@echo "Version is read from pyproject.toml (or PULLDB_VERSION env var for CI)."
 	@echo ""
@@ -69,6 +74,60 @@ clean:
 	rm -rf build/ dist/ dist-client/ *.egg-info pulldb.egg-info pulldb_client.egg-info
 	rm -f *.deb
 	@echo "Clean complete."
+
+# =============================================================================
+# Docker / ECR targets
+# =============================================================================
+# Required env vars:
+#   ECR_REGISTRY  — e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com
+#   ECR_REGION    — e.g. us-east-1
+#   HOST          — SSH target for 'make deploy' (e.g. ubuntu@10.0.0.5)
+# =============================================================================
+
+# Read version the same way the deb build does
+PULLDB_VERSION ?= $(shell python3 -c "import tomllib; d=tomllib.load(open('pyproject.toml','rb')); print(d['project']['version'])" 2>/dev/null \
+                   || python3 -c "import tomli; d=tomli.load(open('pyproject.toml','rb')); print(d['project']['version'])" 2>/dev/null \
+                   || echo "dev")
+
+IMAGE_NAME  ?= pulldb
+IMAGE_TAG   ?= $(PULLDB_VERSION)
+
+ECR_REGISTRY ?= $(error ECR_REGISTRY is not set. Example: export ECR_REGISTRY=123456789012.dkr.ecr.us-east-1.amazonaws.com)
+ECR_REGION   ?= $(error ECR_REGION is not set. Example: export ECR_REGION=us-east-1)
+FULL_IMAGE    = $(ECR_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+
+# Build the Docker image (requires the server .deb to exist)
+image: server
+	@echo "=== Building Docker image: $(FULL_IMAGE) ==="
+	@# Copy latest .deb into docker/ for the build context
+	cp pulldb_$(IMAGE_TAG)_amd64.deb docker/pulldb.deb
+	docker build \
+		--build-arg PULLDB_VERSION=$(IMAGE_TAG) \
+		-t $(IMAGE_NAME):$(IMAGE_TAG) \
+		-t $(IMAGE_NAME):latest \
+		-t $(FULL_IMAGE) \
+		docker/
+	rm -f docker/pulldb.deb
+	@echo ""
+	@echo "Image built: $(FULL_IMAGE)"
+
+# ECR login + push (requires dev IAM role with push permissions — see docs/ecr-setup.md)
+push: image
+	@echo "=== Pushing to ECR: $(FULL_IMAGE) ==="
+	aws ecr get-login-password --region $(ECR_REGION) \
+		| docker login --username AWS --password-stdin $(ECR_REGISTRY)
+	docker push $(FULL_IMAGE)
+	@echo "Pushed: $(FULL_IMAGE)"
+
+# Deploy to a host via SSH — copies upgrade script and runs it
+# Usage: make deploy HOST=ubuntu@10.0.0.5
+deploy:
+	@test -n "$(HOST)" || (echo "ERROR: HOST is not set. Usage: make deploy HOST=user@host" && exit 1)
+	@echo "=== Deploying $(FULL_IMAGE) to $(HOST) ==="
+	scp scripts/upgrade.sh scripts/validate.sh scripts/rollback.sh \
+		compose/docker-compose.yml \
+		$(HOST):/tmp/pulldb-deploy/
+	ssh $(HOST) "sudo /tmp/pulldb-deploy/upgrade.sh $(FULL_IMAGE)"
 
 # Dev install with wrapper restoration
 # Use this instead of 'pip install -e .' to preserve pulldb-admin auto-escalation
