@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/charleshandshy/.claude/**)",
+      "Bash(gh pr:*)",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)"
+    ]
+  }
+}
