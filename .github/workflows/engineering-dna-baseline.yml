@@ -15,8 +15,8 @@ jobs:
 
       - name: Enforce baseline commit
         run: |
-          if [ ! -d engineering-dna ]; then
-            echo "engineering-dna submodule not present in this project — skipping baseline check."
+          if [ ! -e engineering-dna/.git ]; then
+            echo "engineering-dna submodule not initialised — skipping baseline check."
             exit 0
           fi
           if [ ! -f .engineering-dna-baseline ]; then

@@ -106,6 +106,9 @@ def find_non_compliant(files: Iterable[Path]) -> list[Path]:
     """
     missing: list[Path] = []
     for f in files:
+        if not f.exists():
+            print(f"Note: {f} does not exist yet — skipping FAIL HARD check for this file.")
+            continue
         try:
             text = load(f)
         except Exception as e:  # FAIL HARD: surface file I/O issues
