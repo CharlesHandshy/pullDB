@@ -81,7 +81,9 @@
       "Read(//etc/nginx/sites-available/**)",
       "Bash(__NEW_LINE_dc273d5bf2f567f0__ git:*)",
       "Bash(__NEW_LINE_83c7d6340267e16f__ git:*)",
-      "Bash(__NEW_LINE_a1d53ac03f34e65a__ git:*)"
+      "Bash(__NEW_LINE_a1d53ac03f34e65a__ git:*)",
+      "Bash(git pull:*)",
+      "Bash(git branch:*)"
     ],
     "additionalDirectories": [
       "/tmp",
