@@ -12,17 +12,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
-
-      - name: Sync & Update Submodules
-        run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive
-          echo "Submodules synchronized and updated recursively."
 
       - name: Enforce baseline commit
         run: |
+          if [ ! -d engineering-dna ]; then
+            echo "engineering-dna submodule not present in this project — skipping baseline check."
+            exit 0
+          fi
           if [ ! -f .engineering-dna-baseline ]; then
             echo "FAIL HARD DIAGNOSTIC" >&2
             echo "GOAL: Enforce engineering-dna baseline" >&2

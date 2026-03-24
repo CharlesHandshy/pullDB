@@ -12,17 +12,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
-
-      - name: Sync & Update Submodules
-        run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive
-          echo "Submodules synchronized and updated recursively."
 
       - name: Verify engineering-dna submodule up to date
         run: |
+          if [ ! -d engineering-dna ]; then
+            echo "engineering-dna submodule not present in this project — skipping freshness check."
+            exit 0
+          fi
           CURRENT_SHA=$(git -C engineering-dna rev-parse HEAD)
           REMOTE_SHA=$(git -C engineering-dna ls-remote origin main | awk '{print $1}')
           echo "Current: $CURRENT_SHA"; echo "Remote: $REMOTE_SHA"
