@@ -22,7 +22,9 @@ ENV_FILE="${INSTALL_PREFIX}/.env"
 SYSTEM_USER="pulldb_service"
 SCHEMA_DIR="${INSTALL_PREFIX}/schema/pulldb_service"
 LOG_DIR="/mnt/data/logs/pulldb"
-MARKER="${INSTALL_PREFIX}/.container-initialized"
+# Marker lives on the MySQL volume so it survives container recreation.
+# A fresh volume = no marker = fresh install. Reused volume = marker present = restart.
+MARKER="/var/lib/mysql/.pulldb-initialized"
 
 # ---------------------------------------------------------------------------
 # Output helpers
@@ -53,7 +55,12 @@ ensure_dirs() {
         /var/run/mysqld
 
     chown -R mysql:mysql /var/run/mysqld 2>/dev/null || true
-    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" /mnt/data 2>/dev/null || true
+    # Chown only the specific subdirs we created — never the /mnt/data root,
+    # which may be a shared host mount containing other services' data.
+    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" \
+        "$LOG_DIR" \
+        /mnt/data/work/pulldb.service \
+        /mnt/data/tmp 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -99,12 +106,19 @@ apply_schema() {
                 log "  Applying ${subdir}/$(basename "$sql_file")..."
                 # Capture stderr separately so we can distinguish real errors from
                 # expected IF NOT EXISTS / INSERT IGNORE notices
-                local sql_err
-                sql_err=$(mysql pulldb_service < "$sql_file" 2>&1) || {
-                    log "  ERROR in $(basename "$sql_file"):"
-                    log "  ${sql_err}"
-                    die "Schema migration failed: ${subdir}/$(basename "$sql_file")"
-                }
+                local sql_err sql_exit
+                sql_err=$(mysql pulldb_service < "$sql_file" 2>&1); sql_exit=$?
+                if [[ $sql_exit -ne 0 ]]; then
+                    # "Already exists" errors are safe to ignore — the schema is idempotent
+                    # by intent even if not all files use IF NOT EXISTS syntax.
+                    if echo "$sql_err" | grep -qiE "already exists|duplicate entry"; then
+                        log "  Note (already exists, skipping): $(basename "$sql_file")"
+                    else
+                        log "  ERROR in $(basename "$sql_file"):"
+                        log "  ${sql_err}"
+                        die "Schema migration failed: ${subdir}/$(basename "$sql_file")"
+                    fi
+                fi
                 [[ -n "$sql_err" ]] && log "  Note: ${sql_err}"
             done
         fi
@@ -113,26 +127,58 @@ apply_schema() {
 }
 
 # ---------------------------------------------------------------------------
-# Create / update MySQL service users using passwords from .env
+# Credentials file — persisted on the MySQL volume so it survives container
+# recreation. Contains PULLDB_MYSQL_PASSWORD and service user names.
+# ---------------------------------------------------------------------------
+CREDS_FILE="/var/lib/mysql/.pulldb-credentials"
+
+load_credentials() {
+    if [[ -f "$CREDS_FILE" ]]; then
+        set -a
+        # shellcheck disable=SC1090
+        source "$CREDS_FILE"
+        set +a
+        log "Loaded credentials from ${CREDS_FILE}"
+    fi
+}
+
+# Append credentials to .env so supervisord-launched services pick them up
+write_credentials_to_env() {
+    # Remove any stale credential lines first
+    sed -i '/PULLDB_MYSQL_PASSWORD\|PULLDB_MYSQL_SOCKET\|PULLDB_API_MYSQL_USER\|PULLDB_WORKER_MYSQL_USER/d' "$ENV_FILE" 2>/dev/null || true
+    cat >> "$ENV_FILE" << EOF
+
+# MySQL service credentials (sourced from ${CREDS_FILE})
+PULLDB_MYSQL_PASSWORD=${PULLDB_MYSQL_PASSWORD:-}
+PULLDB_MYSQL_SOCKET=/tmp/mysql.sock
+PULLDB_API_MYSQL_USER=pulldb_api
+PULLDB_WORKER_MYSQL_USER=pulldb_worker
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Create / update MySQL service users — generates password on first run and
+# persists it to the MySQL volume so it survives container recreation.
 # ---------------------------------------------------------------------------
 ensure_mysql_users() {
-    local api_user="${PULLDB_API_MYSQL_USER:-pulldb_api}"
-    local worker_user="${PULLDB_WORKER_MYSQL_USER:-pulldb_worker}"
-    local api_pass="${PULLDB_API_MYSQL_PASSWORD:-}"
-    local worker_pass="${PULLDB_WORKER_MYSQL_PASSWORD:-}"
+    local api_user="pulldb_api"
+    local worker_user="pulldb_worker"
 
-    if [[ -z "$api_pass" || -z "$worker_pass" ]]; then
-        log "Warning: PULLDB_API_MYSQL_PASSWORD or PULLDB_WORKER_MYSQL_PASSWORD not set in .env"
-        log "  Service users will use placeholder passwords — update .env and restart"
-        return
+    # Generate a shared password if one isn't already persisted
+    if [[ -z "${PULLDB_MYSQL_PASSWORD:-}" ]]; then
+        PULLDB_MYSQL_PASSWORD=$(head -c 48 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)
+        log "Generated new MySQL service password"
+        printf '# pullDB MySQL service credentials — do not edit manually\nPULLDB_MYSQL_PASSWORD=%s\n' \
+            "$PULLDB_MYSQL_PASSWORD" > "$CREDS_FILE"
+        chmod 600 "$CREDS_FILE"
     fi
 
     log "Configuring MySQL service users..."
     mysql -e "
-        CREATE USER IF NOT EXISTS '${api_user}'@'localhost' IDENTIFIED BY '${api_pass}';
-        ALTER USER '${api_user}'@'localhost' IDENTIFIED BY '${api_pass}';
-        CREATE USER IF NOT EXISTS '${worker_user}'@'localhost' IDENTIFIED BY '${worker_pass}';
-        ALTER USER '${worker_user}'@'localhost' IDENTIFIED BY '${worker_pass}';
+        CREATE USER IF NOT EXISTS '${api_user}'@'localhost' IDENTIFIED BY '${PULLDB_MYSQL_PASSWORD}';
+        ALTER USER '${api_user}'@'localhost' IDENTIFIED BY '${PULLDB_MYSQL_PASSWORD}';
+        CREATE USER IF NOT EXISTS '${worker_user}'@'localhost' IDENTIFIED BY '${PULLDB_MYSQL_PASSWORD}';
+        ALTER USER '${worker_user}'@'localhost' IDENTIFIED BY '${PULLDB_MYSQL_PASSWORD}';
         FLUSH PRIVILEGES;
     " 2>/dev/null || log "Warning: Could not set MySQL user passwords"
 }
@@ -297,6 +343,7 @@ main() {
     log "pullDB container starting..."
     load_env
     ensure_dirs
+    load_credentials
 
     if [[ -f "$MARKER" ]]; then
         # Container has already been initialized (restart scenario)
@@ -322,9 +369,14 @@ main() {
 
     ensure_tls
 
-    # Final ownership pass
+    # Final ownership pass — scoped to our own dirs only
     chown -R "${SYSTEM_USER}:${SYSTEM_USER}" "${INSTALL_PREFIX}" 2>/dev/null || true
-    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" /mnt/data 2>/dev/null || true
+    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" \
+        "$LOG_DIR" \
+        /mnt/data/work/pulldb.service \
+        /mnt/data/tmp 2>/dev/null || true
+
+    write_credentials_to_env
 
     log "Starting supervisord..."
     exec supervisord -n -c /etc/supervisor/conf.d/pulldb.conf

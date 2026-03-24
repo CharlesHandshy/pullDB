@@ -1,0 +1,11 @@
+# pullDB MySQL configuration
+# Use /tmp for the socket so both mysql (root) and pulldb_service can access it
+# without fighting over directory ownership.
+[mysqld]
+socket=/tmp/mysql.sock
+
+[client]
+socket=/tmp/mysql.sock
+
+[mysqladmin]
+socket=/tmp/mysql.sock

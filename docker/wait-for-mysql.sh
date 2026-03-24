@@ -3,7 +3,7 @@
 # Used by supervisord to delay pulldb services until MySQL is ready.
 set -euo pipefail
 
-until mysql -e "SELECT 1" >/dev/null 2>&1; do
+until bash -c "echo > /dev/tcp/127.0.0.1/3306" 2>/dev/null; do
     sleep 2
 done
 

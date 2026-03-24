@@ -37,14 +37,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # TLS / certificates
     openssl \
     ca-certificates \
-    # AWS CLI (for S3 operations in validate.sh)
-    awscli \
     # Utilities
     curl \
     jq \
     sudo \
+    unzip \
     zstd \
     && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# AWS CLI v2 (awscli package removed from Ubuntu 24.04 apt repos)
+# ---------------------------------------------------------------------------
+RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip \
+    && unzip -q /tmp/awscliv2.zip -d /tmp \
+    && /tmp/aws/install \
+    && rm -rf /tmp/awscliv2.zip /tmp/aws
 
 # ---------------------------------------------------------------------------
 # Extract pulldb package contents (skips MySQL-dependent postinst)
@@ -84,9 +91,10 @@ RUN ln -sf /opt/pulldb.service/venv/bin/pulldb /usr/local/bin/pulldb \
 # ---------------------------------------------------------------------------
 # Container-specific runtime files
 # ---------------------------------------------------------------------------
-COPY supervisord.conf  /etc/supervisor/conf.d/pulldb.conf
-COPY wait-for-mysql.sh /docker/wait-for-mysql.sh
-COPY entrypoint.sh     /entrypoint.sh
+COPY supervisord.conf   /etc/supervisor/conf.d/pulldb.conf
+COPY wait-for-mysql.sh  /docker/wait-for-mysql.sh
+COPY entrypoint.sh      /entrypoint.sh
+COPY pulldb-mysql.cnf   /etc/mysql/conf.d/pulldb.cnf
 RUN chmod +x /docker/wait-for-mysql.sh /entrypoint.sh
 
 # ---------------------------------------------------------------------------
