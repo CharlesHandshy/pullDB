@@ -14,8 +14,10 @@ services:
     restart: unless-stopped
 
     ports:
-      - "${PORT_WEB:-8000}:8000"
-      - "${PORT_API:-8080}:8080"
+      # HOST_IP pins the listener to a specific interface (e.g. 10.40.10.117).
+      # Defaults to 0.0.0.0 (all interfaces) if not set.
+      - "${HOST_IP:-0.0.0.0}:${PORT_WEB:-8000}:8000"
+      - "${HOST_IP:-0.0.0.0}:${PORT_API:-8080}:8080"
 
     environment:
       # Legacy dump-import upgrade path (fallback). Leave empty normally.
@@ -24,8 +26,9 @@ services:
     volumes:
       # Persistent config — survives container replacement
       - /etc/pulldb:/etc/pulldb:ro
-      # Persistent data — work dirs, logs
-      - /mnt/data:/mnt/data
+      # Persistent data — scoped to this container's name so multiple containers
+      # (blue, green, host service) can share the same /mnt/data parent safely.
+      - /mnt/data/${CONTAINER_NAME}:/mnt/data
       # MySQL data directory.
       # Set PULLDB_MYSQL_DATA_DIR to a host path for bind-mount (fresh install,
       # upgrade, and ongoing restarts all use this same path once set).

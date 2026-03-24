@@ -127,6 +127,9 @@ test-env/
 # Session notes (local context, not tracked)
 .session-context.md
 
+# Claude Code local settings (machine-specific permissions)
+.claude/settings.local.json
+
 # Generated CSS (runtime theme manifests, regenerated on startup)
 pulldb/web/static/css/generated/
 

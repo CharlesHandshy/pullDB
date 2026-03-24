@@ -169,7 +169,8 @@ echo "Built $PKGNAME (Version=${VERSION})"
 
 # Copy the one-step installer alongside the .deb so they ship together
 if [[ -f "install-pulldb-server.sh" ]]; then
-    cp install-pulldb-server.sh .
+    [[ "$(realpath install-pulldb-server.sh)" != "$(realpath .)/install-pulldb-server.sh" ]] && \
+        cp install-pulldb-server.sh . || true
     echo "Included install-pulldb-server.sh alongside ${PKGNAME}"
 fi
 
