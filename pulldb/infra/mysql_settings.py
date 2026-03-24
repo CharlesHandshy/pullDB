@@ -105,6 +105,20 @@ class SettingsRepository:
         except ValueError:
             return 0  # Default: unlimited if setting is invalid
 
+    def is_maintenance_mode_enabled(self) -> bool:
+        """Check if global maintenance mode is active.
+
+        When True the worker will not claim new jobs. Running jobs continue
+        until complete. Toggle via: pulldb-admin maintenance enable/disable
+
+        Returns:
+            True if maintenance mode is enabled, False otherwise.
+        """
+        value = self.get_setting("maintenance_mode")
+        if value is None:
+            return False
+        return value.lower() in ("true", "1", "yes")
+
     def get_max_active_jobs_global(self) -> int:
         """Get maximum active jobs allowed system-wide.
 

@@ -2122,3 +2122,46 @@ def overlord_deprovision(
 
     if not result.success:
         raise SystemExit(1)
+
+
+# =============================================================================
+# Maintenance mode
+# =============================================================================
+
+
+@click.group(name="maintenance", help="Global maintenance mode control")
+def maintenance_group() -> None:
+    """Global maintenance mode — stops worker from claiming new jobs."""
+    pass
+
+
+@maintenance_group.command("enable")
+def maintenance_enable() -> None:
+    """Enable maintenance mode (worker stops claiming new jobs; running jobs finish)."""
+    from pulldb.infra.factory import get_settings_repository
+
+    repo = get_settings_repository()
+    repo.set_setting("maintenance_mode", "true", "Enabled via pulldb-admin")
+    click.echo("Maintenance mode ENABLED — worker will not claim new jobs.")
+    click.echo("Running jobs will continue until complete.")
+
+
+@maintenance_group.command("disable")
+def maintenance_disable() -> None:
+    """Disable maintenance mode (resume normal job processing)."""
+    from pulldb.infra.factory import get_settings_repository
+
+    repo = get_settings_repository()
+    repo.set_setting("maintenance_mode", "false", "Disabled via pulldb-admin")
+    click.echo("Maintenance mode DISABLED — worker resuming normal operation.")
+
+
+@maintenance_group.command("status")
+def maintenance_status() -> None:
+    """Show current maintenance mode status."""
+    from pulldb.infra.factory import get_settings_repository
+
+    repo = get_settings_repository()
+    enabled = repo.is_maintenance_mode_enabled()
+    status = "ENABLED" if enabled else "disabled"
+    click.echo(f"Maintenance mode: {status}")

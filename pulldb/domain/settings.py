@@ -373,6 +373,15 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         category=SettingCategory.JOB_LIMITS,
         validators=["is_non_negative_integer"],
     ),
+    "maintenance_mode": SettingMeta(
+        key="maintenance_mode",
+        env_var="PULLDB_MAINTENANCE_MODE",
+        default="false",
+        description="Global maintenance mode. When enabled, the worker stops claiming new jobs. Running jobs complete normally.",
+        setting_type=SettingType.BOOLEAN,
+        category=SettingCategory.JOB_LIMITS,
+        db_only=True,
+    ),
     # -------------------------------------------------------------------------
     # Cleanup & Retention
     # -------------------------------------------------------------------------

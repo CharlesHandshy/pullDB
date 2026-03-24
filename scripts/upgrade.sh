@@ -192,28 +192,13 @@ phase2_drain() {
         fi
     fi
 
-    # --- Save current host limits ---
-    log_info "Saving current db_hosts limits..."
-    local limits_file="${STATE_DIR}/.host-limits-${ACTIVE_COLOR}"
+    # --- Enable maintenance mode (stops worker claiming new jobs) ---
     if [[ "$DRY_RUN" == true ]]; then
-        log_dry "Would save host limits to ${limits_file}"
-        log_dry "Would zero max_running_jobs and max_active_jobs on all db_hosts"
+        log_dry "Would: docker exec ${ACTIVE_CONTAINER} pulldb-admin maintenance enable"
     else
-        docker exec "$ACTIVE_CONTAINER" \
-            mysql pulldb_service -N \
-            -e "SELECT hostname, max_running_jobs, max_active_jobs FROM db_hosts" \
-            2>/dev/null > "$limits_file" || {
-            log_warn "Could not save host limits — continuing anyway"
-        }
-        log_info "Host limits saved to ${limits_file}"
-
-        # --- Zero out all host limits ---
-        log_info "Zeroing db_hosts limits (stopping new job submissions)..."
-        docker exec "$ACTIVE_CONTAINER" \
-            mysql pulldb_service \
-            -e "UPDATE db_hosts SET max_running_jobs = 0, max_active_jobs = 0" \
-            2>/dev/null || die "Failed to zero db_hosts limits"
-        log_info "All host limits zeroed"
+        log_info "Enabling maintenance mode..."
+        docker exec "$ACTIVE_CONTAINER" pulldb-admin maintenance enable \
+            || die "Failed to enable maintenance mode"
     fi
 
     # --- Wait for active jobs to drain ---
@@ -408,8 +393,10 @@ phase5_validate() {
         log_error "  Logs:   docker logs ${CANDIDATE_CONTAINER}"
         log_error "  Remove: docker rm ${CANDIDATE_CONTAINER}"
         log_error ""
-        log_error "Restoring host limits on active container..."
-        _restore_host_limits "$ACTIVE_CONTAINER" "$ACTIVE_COLOR"
+        log_error "Disabling maintenance mode on active container..."
+        docker unpause "$ACTIVE_CONTAINER" 2>/dev/null || true
+        docker start  "$ACTIVE_CONTAINER" 2>/dev/null || true
+        docker exec   "$ACTIVE_CONTAINER" pulldb-admin maintenance disable 2>/dev/null || true
         docker compose \
             -p "pulldb-${CANDIDATE_COLOR}" \
             --env-file "${STATE_DIR}/.env.${CANDIDATE_COLOR}" \
@@ -492,40 +479,16 @@ phase6_promote() {
         sleep 5
     done
 
-    # --- Restore host limits ---
-    log_info "Re-enabling db_hosts (restoring saved limits)..."
-    _restore_host_limits "$CANDIDATE_CONTAINER" "$ACTIVE_COLOR"
+    # --- Disable maintenance mode (resume normal job processing) ---
+    log_info "Disabling maintenance mode..."
+    docker exec "$CANDIDATE_CONTAINER" pulldb-admin maintenance disable \
+        || log_warn "Could not disable maintenance mode — run manually: pulldb-admin maintenance disable"
 
     # Re-name active container tracking to the new color
     ACTIVE_COLOR="$CANDIDATE_COLOR"
     ACTIVE_CONTAINER="$CANDIDATE_CONTAINER"
 }
 
-# Restore db_hosts limits from saved file, or set sensible defaults
-_restore_host_limits() {
-    local container="$1"
-    local color="$2"
-    local limits_file="${STATE_DIR}/.host-limits-${color}"
-
-    if [[ -f "$limits_file" ]]; then
-        while IFS=$'\t' read -r hostname max_running max_active; do
-            [[ -z "$hostname" ]] && continue
-            docker exec "$container" \
-                mysql pulldb_service \
-                -e "UPDATE db_hosts
-                    SET max_running_jobs = ${max_running},
-                        max_active_jobs  = ${max_active}
-                    WHERE hostname = '${hostname}'" \
-                2>/dev/null || true
-        done < "$limits_file"
-        log_info "Host limits restored from ${limits_file}"
-    else
-        log_warn "No saved limits file found at ${limits_file}"
-        log_warn "Hosts remain at 0 — re-enable manually:"
-        log_warn "  docker exec ${container} mysql pulldb_service -e \\"
-        log_warn "    'UPDATE db_hosts SET max_running_jobs=10, max_active_jobs=20'"
-    fi
-}
 
 # =============================================================================
 # Summary

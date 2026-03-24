@@ -307,6 +307,9 @@ class JobRepository:
             ...     # Job is already 'running' - safe to process
             ...     process(job)
         """
+        if _SettingsRepo(self.pool).is_maintenance_mode_enabled():
+            return None
+
         with self.pool.transaction() as conn:
             cursor = TypedDictCursor(conn.cursor(dictionary=True))
 

@@ -60,21 +60,13 @@ read -r -p "  Rollback from ${ACTIVE_COLOR} → ${PREVIOUS_COLOR}? This will sto
 case "$confirm" in [yY]*) ;; *) echo "Aborted."; exit 0 ;; esac
 
 echo ""
-log_info "Phase 1: Re-enabling job submissions on previous container..."
-# Restore saved host limits if available
-SAVED_LIMITS_FILE="${STATE_DIR}/.host-limits-${PREVIOUS_COLOR}"
-if [[ -f "$SAVED_LIMITS_FILE" ]]; then
-    while IFS=$'\t' read -r hostname max_running max_active; do
-        docker exec "$PREVIOUS_CONTAINER" mysql pulldb_service -e "
-            UPDATE db_hosts
-            SET max_running_jobs = ${max_running}, max_active_jobs = ${max_active}
-            WHERE hostname = '${hostname}'
-        " 2>/dev/null || true
-    done < "$SAVED_LIMITS_FILE"
-    log_info "Host limits restored"
-else
-    log_warn "No saved host limits found — hosts remain at current limits"
+log_info "Phase 1: Disabling maintenance mode on previous container..."
+if [[ "$PREV_STATE" == "paused" ]]; then
+    docker unpause "$PREVIOUS_CONTAINER" 2>/dev/null || true
 fi
+docker start "$PREVIOUS_CONTAINER" 2>/dev/null || true
+docker exec "$PREVIOUS_CONTAINER" pulldb-admin maintenance disable 2>/dev/null \
+    || log_warn "Could not disable maintenance mode — run manually after rollback: pulldb-admin maintenance disable"
 
 log_info "Phase 2: Stopping active container (${ACTIVE_CONTAINER})..."
 docker compose -p "pulldb-${ACTIVE_COLOR}" \
@@ -83,12 +75,7 @@ docker compose -p "pulldb-${ACTIVE_COLOR}" \
     stop 2>/dev/null || docker stop "$ACTIVE_CONTAINER" 2>/dev/null || true
 
 log_info "Phase 3: Promoting previous container to real ports..."
-# Unpause the previous container
-if [[ "$PREV_STATE" == "paused" ]]; then
-    docker unpause "$PREVIOUS_CONTAINER" 2>/dev/null || true
-fi
-
-# Restart on real ports
+# Restart on real ports (already unpaused/started in Phase 1)
 docker compose -p "pulldb-${PREVIOUS_COLOR}" \
     --env-file "${STATE_DIR}/.env.active" \
     -f "$COMPOSE_FILE" \
