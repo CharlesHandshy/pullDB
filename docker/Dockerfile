@@ -50,7 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Extract pulldb package contents (skips MySQL-dependent postinst)
 # ---------------------------------------------------------------------------
 ARG PULLDB_VERSION=1.3.0
-COPY dist/pulldb_${PULLDB_VERSION}_amd64.deb /tmp/pulldb.deb
+COPY pulldb_${PULLDB_VERSION}_amd64.deb /tmp/pulldb.deb
 RUN dpkg-deb -x /tmp/pulldb.deb / && rm /tmp/pulldb.deb
 
 # ---------------------------------------------------------------------------
@@ -84,9 +84,9 @@ RUN ln -sf /opt/pulldb.service/venv/bin/pulldb /usr/local/bin/pulldb \
 # ---------------------------------------------------------------------------
 # Container-specific runtime files
 # ---------------------------------------------------------------------------
-COPY docker/supervisord.conf  /etc/supervisor/conf.d/pulldb.conf
-COPY docker/wait-for-mysql.sh /docker/wait-for-mysql.sh
-COPY docker/entrypoint.sh     /entrypoint.sh
+COPY supervisord.conf  /etc/supervisor/conf.d/pulldb.conf
+COPY wait-for-mysql.sh /docker/wait-for-mysql.sh
+COPY entrypoint.sh     /entrypoint.sh
 RUN chmod +x /docker/wait-for-mysql.sh /entrypoint.sh
 
 # ---------------------------------------------------------------------------

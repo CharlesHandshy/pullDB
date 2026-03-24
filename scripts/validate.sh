@@ -13,9 +13,11 @@
 # =============================================================================
 set -euo pipefail
 
-CONTAINER="${1:?Usage: validate.sh <container> <api-port> <env-file>}"
-API_PORT="${2:?Usage: validate.sh <container> <api-port> <env-file>}"
-ENV_FILE="${3:?Usage: validate.sh <container> <api-port> <env-file>}"
+CONTAINER="${1:?Usage: validate.sh <container> <api-port> <env-file> [--skip-qa]}"
+API_PORT="${2:?Usage: validate.sh <container> <api-port> <env-file> [--skip-qa]}"
+ENV_FILE="${3:?Usage: validate.sh <container> <api-port> <env-file> [--skip-qa]}"
+SKIP_QA=false
+[[ "${4:-}" == "--skip-qa" ]] && SKIP_QA=true
 
 # Load compose env for S3 validate path
 if [[ -f "$ENV_FILE" ]]; then
@@ -225,7 +227,11 @@ main() {
 
     check_health
     check_schema
-    check_qa_restore
+    if [[ "$SKIP_QA" == true ]]; then
+        warn "Tier 3 (QA restore) skipped via --skip-qa"
+    else
+        check_qa_restore
+    fi
 
     echo ""
     if [[ "$PASS" == true ]]; then

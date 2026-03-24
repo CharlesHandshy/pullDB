@@ -4,8 +4,8 @@
 # Do NOT edit ports or image directly. Set variables in .env.compose.
 #
 # Active/candidate colors are managed by upgrade.sh using project names:
-#   docker compose -p pulldb-blue  --env-file compose/.env.blue  up -d
-#   docker compose -p pulldb-green --env-file compose/.env.green up -d
+#   docker compose -p pulldb-blue  --env-file /etc/pulldb/.env.blue  up -d
+#   docker compose -p pulldb-green --env-file /etc/pulldb/.env.green up -d
 # =============================================================================
 services:
   pulldb:
@@ -18,8 +18,7 @@ services:
       - "${PORT_API:-8080}:8080"
 
     environment:
-      # Upgrade: set to the path of the dump file inside the container.
-      # Leave empty for fresh install and restarts.
+      # Legacy dump-import upgrade path (fallback). Leave empty normally.
       PULLDB_IMPORT_DUMP: ${PULLDB_IMPORT_DUMP:-}
 
     volumes:
@@ -28,15 +27,11 @@ services:
       # Persistent data — work dirs, logs
       - /mnt/data:/mnt/data
       # MySQL data directory.
-      # Fresh install / restart: leave PULLDB_MYSQL_DATA_DIR unset → named volume (Docker managed).
-      # Volume-copy upgrade: upgrade.sh sets this to /tmp/pulldb-upgrade/mysql-data (bind mount).
+      # Set PULLDB_MYSQL_DATA_DIR to a host path for bind-mount (fresh install,
+      # upgrade, and ongoing restarts all use this same path once set).
+      # Leave unset only if you want a Docker-managed named volume (not recommended
+      # for production — data is harder to inspect and copy).
       - ${PULLDB_MYSQL_DATA_DIR:-pulldb_mysql_data}:/var/lib/mysql
-
-volumes:
-  pulldb_mysql_data:
-    # Docker-managed named volume.  Used on fresh installs and normal restarts.
-    # upgrade.sh overrides this with a bind-mount path via PULLDB_MYSQL_DATA_DIR.
-    external: false
 
     healthcheck:
       test: ["CMD", "curl", "-fsk", "https://localhost:8080/api/health"]
@@ -44,3 +39,10 @@ volumes:
       timeout: 5s
       retries: 12
       start_period: 90s
+
+volumes:
+  pulldb_mysql_data:
+    # Docker-managed named volume — used when PULLDB_MYSQL_DATA_DIR is unset.
+    # Prefer setting PULLDB_MYSQL_DATA_DIR=/mnt/data/mysql in production
+    # so the data lives at a predictable host path.
+    external: false

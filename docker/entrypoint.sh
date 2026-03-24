@@ -60,8 +60,8 @@ ensure_dirs() {
 # Start MySQL (background) and wait until ready
 # ---------------------------------------------------------------------------
 mysql_start_wait() {
-    log "Starting MySQL..."
-    mysqld_safe --skip-networking --user=mysql &
+    log "Starting MySQL (init mode, socket only)..."
+    /usr/sbin/mysqld --user=mysql --skip-networking &
     MYSQL_TEMP_PID=$!
 
     local attempts=0
@@ -97,9 +97,15 @@ apply_schema() {
             for sql_file in "${SCHEMA_DIR}/${subdir}"/*.sql; do
                 [[ -f "$sql_file" ]] || continue
                 log "  Applying ${subdir}/$(basename "$sql_file")..."
-                mysql pulldb_service < "$sql_file" 2>/dev/null || {
-                    log "  Warning: $(basename "$sql_file") reported errors (may be safe to ignore)"
+                # Capture stderr separately so we can distinguish real errors from
+                # expected IF NOT EXISTS / INSERT IGNORE notices
+                local sql_err
+                sql_err=$(mysql pulldb_service < "$sql_file" 2>&1) || {
+                    log "  ERROR in $(basename "$sql_file"):"
+                    log "  ${sql_err}"
+                    die "Schema migration failed: ${subdir}/$(basename "$sql_file")"
                 }
+                [[ -n "$sql_err" ]] && log "  Note: ${sql_err}"
             done
         fi
     done

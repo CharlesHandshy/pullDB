@@ -97,17 +97,18 @@ ECR_REGION   ?= $(error ECR_REGION is not set. Example: export ECR_REGION=us-eas
 FULL_IMAGE    = $(ECR_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 
 # Build the Docker image (requires the server .deb to exist)
+# Build context is docker/ — Dockerfile COPY paths are relative to that directory.
+# The .deb is copied into docker/ temporarily so it is inside the build context.
 image: server
 	@echo "=== Building Docker image: $(FULL_IMAGE) ==="
-	@# Copy latest .deb into docker/ for the build context
-	cp pulldb_$(IMAGE_TAG)_amd64.deb docker/pulldb.deb
+	cp pulldb_$(IMAGE_TAG)_amd64.deb docker/pulldb_$(IMAGE_TAG)_amd64.deb
 	docker build \
 		--build-arg PULLDB_VERSION=$(IMAGE_TAG) \
 		-t $(IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(IMAGE_NAME):latest \
 		-t $(FULL_IMAGE) \
 		docker/
-	rm -f docker/pulldb.deb
+	rm -f docker/pulldb_$(IMAGE_TAG)_amd64.deb
 	@echo ""
 	@echo "Image built: $(FULL_IMAGE)"
 
