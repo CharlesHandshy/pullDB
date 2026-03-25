@@ -15,8 +15,8 @@ jobs:
 
       - name: Verify engineering-dna submodule up to date
         run: |
-          if [ ! -d engineering-dna ]; then
-            echo "engineering-dna submodule not present in this project — skipping freshness check."
+          if [ ! -e engineering-dna/.git ]; then
+            echo "engineering-dna submodule not initialised — skipping freshness check."
             exit 0
           fi
           CURRENT_SHA=$(git -C engineering-dna rev-parse HEAD)
