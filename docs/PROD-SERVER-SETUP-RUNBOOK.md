@@ -12,10 +12,11 @@
 > - pullDB 1.2.0 running in Docker with production database restored from backup
 >
 > **What you need before starting:**
-> - The transfer package from `/mnt/data/pulldb-1.2.0-export/` on the old host, copied to
->   this server (suggested: `/opt/pulldb-import/`)
+> - The transfer package extracted to `/opt/pulldb-import/` on this server
 > - SSH/sudo access on the new host
-> - The `pullDB` git repository cloned at `/home/<user>/Projects/pullDB`
+> - An EC2 IAM instance profile attached that can assume the cross-account roles in
+>   `config/aws/config` (`pulldb-staging-cross-account-readonly`, `pulldb-cross-account-readonly`)
+>   — without this the app cannot browse S3 backups
 
 ---
 
@@ -33,14 +34,21 @@ sudo whoami   # must print: root
 # Confirm import package is present
 ls -lh /opt/pulldb-import/
 # Expected files:
-#   pulldb-1.2.0.tar.gz
-#   pulldb_service.sql.gz
-#   env.blue.example
-#   env.service
+#   pulldb-1.2.0.tar.gz       (Docker image)
+#   pulldb_service.sql.gz     (database dump)
+#   docker-compose.yml        (compose definition)
+#   env.blue.example          (container .env template)
+#   env.service               (legacy systemd env — for reference only)
 #   MANIFEST.txt
+#   config/
+#     aws/config, credentials
+#     service-env/service.env   (app configuration — S3, AWS profiles, etc.)
+#     etc-pulldb/.env.blue, api.env, worker.env
+#     tls/cert.pem, key.pem
 
-# Confirm git repo is present
-ls ~/Projects/pullDB/compose/docker-compose.yml
+# Confirm IAM instance profile is active (must return an assumed role ARN, not an error)
+curl -sf http://169.254.169.254/latest/meta-data/iam/security-credentials/ \
+  && echo "IAM profile present" || echo "FAIL: no IAM profile attached"
 ```
 
 ---
@@ -247,8 +255,8 @@ NGINX
 ### Enable both sites and reload
 
 ```bash
-sudo ln -sf /etc/nginx/sites-available/services.conf /etc/nginx/sites-enabled/
-sudo ln -sf /etc/nginx/sites-available/pulldb.conf   /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/services.conf /etc/nginx/sites-enabled/services.conf
+sudo ln -sf /etc/nginx/sites-available/pulldb.conf   /etc/nginx/sites-enabled/pulldb.conf
 
 sudo nginx -t       # must pass
 sudo systemctl reload nginx
@@ -276,11 +284,13 @@ sudo docker images pulldb
 ## Step 7 — Configure the pullDB container
 
 ```bash
-sudo mkdir -p /etc/pulldb /mnt/data/mysql-pulldb-prod
+# /etc/pulldb/ = management-only (compose env files)
+# /etc/pulldb-prod/ = per-container runtime config (service.env, aws-config)
+# Using separate directories prevents UID/GID conflicts if multiple containers
+# ever run on the same host.
+sudo mkdir -p /etc/pulldb /etc/pulldb-prod /mnt/data/mysql-pulldb-prod
 
-# Write the env file — edit HOST_IP to match this server's internal IP
-HOST_IP=$(ip -4 route get 1.1.1.1 | awk '{print $7; exit}')
-
+# Write the compose env file — PULLDB_CONFIG_DIR points to the per-container dir
 sudo tee /etc/pulldb/.env.pulldb-prod > /dev/null << EOF
 PULLDB_IMAGE=pulldb:1.2.0
 CONTAINER_NAME=pulldb-prod
@@ -288,18 +298,29 @@ PORT_WEB=8000
 PORT_API=8080
 HOST_IP=0.0.0.0
 PULLDB_MYSQL_DATA_DIR=/mnt/data/mysql-pulldb-prod
+PULLDB_CONFIG_DIR=/etc/pulldb-prod
 EOF
 
-echo "Using HOST_IP: $HOST_IP"
-```
+# Place the application config (S3 buckets, AWS profiles, etc.)
+# docker-compose.yml mounts PULLDB_CONFIG_DIR as /etc/pulldb inside the container.
+# The entrypoint auto-merges service.env into the runtime .env on startup.
+sudo cp /opt/pulldb-import/config/service-env/service.env /etc/pulldb-prod/service.env
+sudo chown root:docker /etc/pulldb-prod/service.env 2>/dev/null || true
+sudo chmod 640 /etc/pulldb-prod/service.env
 
-Copy the AWS credentials and any service-specific settings from the old
-`env.service` in the import package into `/etc/pulldb/.env.pulldb-prod` as needed
-(S3 bucket, AWS region, secret manager paths, etc.).
+# Place AWS config
+sudo cp /opt/pulldb-import/config/aws/config /etc/pulldb-prod/aws-config
+sudo chown root:docker /etc/pulldb-prod/aws-config 2>/dev/null || true
+sudo chmod 640 /etc/pulldb-prod/aws-config
 
-```bash
-# Review old env for keys to carry forward
-sudo cat /opt/pulldb-import/env.service | grep -v "^#\|^$\|MYSQL_PASSWORD\|MYSQL_SOCKET"
+# Add AWS_CONFIG_FILE reference to service.env so the app finds the profile
+grep -q '^AWS_CONFIG_FILE=' /etc/pulldb-prod/service.env 2>/dev/null || \
+  echo 'AWS_CONFIG_FILE=/etc/pulldb/aws-config' | sudo tee -a /etc/pulldb-prod/service.env
+
+# Host-level AWS config (for any host tools that use aws cli directly)
+sudo mkdir -p /root/.aws
+sudo cp /opt/pulldb-import/config/aws/config /root/.aws/config
+# NOTE: Do NOT copy credentials on EC2 — Ec2InstanceMetadata handles auth via IAM profile.
 ```
 
 ---
@@ -310,7 +331,7 @@ sudo cat /opt/pulldb-import/env.service | grep -v "^#\|^$\|MYSQL_PASSWORD\|MYSQL
 sudo docker compose \
   -p pulldb-prod \
   --env-file /etc/pulldb/.env.pulldb-prod \
-  -f ~/Projects/pullDB/compose/docker-compose.yml \
+  -f /opt/pulldb-import/docker-compose.yml \
   up -d
 
 # Watch init logs — wait for "Starting supervisord..."
@@ -328,6 +349,17 @@ done
 echo "Container is healthy"
 ```
 
+> The `docker-compose.yml` `entrypoint:` block automatically merges `service.env`
+> into the container's runtime `.env` before the main entrypoint runs — no manual
+> `docker exec` inject step is needed.
+
+Verify the app config was merged:
+```bash
+sudo docker exec pulldb-prod grep -E "^PULLDB_AWS_PROFILE=|^AWS_CONFIG_FILE=" \
+  /opt/pulldb.service/.env
+# Expected: both lines present
+```
+
 ---
 
 ## Step 9 — Restore the production database
@@ -341,8 +373,26 @@ zcat /opt/pulldb-import/pulldb_service.sql.gz \
 echo "Restore exit code: $?"   # must be 0
 ```
 
+> **Admin password note:** The dump overwrites `auth_credentials` with the original
+> production password hashes. The auto-generated password from Step 8's fresh init is
+> now invalid. Use the **same admin credentials as the old production system** to log in.
+> If the old password is unknown, reset it after restart:
+> ```bash
+> sudo docker exec -it pulldb-prod /opt/pulldb.service/venv/bin/python3 -c "
+> import bcrypt, mysql.connector
+> pw = input('New password: ').encode()
+> h = bcrypt.hashpw(pw, bcrypt.gensalt(12)).decode()
+> c = mysql.connector.connect(unix_socket='/tmp/mysql.sock', database='pulldb_service')
+> cur = c.cursor()
+> cur.execute('SELECT user_id FROM auth_users WHERE username=%s', ('admin',))
+> uid = cur.fetchone()[0]
+> cur.execute('UPDATE auth_credentials SET password_hash=%s WHERE user_id=%s', (h, uid))
+> c.commit(); print('Password updated')
+> "
+> ```
+
 Restart the container so the entrypoint re-creates MySQL service users
-against the restored database:
+against the restored database and picks up the injected app config:
 
 ```bash
 sudo docker restart pulldb-prod
@@ -414,12 +464,13 @@ ip -4 route get 1.1.1.1 | awk '{print $7; exit}'
 
 | Path | Purpose |
 |------|---------|
-| `/etc/pulldb/.env.pulldb-prod` | Container env (image, ports, data dir) |
+| `/etc/pulldb/.env.pulldb-prod` | Compose env (image, ports, data dir) |
+| `/etc/pulldb/service.env` | App config (S3, AWS profiles, work dirs) |
 | `/mnt/data/mysql-pulldb-prod/` | Persistent MySQL data volume |
 | `/mnt/data/pulldb-prod/` | Container logs and work directory |
 | `/etc/nginx/sites-available/pulldb.conf` | nginx pullDB virtual host |
 | `/etc/nginx/sites-available/services.conf` | nginx services directory virtual host |
 | `/etc/nginx/tls/` | Shared TLS certificate and key |
 | `/var/www/services/index.html` | Services landing page |
-| `~/Projects/pullDB/compose/docker-compose.yml` | Docker Compose definition |
-| `~/Projects/pullDB/docs/PROD-BAREMETAL-ROUTING-SETUP.md` | nginx architecture reference |
+| `/opt/pulldb-import/docker-compose.yml` | Docker Compose definition (bundled in package) |
+| `PROD-BAREMETAL-ROUTING-SETUP.md` | nginx architecture reference (in this package) |

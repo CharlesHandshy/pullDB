@@ -376,6 +376,15 @@ main() {
         /mnt/data/work/pulldb.service \
         /mnt/data/tmp 2>/dev/null || true
 
+    # Merge operator config from /etc/pulldb/service.env if not already applied.
+    # This ensures PULLDB_* and AWS_* vars survive container recreation without
+    # requiring a manual docker exec inject step.
+    if [[ -f "/etc/pulldb/service.env" ]] && \
+       ! grep -q '^PULLDB_AWS_PROFILE=' "$ENV_FILE" 2>/dev/null; then
+        log "Merging /etc/pulldb/service.env into runtime .env..."
+        cat /etc/pulldb/service.env >> "$ENV_FILE"
+    fi
+
     write_credentials_to_env
 
     log "Starting supervisord..."

@@ -19,13 +19,30 @@ services:
       - "${HOST_IP:-0.0.0.0}:${PORT_WEB:-8000}:8000"
       - "${HOST_IP:-0.0.0.0}:${PORT_API:-8080}:8080"
 
+    # Merge /etc/pulldb/service.env into the container's runtime .env before
+    # the entrypoint runs. This injects PULLDB_* and AWS_* vars that supervisord
+    # processes source at startup. Only appends if vars aren't already present
+    # (idempotent across docker stop/start restarts).
+    #
+    # WORKAROUND Fix-1: starlette pin — remove once image pins starlette<1.0
+    # WORKAROUND Fix-3: service.env merge — remove once entrypoint.sh does this natively
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        grep -q '^PULLDB_AWS_PROFILE=' /opt/pulldb.service/.env 2>/dev/null || cat /etc/pulldb/service.env >> /opt/pulldb.service/.env
+        /opt/pulldb.service/venv/bin/pip install --quiet "starlette==0.46.2"
+        exec /entrypoint.sh
+
     environment:
       # Legacy dump-import upgrade path (fallback). Leave empty normally.
       PULLDB_IMPORT_DUMP: ${PULLDB_IMPORT_DUMP:-}
 
     volumes:
-      # Persistent config — survives container replacement
-      - /etc/pulldb:/etc/pulldb:ro
+      # Per-container config directory — set PULLDB_CONFIG_DIR in the env file
+      # to an instance-specific path (e.g. /etc/pulldb-prod, /etc/pulldb-blue).
+      # The container always sees its config at /etc/pulldb regardless of host path.
+      - ${PULLDB_CONFIG_DIR:?Set PULLDB_CONFIG_DIR in .env file (e.g. /etc/pulldb-prod)}:/etc/pulldb:ro
       # Persistent data — scoped to this container's name so multiple containers
       # (blue, green, host service) can share the same /mnt/data parent safely.
       - /mnt/data/${CONTAINER_NAME}:/mnt/data
