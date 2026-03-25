@@ -602,8 +602,10 @@ async def maintenance_page(
     state: Any = Depends(get_api_state),
 ) -> Any:
     """Render the database maintenance acknowledgment page.
-    
-    Shows databases that are expired, expiring soon, or locked.
+
+    Shows databases that are expired or expiring soon.
+    Locked databases are intentionally excluded — they are already
+    protected from cleanup and must be managed via the job detail page.
     Users must acknowledge before continuing to use the application.
     """
     from fastapi.concurrency import run_in_threadpool
@@ -662,8 +664,9 @@ async def maintenance_submit(
     state: Any = Depends(get_api_state),
 ) -> Any:
     """Handle maintenance acknowledgment submission.
-    
-    Processes user actions (extend, lock, unlock) and marks maintenance as acknowledged.
+
+    Processes user actions (extend, lock) and marks maintenance as acknowledged.
+    Unlock is not available here — locked databases are excluded from the modal.
     """
     from fastapi.concurrency import run_in_threadpool
     
@@ -692,8 +695,6 @@ async def maintenance_submit(
                         days_str = form.get(f"extend_days_{job_id}", form.get(f"extend_months_{job_id}", "7"))
                         days = int(str(days_str))
                         if hasattr(state.job_repo, "extend_job_expiration"):
-                            # Note: This would need to use RetentionService but for now
-                            # we use the repository directly
                             from pulldb.worker.retention import RetentionService
                             
                             settings_repo = getattr(state, "settings_repo", None)
@@ -748,7 +749,6 @@ async def maintenance_submit(
 
         if hasattr(state, "job_repo") and state.job_repo:
             if hasattr(state.job_repo, "get_maintenance_items"):
-                from fastapi.concurrency import run_in_threadpool
                 expiring_warning_days = 7
                 if hasattr(state, "settings_repo") and state.settings_repo:
                     if hasattr(state.settings_repo, "get_expiring_warning_days"):
