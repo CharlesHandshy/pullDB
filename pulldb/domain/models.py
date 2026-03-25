@@ -556,7 +556,7 @@ class MaintenanceItems:
     @property
     def has_items(self) -> bool:
         """Check if there are any maintenance items to display."""
-        return bool(self.expired or self.expiring or self.locked)
+        return bool(self.expired or self.expiring)
     
     @property
     def requires_action(self) -> bool:

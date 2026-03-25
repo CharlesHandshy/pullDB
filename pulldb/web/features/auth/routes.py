@@ -614,9 +614,8 @@ async def maintenance_page(
     # Get maintenance items for this user
     expired_jobs: list = []
     expiring_jobs: list = []
-    locked_jobs: list = []
     retention_options: list = []
-    
+
     if hasattr(state, "job_repo") and state.job_repo:
         if hasattr(state.job_repo, "get_maintenance_items"):
             # Get expiring warning days from settings
@@ -626,7 +625,7 @@ async def maintenance_page(
                     expiring_warning_days = await run_in_threadpool(
                         state.settings_repo.get_expiring_warning_days
                     )
-            
+
             items = await run_in_threadpool(
                 state.job_repo.get_maintenance_items,
                 user.user_id,
@@ -635,15 +634,14 @@ async def maintenance_page(
             )
             expired_jobs = items.expired
             expiring_jobs = items.expiring
-            locked_jobs = items.locked
-    
+
     # Get retention extension options from settings
     if hasattr(state, "settings_repo") and state.settings_repo:
         if hasattr(state.settings_repo, "get_retention_options"):
             retention_options = await run_in_threadpool(
                 state.settings_repo.get_retention_options
             )
-    
+
     return templates.TemplateResponse(
         "features/auth/maintenance.html",
         {
@@ -651,7 +649,6 @@ async def maintenance_page(
             "user": user,
             "expired_jobs": expired_jobs,
             "expiring_jobs": expiring_jobs,
-            "locked_jobs": locked_jobs,
             "retention_options": retention_options,
             "active_nav": None,  # No nav highlighting for modal-like pages
         },
@@ -729,21 +726,6 @@ async def maintenance_submit(
                             reason,
                         )
                     
-                    elif action == "unlock":
-                        from pulldb.worker.retention import RetentionService
-                        
-                        settings_repo = getattr(state, "settings_repo", None)
-                        retention_service = RetentionService(
-                            job_repo=state.job_repo,
-                            user_repo=state.user_repo,
-                            settings_repo=settings_repo,  # type: ignore[arg-type]
-                        )
-                        await run_in_threadpool(
-                            retention_service.unlock_job,
-                            job_id,
-                            user.user_id,
-                        )
-                
                 except Exception as e:
                     errors.append(f"Failed to process {action} for job {job_id[:8]}: {e}")
     
@@ -762,9 +744,8 @@ async def maintenance_submit(
         # Re-fetch items to show current state
         expired_jobs: list = []
         expiring_jobs: list = []
-        locked_jobs: list = []
         retention_options: list = []
-        
+
         if hasattr(state, "job_repo") and state.job_repo:
             if hasattr(state.job_repo, "get_maintenance_items"):
                 from fastapi.concurrency import run_in_threadpool
@@ -774,7 +755,7 @@ async def maintenance_submit(
                         expiring_warning_days = await run_in_threadpool(
                             state.settings_repo.get_expiring_warning_days
                         )
-                
+
                 items = await run_in_threadpool(
                     state.job_repo.get_maintenance_items,
                     user.user_id,
@@ -783,14 +764,13 @@ async def maintenance_submit(
                 )
                 expired_jobs = items.expired
                 expiring_jobs = items.expiring
-                locked_jobs = items.locked
-        
+
         if hasattr(state, "settings_repo") and state.settings_repo:
             if hasattr(state.settings_repo, "get_retention_options"):
                 retention_options = await run_in_threadpool(
                     state.settings_repo.get_retention_options
                 )
-        
+
         return templates.TemplateResponse(
             "features/auth/maintenance.html",
             {
@@ -798,7 +778,6 @@ async def maintenance_submit(
                 "user": user,
                 "expired_jobs": expired_jobs,
                 "expiring_jobs": expiring_jobs,
-                "locked_jobs": locked_jobs,
                 "retention_options": retention_options,
                 "errors": errors,
                 "active_nav": None,

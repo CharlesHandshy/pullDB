@@ -3450,10 +3450,8 @@ class JobRepository:
                   AND status = 'deployed'
                   AND db_dropped_at IS NULL
                   AND superseded_at IS NULL
-                  AND (
-                      expires_at < UTC_TIMESTAMP() + INTERVAL %s DAY
-                      OR (locked_at IS NOT NULL AND expires_at < UTC_TIMESTAMP())
-                  )
+                  AND locked_at IS NULL
+                  AND expires_at < UTC_TIMESTAMP() + INTERVAL %s DAY
                 ORDER BY expires_at ASC
                 """,
                 (user_id, notice_days),
@@ -3462,18 +3460,15 @@ class JobRepository:
 
         expired: list[Job] = []
         expiring: list[Job] = []
-        locked: list[Job] = []
 
         for row in rows:
             job = self._row_to_job(row)
-            if job.is_locked and job.is_expired:
-                locked.append(job)
-            elif job.is_expired:
+            if job.is_expired:
                 expired.append(job)
             elif job.is_expiring(notice_days):
                 expiring.append(job)
 
-        return MaintenanceItems(expired=expired, expiring=expiring, locked=locked)
+        return MaintenanceItems(expired=expired, expiring=expiring, locked=[])
 
     def get_expired_cleanup_candidates(self, grace_days: int) -> list[Job]:
         """Get jobs eligible for automatic database cleanup.

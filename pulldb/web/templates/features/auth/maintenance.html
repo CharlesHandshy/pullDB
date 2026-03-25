@@ -160,60 +160,8 @@
         </div>
         {% endif %}
 
-        <!-- Locked Databases (Notice) -->
-        {% if locked_jobs %}
-        <div class="card mb-4">
-            <div class="card-header" style="background-color: var(--info-bg); border-color: var(--info-border);">
-                <h2 style="color: var(--info-text);">
-                    {{ icon('lock', size='20') }}
-                    Locked Databases ({{ locked_jobs|length }})
-                </h2>
-                <span class="badge badge-info">Locked</span>
-            </div>
-            <div class="card-body">
-                <p class="text-muted mb-3">
-                    These databases are locked and will not be automatically cleaned up. 
-                    You can unlock them to allow normal expiration.
-                </p>
-                <div class="table-responsive">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Database</th>
-                                <th>Host</th>
-                                <th>Locked Since</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                        {% for job in locked_jobs %}
-                            <tr>
-                                <td>
-                                    <a href="/web/jobs/{{ job.id }}">{{ job.target }}</a>
-                                </td>
-                                <td>{{ job.dbhost }}</td>
-                                <td>
-                                    {{ job.locked_at.strftime('%b %d, %y') if job.locked_at else 'N/A' }}
-                                </td>
-                                <td>
-                                    <div class="action-group">
-                                        <select name="action_{{ job.id }}" class="form-select form-select-sm">
-                                            <option value="none">Keep locked</option>
-                                            <option value="unlock">Unlock</option>
-                                        </select>
-                                    </div>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
         <!-- No Items Message -->
-        {% if not expired_jobs and not expiring_jobs and not locked_jobs %}
+        {% if not expired_jobs and not expiring_jobs %}
         <div class="card mb-4">
             <div class="card-body text-center py-5">
                 {{ icon('check-circle', size='48', class='text-success mb-3') }}

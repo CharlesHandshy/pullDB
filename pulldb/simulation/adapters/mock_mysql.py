@@ -1451,7 +1451,6 @@ class SimulatedJobRepository:
 
         expired: list[Job] = []
         expiring: list[Job] = []
-        locked: list[Job] = []
 
         with self.state.lock:
             for job in self.state.jobs.values():
@@ -1460,17 +1459,16 @@ class SimulatedJobRepository:
                     or job.status != JobStatus.DEPLOYED
                     or job.db_dropped_at is not None
                     or job.superseded_at is not None
+                    or job.is_locked
                 ):
                     continue
-                
-                if job.is_locked and job.is_expired:
-                    locked.append(job)
-                elif job.is_expired:
+
+                if job.is_expired:
                     expired.append(job)
                 elif job.is_expiring(notice_days):
                     expiring.append(job)
 
-        return MaintenanceItems(expired=expired, expiring=expiring, locked=locked)
+        return MaintenanceItems(expired=expired, expiring=expiring, locked=[])
 
     def get_owned_databases(
         self,
