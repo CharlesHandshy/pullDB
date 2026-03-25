@@ -288,6 +288,8 @@ sudo ./scripts/upgrade.sh --dry-run pulldb:1.3.0
 
 See the **[Upgrade Runbook](upgrade.md)** for the full procedure including rollback, QA restore validation, and troubleshooting.
 
+For the specific 1.2.0 → 1.3.0 → 1.4.0 path, see the **[1.2.0 to 1.4.0 Upgrade Procedure](upgrade-1.2.0-to-1.4.0.md)**.
+
 ---
 
 ## Troubleshooting
