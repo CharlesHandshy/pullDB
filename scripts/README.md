@@ -62,6 +62,16 @@ These scripts are copied into `/opt/pulldb.service/scripts/` during package inst
 | `verify-secrets-perms.sh` | IAM/Secrets Manager permissions |
 | `verify-aws-access.py` | Cross-account S3 access |
 
+### Upgrade / Blue-Green
+
+| Script | Purpose |
+|--------|---------|
+| `upgrade.sh` | Blue/green upgrade orchestrator — 6-phase, fully parameterised |
+| `validate.sh` | Post-upgrade validation: API health, schema integrity, QA restore |
+| `rollback.sh` | Restore the previous stopped container to active |
+
+See [docs/hca/widgets/upgrade.md](../docs/hca/widgets/upgrade.md) for the full runbook.
+
 ### Operations
 
 | Script | Purpose |
