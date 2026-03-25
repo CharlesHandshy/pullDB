@@ -714,3 +714,19 @@ class RateLimitError(EnqueueError):
 class HostUnavailableError(EnqueueError):
     """Cannot reach the target host to verify safety (503)."""
     ...
+
+
+class OverrideAcknowledgmentRequired(EnqueueError):
+    """One or more overrides require explicit user acknowledgment before proceeding (409).
+
+    Carries the list of required acknowledgment keys and context data so the
+    UI can display targeted warnings and re-submit with the ack flags set.
+
+    required: list of keys — "customer_name_override", "ownership_transfer"
+    context:  dict with display data, e.g. {"current_owner": "jsmith", "target": "foo"}
+    """
+
+    def __init__(self, required: list[str], context: dict | None = None) -> None:
+        self.required = required
+        self.context = context or {}
+        super().__init__("Explicit acknowledgment required before proceeding")

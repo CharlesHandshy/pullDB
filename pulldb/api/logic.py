@@ -25,6 +25,7 @@ from pulldb.domain.errors import (
     HostUnauthorizedError,
     JobLockedError,
     JobNotFoundError,
+    OverrideAcknowledgmentRequired,
     RateLimitError,
     UserDisabledError,
 )
@@ -59,6 +60,16 @@ def _wrap_enqueue_error(fn, *args, **kwargs):  # type: ignore[no-untyped-def]
     """Call *fn* and translate :class:`EnqueueError` → :class:`HTTPException`."""
     try:
         return fn(*args, **kwargs)
+    except OverrideAcknowledgmentRequired as exc:
+        # Return structured 409 so API callers know which acks to supply on retry.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "acknowledgment_required",
+                "required": exc.required,
+                "context": exc.context,
+            },
+        ) from exc
     except EnqueueError as exc:
         status = _ERROR_STATUS_MAP.get(type(exc), 500)
         raise HTTPException(status_code=status, detail=exc.detail) from exc

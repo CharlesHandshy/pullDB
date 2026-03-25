@@ -2165,3 +2165,368 @@ def maintenance_status() -> None:
     enabled = repo.is_maintenance_mode_enabled()
     status = "ENABLED" if enabled else "disabled"
     click.echo(f"Maintenance mode: {status}")
+
+
+# =============================================================================
+# Feature Requests Command Group
+# =============================================================================
+
+
+@click.group(name="requests", help="Export and import feature requests")
+def requests_group() -> None:
+    """Feature requests export/import command group."""
+    pass
+
+
+@requests_group.command("export")
+@click.option(
+    "--output",
+    "-o",
+    "output_file",
+    default="-",
+    help="Output file path (default: stdout)",
+    show_default=True,
+)
+@click.option(
+    "--source",
+    default="",
+    help="Source label for this export (e.g. production hostname)",
+)
+@click.option(
+    "--status",
+    "status_filter",
+    multiple=True,
+    type=click.Choice(["open", "in_progress", "complete", "declined"]),
+    help="Filter by status (repeatable). Default: all statuses.",
+)
+def requests_export(
+    output_file: str,
+    source: str,
+    status_filter: tuple[str, ...],
+) -> None:
+    """Export feature requests to a JSON bundle for AI agent review.
+
+    The bundle includes all request fields, vote counts, notes, and export
+    metadata. It can be imported into any pullDB dev instance with:
+
+        pulldb-admin requests import <file>
+    """
+    from pulldb.infra.mysql import TypedTupleCursor
+    from pulldb.infra.factory import _get_real_mysql_pool
+
+    pool = _get_real_mysql_pool()
+
+    with pool.connection() as conn:
+        cur = TypedTupleCursor(conn.cursor())
+        try:
+            # ── requests ──────────────────────────────────────────────────────
+            where_sql = ""
+            params: list[Any] = []
+            if status_filter:
+                placeholders = ", ".join(["%s"] * len(status_filter))
+                where_sql = f"WHERE fr.status IN ({placeholders})"
+                params = list(status_filter)
+
+            cur.execute(
+                f"""
+                SELECT
+                    fr.request_id,
+                    fr.title,
+                    fr.description,
+                    fr.status,
+                    fr.vote_score,
+                    fr.upvote_count,
+                    fr.downvote_count,
+                    fr.created_at,
+                    fr.updated_at,
+                    fr.completed_at,
+                    fr.admin_response,
+                    u.username  AS submitted_by_username,
+                    u.user_code AS submitted_by_user_code
+                FROM feature_requests fr
+                JOIN auth_users u ON fr.submitted_by_user_id = u.user_id
+                {where_sql}
+                ORDER BY fr.vote_score DESC, fr.created_at ASC
+                """,
+                params,
+            )
+            request_rows = cur.fetchall()
+
+            # ── notes (all at once, keyed by request_id) ──────────────────────
+            if request_rows:
+                request_ids = [r[0] for r in request_rows]
+                id_placeholders = ", ".join(["%s"] * len(request_ids))
+                cur.execute(
+                    f"""
+                    SELECT
+                        n.note_id,
+                        n.request_id,
+                        n.note_text,
+                        n.created_at,
+                        u.username,
+                        u.user_code
+                    FROM feature_request_notes n
+                    JOIN auth_users u ON n.user_id = u.user_id
+                    WHERE n.request_id IN ({id_placeholders})
+                    ORDER BY n.created_at ASC
+                    """,
+                    request_ids,
+                )
+                note_rows = cur.fetchall()
+            else:
+                note_rows = []
+
+        finally:
+            cur.close()
+
+    # ── build notes index ──────────────────────────────────────────────────────
+    notes_by_request: dict[str, list[dict[str, Any]]] = {}
+    for note in note_rows:
+        note_id, req_id, note_text, created_at, username, user_code = note
+        notes_by_request.setdefault(req_id, []).append({
+            "note_id": note_id,
+            "note_text": note_text,
+            "created_at": created_at.isoformat() if created_at else None,
+            "username": username,
+            "user_code": user_code,
+        })
+
+    # ── status counts ──────────────────────────────────────────────────────────
+    status_counts: dict[str, int] = {"open": 0, "in_progress": 0, "complete": 0, "declined": 0}
+    for row in request_rows:
+        s = row[3]
+        if s in status_counts:
+            status_counts[s] += 1
+
+    # ── assemble bundle ────────────────────────────────────────────────────────
+    requests_list = []
+    for row in request_rows:
+        (
+            request_id, title, description, status, vote_score,
+            upvote_count, downvote_count, created_at, updated_at,
+            completed_at, admin_response, submitted_by_username,
+            submitted_by_user_code,
+        ) = row
+        requests_list.append({
+            "request_id": request_id,
+            "title": title,
+            "description": description,
+            "status": status,
+            "vote_score": vote_score,
+            "upvote_count": upvote_count,
+            "downvote_count": downvote_count,
+            "created_at": created_at.isoformat() if created_at else None,
+            "updated_at": updated_at.isoformat() if updated_at else None,
+            "completed_at": completed_at.isoformat() if completed_at else None,
+            "admin_response": admin_response,
+            "submitted_by_username": submitted_by_username,
+            "submitted_by_user_code": submitted_by_user_code,
+            "notes": notes_by_request.get(request_id, []),
+        })
+
+    bundle = {
+        "pulldb_export": {
+            "version": "1",
+            "type": "feature_requests",
+            "exported_at": datetime.utcnow().isoformat() + "Z",
+            "source": source,
+            "stats": {
+                "total": len(requests_list),
+                **status_counts,
+            },
+        },
+        "requests": requests_list,
+    }
+
+    payload = json.dumps(bundle, indent=2)
+
+    if output_file == "-":
+        click.echo(payload)
+    else:
+        with open(output_file, "w") as fh:
+            fh.write(payload)
+        click.echo(f"Exported {len(requests_list)} request(s) to {output_file}", err=True)
+
+
+@requests_group.command("import")
+@click.argument("input_file")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print what would be imported without writing to the database.",
+)
+@click.option(
+    "--fallback-user",
+    "fallback_user_code",
+    default="admin",
+    show_default=True,
+    help="user_code to use when the original submitter does not exist in this instance.",
+)
+def requests_import(
+    input_file: str,
+    dry_run: bool,
+    fallback_user_code: str,
+) -> None:
+    """Import feature requests from a JSON bundle into this instance.
+
+    Requests are UPSERTED by request_id (existing records are updated).
+    Notes are UPSERTED by note_id.
+
+    User references are resolved by user_code. If the original submitter
+    is not found, the --fallback-user account is used instead.
+
+    Example workflow:
+
+    \b
+        # On production (or from a file snapshot):
+        pulldb-admin requests export --source prod > requests.json
+
+        # On dev:
+        pulldb-admin requests import requests.json
+        pulldb-admin requests import --dry-run requests.json
+    """
+    import sys
+    from pulldb.infra.mysql import TypedTupleCursor
+    from pulldb.infra.factory import _get_real_mysql_pool
+
+    # ── load bundle ────────────────────────────────────────────────────────────
+    with open(input_file) as fh:
+        bundle = json.load(fh)
+
+    meta = bundle.get("pulldb_export", {})
+    if meta.get("type") != "feature_requests":
+        click.echo(
+            f"ERROR: unexpected export type '{meta.get('type')}' — expected 'feature_requests'",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    requests_data = bundle.get("requests", [])
+    click.echo(
+        f"Bundle: {len(requests_data)} request(s) exported from "
+        f"'{meta.get('source', 'unknown')}' at {meta.get('exported_at', '?')}",
+        err=True,
+    )
+
+    if dry_run:
+        for req in requests_data:
+            note_count = len(req.get("notes", []))
+            click.echo(
+                f"  [dry-run] {req['request_id'][:8]}… "
+                f"status={req['status']} votes={req['vote_score']} "
+                f"notes={note_count} — {req['title'][:60]}"
+            )
+        click.echo(f"\nDry run complete — no changes made.", err=True)
+        return
+
+    pool = _get_real_mysql_pool()
+
+    with pool.connection() as conn:
+        cur = TypedTupleCursor(conn.cursor())
+        try:
+            # ── resolve fallback user ─────────────────────────────────────────
+            cur.execute(
+                "SELECT user_id FROM auth_users WHERE user_code = %s LIMIT 1",
+                (fallback_user_code,),
+            )
+            row = cur.fetchone()
+            if not row:
+                click.echo(
+                    f"ERROR: fallback user '{fallback_user_code}' not found in auth_users.",
+                    err=True,
+                )
+                raise SystemExit(1)
+            fallback_user_id: str = row[0]
+
+            # ── user_code → user_id cache ─────────────────────────────────────
+            user_id_cache: dict[str, str] = {fallback_user_code: fallback_user_id}
+
+            def resolve_user_id(user_code: str | None) -> str:
+                if not user_code:
+                    return fallback_user_id
+                if user_code in user_id_cache:
+                    return user_id_cache[user_code]
+                cur.execute(
+                    "SELECT user_id FROM auth_users WHERE user_code = %s LIMIT 1",
+                    (user_code,),
+                )
+                r = cur.fetchone()
+                uid = r[0] if r else fallback_user_id
+                user_id_cache[user_code] = uid
+                return uid
+
+            imported = 0
+            skipped = 0
+
+            for req in requests_data:
+                user_id = resolve_user_id(req.get("submitted_by_user_code"))
+
+                # Parse datetime strings back to datetime objects for MySQL
+                def _dt(val: str | None):  # noqa: E306
+                    if not val:
+                        return None
+                    # Strip trailing Z and parse
+                    return datetime.fromisoformat(val.rstrip("Z"))
+
+                cur.execute(
+                    """
+                    INSERT INTO feature_requests (
+                        request_id, submitted_by_user_id, title, description,
+                        status, vote_score, upvote_count, downvote_count,
+                        created_at, updated_at, completed_at, admin_response
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        title            = VALUES(title),
+                        description      = VALUES(description),
+                        status           = VALUES(status),
+                        vote_score       = VALUES(vote_score),
+                        upvote_count     = VALUES(upvote_count),
+                        downvote_count   = VALUES(downvote_count),
+                        updated_at       = VALUES(updated_at),
+                        completed_at     = VALUES(completed_at),
+                        admin_response   = VALUES(admin_response)
+                    """,
+                    (
+                        req["request_id"],
+                        user_id,
+                        req["title"],
+                        req.get("description"),
+                        req["status"],
+                        req.get("vote_score", 0),
+                        req.get("upvote_count", 0),
+                        req.get("downvote_count", 0),
+                        _dt(req.get("created_at")),
+                        _dt(req.get("updated_at")),
+                        _dt(req.get("completed_at")),
+                        req.get("admin_response"),
+                    ),
+                )
+
+                for note in req.get("notes", []):
+                    note_user_id = resolve_user_id(note.get("user_code"))
+                    cur.execute(
+                        """
+                        INSERT INTO feature_request_notes (
+                            note_id, request_id, user_id, note_text, created_at
+                        ) VALUES (%s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            note_text  = VALUES(note_text),
+                            created_at = VALUES(created_at)
+                        """,
+                        (
+                            note["note_id"],
+                            req["request_id"],
+                            note_user_id,
+                            note["note_text"],
+                            _dt(note.get("created_at")),
+                        ),
+                    )
+
+                imported += 1
+
+            conn.commit()
+
+        finally:
+            cur.close()
+
+    click.echo(f"Imported {imported} request(s) ({skipped} skipped).")

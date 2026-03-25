@@ -49,6 +49,23 @@
     {% endif %}
     
     <form method="POST" action="/web/restore" class="restore-form" id="restore-form">
+        {% if override_required %}
+        <!-- Ack re-submit: frozen summary strip -->
+        <div class="restore-section override-frozen-summary">
+            <div class="restore-section-body">
+                <div class="override-frozen-row">
+                    <span class="override-frozen-label">Customer:</span>
+                    <span class="override-frozen-value">{{ form.customer or '—' }}</span>
+                    <span class="override-frozen-label">Host:</span>
+                    <span class="override-frozen-value">{{ form.dbhost or '—' }}</span>
+                    {% if override_context and override_context.target %}
+                    <span class="override-frozen-label">Target:</span>
+                    <span class="override-frozen-value"><code>{{ override_context.target }}</code></span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% else %}
         <!-- Section 1: Source Selection -->
         <div class="restore-section">
             <div class="restore-section-header">
@@ -257,8 +274,10 @@
             </div>
         </div>
         {% endif %}
+        {% endif %}{# end if not override_required #}
 
-        <!-- Section 2: Target Configuration -->
+        <!-- Section 2: Target Configuration (hidden during ack re-submit) -->
+        {% if not override_required %}
         <div class="restore-section">
             <div class="restore-section-header">
                 <span class="restore-section-number">2</span>
@@ -386,19 +405,91 @@
                 </div>
             </div>
         </div>
+        {% endif %}{# end if not override_required (Section 2) #}
+
+        {% if override_required %}
+        <!-- Override Acknowledgment Panel -->
+        <div class="restore-section override-ack-section" id="override-ack-panel">
+            <div class="restore-section-header">
+                <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <h2 class="restore-section-title">Acknowledgment Required</h2>
+            </div>
+            <div class="restore-section-body">
+                <p class="override-ack-intro">Review the warnings below and check each box to confirm you understand and accept the consequences before proceeding.</p>
+
+                {% if "customer_name_override" in override_required %}
+                <div class="override-ack-warning">
+                    <div class="override-ack-warning-header">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        <strong>Restoring to a customer-named database</strong>
+                    </div>
+                    <p>You are restoring to <code>{{ override_context.target }}</code>, which matches a known customer name. This could cause confusion — the database name will look like a real customer's live database. An audit record will be created for this override.</p>
+                    <label class="override-ack-checkbox-label">
+                        <input type="checkbox" class="override-ack-checkbox" name="ack_customer_name_override" value="true" id="ack-customer-name">
+                        I understand I am using a customer name as my target database name and accept responsibility for this override.
+                    </label>
+                </div>
+                {% endif %}
+
+                {% if "ownership_transfer" in override_required %}
+                <div class="override-ack-warning">
+                    <div class="override-ack-warning-header">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="8" x2="12" y2="12"/>
+                            <line x1="12" y1="16" x2="12.01" y2="16"/>
+                        </svg>
+                        <strong>Database owned by another user</strong>
+                    </div>
+                    <p>Database <code>{{ override_context.target }}</code> on <code>{{ override_context.dbhost }}</code> is currently owned by <strong>{{ override_context.current_owner }}</strong>. Proceeding will transfer ownership to you and supersede their deployed job. An audit record will be created for this transfer.</p>
+                    <label class="override-ack-checkbox-label">
+                        <input type="checkbox" class="override-ack-checkbox" name="ack_ownership_transfer" value="true" id="ack-ownership-transfer">
+                        I understand I am taking ownership of this database from <strong>{{ override_context.current_owner }}</strong> and accept responsibility for this action.
+                    </label>
+                </div>
+                {% endif %}
+
+                <!-- Hidden fields carrying all original form data through the re-submit -->
+                <input type="hidden" name="customer" value="{{ form.customer or '' }}">
+                <input type="hidden" name="s3env" value="{{ form.s3env or 'prod' }}">
+                <input type="hidden" name="dbhost" value="{{ form.dbhost or '' }}">
+                {% if form.suffix %}<input type="hidden" name="suffix" value="{{ form.suffix }}">{% endif %}
+                {% if form.backup_key %}<input type="hidden" name="backup_key" value="{{ form.backup_key }}">{% endif %}
+                {% if form.overwrite %}<input type="hidden" name="overwrite" value="true">{% endif %}
+                {% if form.qatemplate %}<input type="hidden" name="qatemplate" value="{{ form.qatemplate }}">{% endif %}
+                {% if form.submit_as_user %}<input type="hidden" name="submit_as_user" value="{{ form.submit_as_user }}">{% endif %}
+                {% if form.custom_target %}<input type="hidden" name="custom_target" value="{{ form.custom_target }}">{% endif %}
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Submit section -->
         <div class="submit-section">
             <div class="submit-summary" id="submit-summary">
+                {% if override_required %}
+                Check all boxes above to confirm and submit
+                {% else %}
                 Select a customer and backup to queue restore
+                {% endif %}
             </div>
-            <button type="submit" class="btn btn-primary btn-queue" id="submit-btn" {% if not user.has_any_hosts %}disabled{% endif %}>
-                Queue Restore
+            <button type="submit" class="btn btn-primary btn-queue" id="submit-btn"
+                    {% if not user.has_any_hosts %}disabled{% endif %}
+>
+                {% if override_required %}Confirm and Submit{% else %}Queue Restore{% endif %}
             </button>
         </div>
     </form>
 </div>
 
+{% if not override_required %}
 <!-- Configuration for restore.js -->
 <script>
 window.restoreConfig = {
@@ -418,4 +509,19 @@ window.restoreConfig = {
 };
 </script>
 <script src="/static/js/pages/restore.js?v={{ static_version }}"></script>
+{% endif %}
+{% if override_required %}
+<script>
+(function () {
+    var btn = document.getElementById('submit-btn');
+    var checkboxes = document.querySelectorAll('.override-ack-checkbox');
+    function updateBtn() {
+        var allChecked = Array.from(checkboxes).every(function (cb) { return cb.checked; });
+        btn.disabled = !allChecked;
+    }
+    checkboxes.forEach(function (cb) { cb.addEventListener('change', updateBtn); });
+    updateBtn();
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -433,6 +433,15 @@
                     <line x1="5" x2="19" y1="12" y2="12"/>
                 </svg>
             </button>
+            {% if user.role.value == 'admin' %}
+            <a href="/web/requests/api/export" download class="btn-icon ml-2" title="Export all requests as JSON" aria-label="Export feature requests">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+            </a>
+            {% endif %}
         </div>
         <div class="status-bar">
             <span class="status-item" title="Total Requests">

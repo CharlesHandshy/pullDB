@@ -486,6 +486,158 @@ async def add_note_api(
         return {"error": str(e)}
 
 
+@router.get("/api/export")
+async def export_requests_api(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+    status: str | None = Query(None, description="Comma-separated statuses to include"),
+) -> Any:
+    """Export all feature requests as a JSON bundle (admin only).
+
+    Returns a downloadable JSON file containing all requests with votes and
+    notes, suitable for AI agent consumption or import into another instance.
+
+    Query params:
+        status: comma-separated filter, e.g. ``open,in_progress`` (default: all)
+    """
+    import json as _json
+    from datetime import datetime as _dt
+    from fastapi.responses import Response
+    from pulldb.infra.mysql import TypedTupleCursor
+
+    if user.role.value != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    if is_simulation_mode():
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="Export not available in simulation mode")
+
+    status_filter = [s.strip() for s in status.split(",")] if status else []
+
+    where_sql = ""
+    params: list[Any] = []
+    if status_filter:
+        placeholders = ", ".join(["%s"] * len(status_filter))
+        where_sql = f"WHERE fr.status IN ({placeholders})"
+        params = list(status_filter)
+
+    with state.pool.connection() as conn:
+        cur = TypedTupleCursor(conn.cursor())
+        try:
+            cur.execute(
+                f"""
+                SELECT
+                    fr.request_id,
+                    fr.title,
+                    fr.description,
+                    fr.status,
+                    fr.vote_score,
+                    fr.upvote_count,
+                    fr.downvote_count,
+                    fr.created_at,
+                    fr.updated_at,
+                    fr.completed_at,
+                    fr.admin_response,
+                    u.username  AS submitted_by_username,
+                    u.user_code AS submitted_by_user_code
+                FROM feature_requests fr
+                JOIN auth_users u ON fr.submitted_by_user_id = u.user_id
+                {where_sql}
+                ORDER BY fr.vote_score DESC, fr.created_at ASC
+                """,
+                params,
+            )
+            request_rows = cur.fetchall()
+
+            if request_rows:
+                request_ids = [r[0] for r in request_rows]
+                id_placeholders = ", ".join(["%s"] * len(request_ids))
+                cur.execute(
+                    f"""
+                    SELECT
+                        n.note_id,
+                        n.request_id,
+                        n.note_text,
+                        n.created_at,
+                        u.username,
+                        u.user_code
+                    FROM feature_request_notes n
+                    JOIN auth_users u ON n.user_id = u.user_id
+                    WHERE n.request_id IN ({id_placeholders})
+                    ORDER BY n.created_at ASC
+                    """,
+                    request_ids,
+                )
+                note_rows = cur.fetchall()
+            else:
+                note_rows = []
+        finally:
+            cur.close()
+
+    notes_by_request: dict = {}
+    for note in note_rows:
+        note_id, req_id, note_text, created_at, username, user_code = note
+        notes_by_request.setdefault(req_id, []).append({
+            "note_id": note_id,
+            "note_text": note_text,
+            "created_at": created_at.isoformat() if created_at else None,
+            "username": username,
+            "user_code": user_code,
+        })
+
+    status_counts = {"open": 0, "in_progress": 0, "complete": 0, "declined": 0}
+    for row in request_rows:
+        s = row[3]
+        if s in status_counts:
+            status_counts[s] += 1
+
+    requests_list = []
+    for row in request_rows:
+        (
+            request_id, title, description, status_val, vote_score,
+            upvote_count, downvote_count, created_at, updated_at,
+            completed_at, admin_response, submitted_by_username,
+            submitted_by_user_code,
+        ) = row
+        requests_list.append({
+            "request_id": request_id,
+            "title": title,
+            "description": description,
+            "status": status_val,
+            "vote_score": vote_score,
+            "upvote_count": upvote_count,
+            "downvote_count": downvote_count,
+            "created_at": created_at.isoformat() if created_at else None,
+            "updated_at": updated_at.isoformat() if updated_at else None,
+            "completed_at": completed_at.isoformat() if completed_at else None,
+            "admin_response": admin_response,
+            "submitted_by_username": submitted_by_username,
+            "submitted_by_user_code": submitted_by_user_code,
+            "notes": notes_by_request.get(request_id, []),
+        })
+
+    source = request.url.netloc
+    bundle = {
+        "pulldb_export": {
+            "version": "1",
+            "type": "feature_requests",
+            "exported_at": _dt.utcnow().isoformat() + "Z",
+            "source": source,
+            "stats": {"total": len(requests_list), **status_counts},
+        },
+        "requests": requests_list,
+    }
+
+    filename = f"requests-export-{_dt.utcnow().strftime('%Y%m%d')}.json"
+    return Response(
+        content=_json.dumps(bundle, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.delete("/api/notes/{note_id}")
 async def delete_note_api(
     note_id: str,
