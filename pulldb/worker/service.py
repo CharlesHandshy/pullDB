@@ -288,6 +288,43 @@ def _emit_stop_event(stop_event: threading.Event) -> None:
     )
 
 
+def _validate_history_connectivity(
+    history_repo: "JobHistorySummaryRepository",
+) -> bool:
+    """Validate that the history pool write path is reachable before accepting jobs.
+
+    Runs a lightweight SELECT against job_history_summary at startup so that
+    credential or transport failures surface immediately rather than silently
+    after an expensive restore completes.
+
+    Args:
+        history_repo: Repository backed by the coordination pool.
+
+    Returns:
+        True if the connection and grants are healthy, False otherwise.
+    """
+    try:
+        history_repo.get_stats()
+        logger.info(
+            "History pool connectivity validated",
+            extra={"phase": "startup"},
+        )
+        return True
+    except Exception as exc:
+        logger.error(
+            "History pool connectivity check failed — worker will not start. "
+            "Verify PULLDB_COORDINATION_SECRET credentials and PULLDB_MYSQL_SOCKET.",
+            extra={"phase": "startup", "error": str(exc)},
+            exc_info=True,
+        )
+        emit_event(
+            "history_write_failure_total",
+            str(exc),
+            MetricLabels(phase="startup", status="error"),
+        )
+        return False
+
+
 def _emit_fatal(error: Exception) -> None:
     logger.error(
         "Worker fatal error",
@@ -546,6 +583,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         from pulldb.infra.mysql import JobHistorySummaryRepository
         history_repo = JobHistorySummaryRepository(pool)
         logger.info("History backfill safety net enabled")
+        if not _validate_history_connectivity(history_repo):
+            _set_worker_active(0, "fatal")
+            return 1
 
     try:
         max_iterations = 1 if args.oneshot else args.max_iterations
