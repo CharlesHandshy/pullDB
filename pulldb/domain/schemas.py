@@ -36,3 +36,10 @@ class JobRequest(pydantic.BaseModel):
         pattern=r"^[a-z]{1,51}$",
         description="Custom target database name. 1-51 lowercase letters, user has FULL control.",
     )
+    # Override acknowledgments — must be explicitly set to True after the user
+    # reviews and accepts the corresponding warning in the UI.  Each triggers
+    # an audit record when the job is created.
+    ack_customer_name_override: bool = False
+    """Acknowledge that the custom target matches a real customer name."""
+    ack_ownership_transfer: bool = False
+    """Acknowledge transferring ownership from the current DB owner to this user."""

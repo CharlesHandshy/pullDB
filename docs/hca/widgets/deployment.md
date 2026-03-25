@@ -276,31 +276,19 @@ sudo journalctl -u pulldb-worker | grep -i "myloader.*error"
 
 ## Upgrade Process
 
-### Using Debian Package
+pullDB uses a blue/green upgrade strategy managed by `scripts/upgrade.sh`.
 
 ```bash
-# Install new package (handles stop/start and schema updates)
-sudo dpkg -i pulldb_0.2.0_amd64.deb
+# Standard production upgrade
+sudo ./scripts/upgrade.sh pulldb:1.3.0
+
+# Dry run — verify plan without making changes
+sudo ./scripts/upgrade.sh --dry-run pulldb:1.3.0
 ```
 
-### Manual Upgrade
+See the **[Upgrade Runbook](upgrade.md)** for the full procedure including rollback, QA restore validation, and troubleshooting.
 
-```bash
-# 1. Stop services
-sudo systemctl stop pulldb-worker pulldb-api
-
-# 2. Install package (schema applied automatically)
-sudo dpkg -i pulldb_0.2.0_amd64.deb
-
-# 3. Verify schema
-mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
-
-# 4. Restart services
-sudo systemctl start pulldb-worker pulldb-api
-
-# 5. Verify
-sudo systemctl status pulldb-worker pulldb-api
-```
+For the specific 1.2.0 → 1.3.0 → 1.4.0 path, see the **[1.2.0 to 1.4.0 Upgrade Procedure](upgrade-1.2.0-to-1.4.0.md)**.
 
 ---
 

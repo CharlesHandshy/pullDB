@@ -27,6 +27,7 @@ from pulldb.domain.errors import (
     HostUnauthorizedError,
     JobLockedError,
     JobNotFoundError,
+    OverrideAcknowledgmentRequired,
     RateLimitError,
     StagingError,
     UserDisabledError,
@@ -172,21 +173,26 @@ def _construct_target(user: User, req: JobRequest) -> TargetResult:
                 "Custom target database name must contain only lowercase letters (a-z).",
             )
 
-        if len(custom) < 1:
-            raise EnqueueValidationError(
-                "Custom target database name must be at least 1 character.",
-            )
-
         if len(custom) > 51:
             raise EnqueueValidationError(
                 "Custom target database name exceeds maximum length of 51 characters.",
             )
 
+        requested_customer = _letters_only(req.customer or "")
         if _is_known_customer_name(custom):
-            raise EnqueueValidationError(
-                f"Cannot use '{custom}' as a custom target name because it matches "
-                f"a known customer. Choose a different name to avoid confusion.",
-            )
+            if custom != requested_customer:
+                # Trying to use a different customer's name as a target — always blocked.
+                raise EnqueueValidationError(
+                    f"Cannot use '{custom}' as a custom target name because it matches "
+                    f"a known customer. Choose a different name to avoid confusion.",
+                )
+            # custom == requested_customer: pulling customerX into a target named customerX.
+            # This is intentional but needs explicit acknowledgment + audit trail.
+            if not req.ack_customer_name_override:
+                raise OverrideAcknowledgmentRequired(
+                    required=["customer_name_override"],
+                    context={"target": custom, "customer": custom},
+                )
 
         return TargetResult(
             target=custom,
@@ -492,7 +498,28 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
             "Your account is pending approval. Contact an administrator to enable your account.",
         )
 
-    target_result = _construct_target(user, req)
+    # Accumulate soft-block acks so all conditions can be presented at once.
+    _pending_acks: list[str] = []
+    _pending_context: dict[str, Any] = {}
+
+    try:
+        target_result = _construct_target(user, req)
+    except OverrideAcknowledgmentRequired as exc:
+        _pending_acks.extend(exc.required)
+        _pending_context.update(exc.context)
+        # OverrideAcknowledgmentRequired is only raised inside the custom_target branch.
+        if not req.custom_target:
+            raise  # defensive: should never happen
+        _inferred = req.custom_target.lower()
+        target_result = TargetResult(
+            target=_inferred,
+            original_customer=None,
+            normalized_customer=None,
+            was_normalized=False,
+            normalization_message="",
+            custom_target_used=True,
+        )
+
     target = target_result.target
     dbhost = _select_dbhost(state, req, user)
 
@@ -554,7 +581,9 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
                     f"by pullDB (job {existing_deployed.id[:8]}). Remove the {origin_label} "
                     f"database from Database Discovery before restoring to this target.",
                 )
-            if not req.overwrite:
+            # Suppress the overwrite error when soft-block acks are still pending;
+            # the ack panel is shown first and overwrite is re-validated on re-submit.
+            if not req.overwrite and not _pending_acks:
                 emit_event(
                     "job_enqueue_blocked",
                     f"Restore blocked: database '{target}' on '{dbhost}' already exists "
@@ -570,7 +599,7 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
                     f"(job {existing_deployed.id[:8]}). "
                     f"Enable 'Allow Overwrite' to replace it, or use a different target name.",
                 )
-            if not existing_deployed.locked_at:
+            if req.overwrite and not existing_deployed.locked_at and not _pending_acks:
                 state.job_repo.supersede_job(existing_deployed.id, "pending-" + target)
                 emit_event(
                     "job_superseded",
@@ -634,23 +663,59 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
             )
 
         if owner_id and owner_id != user.user_id:
-            emit_event(
-                "job_enqueue_blocked",
-                f"Restore blocked: database '{target}' on '{dbhost}' owned by "
-                f"different user ({owner_code})",
-                labels=MetricLabels(
-                    target=target,
-                    phase="enqueue",
-                    status="blocked_cross_user",
-                ),
-            )
-            raise DatabaseProtectionError(
-                f"PROTECTED: Database '{target}' on '{dbhost}' is owned by user "
-                f"'{owner_code}'. You cannot overwrite another user's database. "
-                f"Choose a different target name.",
-            )
+            # Fetch previous owner's job once for both lock check and supersede.
+            old_job = state.job_repo.get_deployed_job_for_target(target, dbhost, owner_id)
+            if old_job and old_job.locked_at:
+                emit_event(
+                    "job_enqueue_blocked",
+                    f"Restore blocked: database '{target}' on '{dbhost}' is locked "
+                    f"by user {owner_code}",
+                    labels=MetricLabels(
+                        target=target,
+                        phase="enqueue",
+                        status="blocked_locked_cross_user",
+                    ),
+                )
+                raise JobLockedError(
+                    f"Target '{target}' on '{dbhost}' is locked by user {owner_code}. "
+                    f"The lock must be removed before ownership can be transferred.",
+                )
+            if not req.ack_ownership_transfer:
+                emit_event(
+                    "job_enqueue_blocked",
+                    f"Restore blocked: database '{target}' on '{dbhost}' owned by "
+                    f"different user ({owner_code}) — acknowledgment required",
+                    labels=MetricLabels(
+                        target=target,
+                        phase="enqueue",
+                        status="blocked_cross_user",
+                    ),
+                )
+                _pending_acks.append("ownership_transfer")
+                _pending_context.update(
+                    {"current_owner": owner_code, "target": target, "dbhost": dbhost},
+                )
+            else:
+                # Acknowledged — supersede the previous owner's deployed job so the
+                # new restore can proceed and will write fresh pullDB metadata.
+                if old_job:
+                    state.job_repo.supersede_job(old_job.id, "pending-" + target)
+                    emit_event(
+                        "job_superseded",
+                        f"Job {old_job.id[:8]} superseded: ownership of '{target}' on "
+                        f"'{dbhost}' transferred from {owner_code} to {user.user_code}",
+                        labels=MetricLabels(
+                            job_id=old_job.id,
+                            target=target,
+                            phase="enqueue",
+                            status="superseded_ownership_transfer",
+                        ),
+                    )
 
-        if not req.overwrite:
+        # ack_ownership_transfer implies overwrite consent (the DB must be replaced).
+        # Also suppress the overwrite error when any ack is still pending — the user
+        # will see the ack panel first; overwrite can be validated on re-submit.
+        if not req.overwrite and not req.ack_ownership_transfer and not _pending_acks:
             emit_event(
                 "job_enqueue_blocked",
                 f"Restore blocked: database '{target}' on '{dbhost}' exists "
@@ -666,6 +731,10 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
                 f"Enable 'Allow Overwrite' to replace it, or use a different target name.",
             )
 
+    # Raise combined ack exception if any soft-block conditions are unacknowledged.
+    if _pending_acks:
+        raise OverrideAcknowledgmentRequired(required=_pending_acks, context=_pending_context)
+
     # Phase 2: Concurrency controls
     check_concurrency_limits(state, user)
 
@@ -674,6 +743,12 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
 
     job_id = str(uuid.uuid4())
     staging_name = generate_staging_name(target, job_id)
+
+    options = _options_snapshot(req, state, dbhost)
+    # When ownership was transferred the DB physically exists and must be replaced,
+    # even if req.overwrite was not explicitly set by the caller.
+    if req.ack_ownership_transfer:
+        options["overwrite"] = "true"
 
     job = Job(
         id=job_id,
@@ -685,7 +760,7 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
         dbhost=dbhost,
         status=JobStatus.QUEUED,
         submitted_at=datetime.now(UTC),
-        options_json=_options_snapshot(req, state, dbhost),
+        options_json=options,
         retry_count=0,
         custom_target=target_result.custom_target_used,
     )
@@ -710,8 +785,9 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
     except StagingError as exc:
         raise EnqueueValidationError(str(exc)) from exc
     except Exception as exc:  # pragma: no cover
-        raise EnqueueValidationError(
-            f"Failed to enqueue job due to unexpected error: {exc}",
+        logger.error("Unexpected error enqueueing job %s: %s", job_id, exc, exc_info=True)
+        raise HostUnavailableError(
+            f"Failed to enqueue job due to an unexpected error. Please try again later.",
         ) from exc
 
     # Mark any previous completed job for this target as superseded
@@ -763,5 +839,27 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
                 "dbhost": dbhost,
             },
         )
+        if req.ack_customer_name_override:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="override_customer_name",
+                target_user_id=user.user_id,
+                detail=(
+                    f"Customer name override acknowledged: customer '{req.customer}' "
+                    f"restored into target '{target}' (same name as production customer)"
+                ),
+                context={"job_id": job_id, "target": target, "customer": req.customer},
+            )
+        if req.ack_ownership_transfer:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="override_ownership_transfer",
+                target_user_id=user.user_id,
+                detail=(
+                    f"Ownership transfer acknowledged: '{target}' on '{dbhost}' "
+                    f"taken over by {user.user_code}"
+                ),
+                context={"job_id": job_id, "target": target, "dbhost": dbhost},
+            )
 
     return EnqueueResult(job=stored, target_result=target_result)

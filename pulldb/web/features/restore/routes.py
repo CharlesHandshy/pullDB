@@ -26,6 +26,7 @@ from pulldb.domain.errors import (
     HostUnauthorizedError,
     JobLockedError,
     JobNotFoundError,
+    OverrideAcknowledgmentRequired,
     RateLimitError,
     UserDisabledError,
 )
@@ -326,6 +327,8 @@ async def restore_submit(
     submit_as_user: str | None = Form(None),
     qatemplate: str | None = Form(None),
     custom_target: str | None = Form(None),
+    ack_customer_name_override: str | None = Form(None),
+    ack_ownership_transfer: str | None = Form(None),
     state: Any = Depends(get_api_state),
     user: User = Depends(require_login),
 ) -> Any:
@@ -570,7 +573,22 @@ async def restore_submit(
         overwrite=overwrite_val,
         backup_path=validated_backup_path,
         custom_target=validated_custom_target,
+        ack_customer_name_override=ack_customer_name_override == "true",
+        ack_ownership_transfer=ack_ownership_transfer == "true",
     )
+
+    # Preserved form state for re-render on any error / ack flow
+    _form_state = {
+        "customer": customer,
+        "s3env": s3env,
+        "dbhost": dbhost,
+        "suffix": suffix,
+        "overwrite": overwrite_val,
+        "custom_target": validated_custom_target,
+        "backup_key": backup_key,
+        "qatemplate": qatemplate,
+        "submit_as_user": submit_as_user,
+    }
 
     try:
         await run_in_threadpool(enqueue_job, state, req)
@@ -579,6 +597,23 @@ async def restore_submit(
         if normalization_warning:
             redirect_url = f"/web/jobs?{urlencode({'restore_warning': normalization_warning})}"
         return RedirectResponse(url=redirect_url, status_code=303)
+    except OverrideAcknowledgmentRequired as exc:
+        return templates.TemplateResponse(
+            "features/restore/restore.html",
+            {
+                "request": request,
+                "allowed_hosts": allowed_hosts,
+                "default_host": user.default_host,
+                "user": user,
+                "active_nav": "restore",
+                "show_user_selector": False,
+                "managed_users": [],
+                "override_required": exc.required,
+                "override_context": exc.context,
+                "form": _form_state,
+            },
+            status_code=200,
+        )
     except EnqueueError as exc:
         # Handle domain enqueue errors (409 Conflict, 429 Rate Limit, etc.)
         _error_status_map: dict[type[EnqueueError], int] = {
@@ -604,19 +639,14 @@ async def restore_submit(
                 "user": user,
                 "error": error_message,
                 "active_nav": "restore",
-                # Preserve form values
-                "form": {
-                    "customer": customer,
-                    "s3env": s3env,
-                    "dbhost": dbhost,
-                    "suffix": suffix,
-                    "overwrite": overwrite_val,
-                    "custom_target": validated_custom_target,
-                }
+                "show_user_selector": False,
+                "managed_users": [],
+                "form": _form_state,
             },
             status_code=error_status
         )
-    except Exception as exc:
+    except Exception:
+        logger.exception("Unexpected error during restore submission")
         return templates.TemplateResponse(
             "features/restore/restore.html",
             {
@@ -624,17 +654,11 @@ async def restore_submit(
                 "allowed_hosts": allowed_hosts,
                 "default_host": user.default_host,
                 "user": user,
-                "error": str(exc),
+                "error": "An unexpected error occurred. Please try again or contact support.",
                 "active_nav": "restore",
-                # Preserve form values
-                "form": {
-                    "customer": customer,
-                    "s3env": s3env,
-                    "dbhost": dbhost,
-                    "suffix": suffix,
-                    "overwrite": overwrite_val,
-                    "custom_target": validated_custom_target,
-                }
+                "show_user_selector": False,
+                "managed_users": [],
+                "form": _form_state,
             },
-            status_code=400
+            status_code=500
         )

@@ -259,13 +259,20 @@ def _get_real_mysql_pool() -> MySQLPool:
     mysql_database = os.getenv("PULLDB_MYSQL_DATABASE", "pulldb_service")
     pool_size = int(os.getenv("PULLDB_MYSQL_POOL_SIZE", "5"))
 
+    kwargs: dict = {
+        "host": creds.host,
+        "user": mysql_user,
+        "password": creds.password,
+        "database": mysql_database,
+        "port": creds.port,
+    }
+    unix_socket = os.getenv("PULLDB_MYSQL_SOCKET")
+    if unix_socket:
+        kwargs["unix_socket"] = unix_socket
+
     return MySQLPool(
         pool_name="pulldb_api",
         pool_size=pool_size,
-        host=creds.host,
-        user=mysql_user,
-        password=creds.password,
-        database=mysql_database,
-        port=creds.port,
+        **kwargs,
     )
 

@@ -1852,3 +1852,102 @@
 .js-hidden {
     display: none !important;
 }
+
+/* ===========================================
+   OVERRIDE ACKNOWLEDGMENT PANEL
+   =========================================== */
+
+.override-ack-section {
+    border: 2px solid var(--warning-400, #f59e0b);
+    border-radius: var(--radius-md);
+    background: var(--warning-50, #fffbeb);
+}
+
+.override-ack-section .restore-section-header {
+    background: var(--warning-100, #fef3c7);
+    border-bottom: 1px solid var(--warning-300, #fcd34d);
+    color: var(--warning-900, #78350f);
+}
+
+.override-ack-section .section-icon {
+    color: var(--warning-600, #d97706);
+}
+
+.override-ack-intro {
+    margin-bottom: var(--space-4);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+.override-ack-warning {
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--warning-300, #fcd34d);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    margin-bottom: var(--space-3);
+}
+
+.override-ack-warning:last-of-type {
+    margin-bottom: var(--space-4);
+}
+
+.override-ack-warning-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--warning-700, #b45309);
+    margin-bottom: var(--space-2);
+}
+
+.override-ack-warning p {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-3);
+}
+
+.override-ack-warning code {
+    background: var(--color-surface-raised, #f3f4f6);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.85em;
+}
+
+.override-ack-checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    line-height: 1.4;
+}
+
+.override-ack-checkbox {
+    margin-top: 2px;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.override-frozen-summary {
+    background: var(--color-surface-raised, #f9fafb);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.override-frozen-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+    font-size: var(--font-size-sm);
+}
+
+.override-frozen-label {
+    color: var(--color-text-secondary);
+    font-weight: 500;
+}
+
+.override-frozen-value {
+    color: var(--color-text-primary);
+}

@@ -27,6 +27,7 @@ from pulldb.domain.errors import (
     HostUnauthorizedError,
     JobLockedError,
     JobNotFoundError,
+    OverrideAcknowledgmentRequired,
     RateLimitError,
     StagingError,
     UserDisabledError,
@@ -182,11 +183,18 @@ def _construct_target(user: User, req: JobRequest) -> TargetResult:
                 "Custom target database name exceeds maximum length of 51 characters.",
             )
 
+        requested_customer = _letters_only(req.customer or "")
         if _is_known_customer_name(custom):
-            raise EnqueueValidationError(
-                f"Cannot use '{custom}' as a custom target name because it matches "
-                f"a known customer. Choose a different name to avoid confusion.",
-            )
+            if custom != requested_customer:
+                raise EnqueueValidationError(
+                    f"Cannot use '{custom}' as a custom target name because it matches "
+                    f"a known customer. Choose a different name to avoid confusion.",
+                )
+            if not req.ack_customer_name_override:
+                raise OverrideAcknowledgmentRequired(
+                    required=["customer_name_override"],
+                    context={"target": custom, "customer": custom},
+                )
 
         return TargetResult(
             target=custom,
@@ -634,21 +642,36 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
             )
 
         if owner_id and owner_id != user.user_id:
-            emit_event(
-                "job_enqueue_blocked",
-                f"Restore blocked: database '{target}' on '{dbhost}' owned by "
-                f"different user ({owner_code})",
-                labels=MetricLabels(
-                    target=target,
-                    phase="enqueue",
-                    status="blocked_cross_user",
-                ),
-            )
-            raise DatabaseProtectionError(
-                f"PROTECTED: Database '{target}' on '{dbhost}' is owned by user "
-                f"'{owner_code}'. You cannot overwrite another user's database. "
-                f"Choose a different target name.",
-            )
+            if not req.ack_ownership_transfer:
+                emit_event(
+                    "job_enqueue_blocked",
+                    f"Restore blocked: database '{target}' on '{dbhost}' owned by "
+                    f"different user ({owner_code})",
+                    labels=MetricLabels(
+                        target=target,
+                        phase="enqueue",
+                        status="blocked_cross_user",
+                    ),
+                )
+                raise OverrideAcknowledgmentRequired(
+                    required=["ownership_transfer"],
+                    context={"current_owner": owner_code, "target": target, "dbhost": dbhost},
+                )
+            # Transfer ownership: supersede the previous owner's deployed job
+            old_job = state.job_repo.get_deployed_job_for_target(target, dbhost, owner_id)
+            if old_job:
+                    state.job_repo.supersede_job(old_job.id, "pending-" + target)
+                    emit_event(
+                        "job_superseded",
+                        f"Job {old_job.id[:8]} superseded: ownership transfer of "
+                        f"'{target}' from '{owner_code}' to '{user.user_code}'",
+                        labels=MetricLabels(
+                            job_id=old_job.id,
+                            target=target,
+                            phase="enqueue",
+                            status="superseded",
+                        ),
+                    )
 
         if not req.overwrite:
             emit_event(
@@ -763,5 +786,21 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
                 "dbhost": dbhost,
             },
         )
+        if req.ack_customer_name_override:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="override_customer_name",
+                target_user_id=user.user_id,
+                detail=f"User acknowledged restoring to customer-named target '{target}'",
+                context={"job_id": job_id, "target": target, "customer": req.customer},
+            )
+        if req.ack_ownership_transfer:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="override_ownership_transfer",
+                target_user_id=user.user_id,
+                detail=f"User acknowledged ownership transfer of '{target}' on '{dbhost}'",
+                context={"job_id": job_id, "target": target, "dbhost": dbhost},
+            )
 
     return EnqueueResult(job=stored, target_result=target_result)
