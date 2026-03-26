@@ -921,7 +921,7 @@ class TestSupersedeProtection:
 
         content = Path(
             "/home/charleshandshy/Projects/pullDB"
-            "/pulldb/domain/services/enqueue.py"
+            "/pulldb/worker/enqueue.py"
         ).read_text()
         # Must check origin BEFORE allowing supersede
         assert 'origin", "restore") in ("claim", "assign")' in content
@@ -934,7 +934,7 @@ class TestSupersedeProtection:
 
         content = Path(
             "/home/charleshandshy/Projects/pullDB"
-            "/pulldb/domain/services/enqueue.py"
+            "/pulldb/worker/enqueue.py"
         ).read_text()
         # The origin check must come before supersede_job call
         origin_pos = content.index('("claim", "assign")')

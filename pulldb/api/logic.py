@@ -1,7 +1,7 @@
-"""Business logic for pullDB API — thin wrapper over domain enqueue service.
+"""Business logic for pullDB API — thin wrapper over worker enqueue service.
 
-The actual orchestration logic lives in ``pulldb.domain.services.enqueue``
-(entities layer). This module provides backward-compatible API-layer
+The actual orchestration logic lives in ``pulldb.worker.enqueue``
+(features layer). This module provides backward-compatible API-layer
 functions that convert domain ``EnqueueError`` to FastAPI ``HTTPException``.
 
 HCA Layer: pages

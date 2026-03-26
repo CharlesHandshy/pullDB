@@ -23,8 +23,9 @@ logger = logging.getLogger(__name__)
 # Each increment doubles the computation time
 DEFAULT_ROUNDS = 12
 
-# bcrypt hash format has at least 4 parts: $version$rounds$salt+hash
-_BCRYPT_MIN_PARTS = 3
+# bcrypt hash format: $2b$12$<salt+hash> — split("$") yields ['', '2b', '12', '<53chars>']
+# That is 4 elements; parts[2] is the rounds.
+_BCRYPT_MIN_PARTS = 4
 
 
 def hash_password(password: str, rounds: int = DEFAULT_ROUNDS) -> str:

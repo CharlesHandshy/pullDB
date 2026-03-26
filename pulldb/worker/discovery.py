@@ -19,7 +19,7 @@ from pulldb.infra.logging import get_logger
 from pulldb.infra.s3 import S3Client, parse_backup_filename
 
 
-logger = get_logger("pulldb.domain.services.discovery")
+logger = get_logger("pulldb.worker.discovery")
 
 # Customer cache: {(bucket, prefix): (customer_list, timestamp)}
 _customer_cache: dict[tuple[str, str], tuple[list[str], float]] = {}
