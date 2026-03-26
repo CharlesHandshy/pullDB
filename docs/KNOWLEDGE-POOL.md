@@ -6,17 +6,17 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 
 **Related:** [Deployment](hca/widgets/deployment.md) · [policies/](hca/plugins/policies/) · [terraform/](hca/plugins/terraform/)
 
-Last updated: 2026-02-18
-Current version: v1.1.0
+Last updated: 2026-03-26
+Current version: v1.3.0
 Phases complete: 0-6
 
 ---
 
-## Package Contents Summary (v1.1.0)
+## Package Contents Summary (v1.3.0)
 
 | Component | Path in Package | Size |
 |-----------|-----------------|------|
-| Python wheel | `/opt/pulldb.service/dist/pulldb-1.1.0-py3-none-any.whl` | ~16MB |
+| Python wheel | `/opt/pulldb.service/dist/pulldb-1.3.0-py3-none-any.whl` | ~16MB |
 | myloader binary | `/opt/pulldb.service/bin/myloader-0.21.1-1` | 7.7MB |
 | Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 28 SQL files |
 | Systemd units | `/opt/pulldb.service/systemd/` | 6 files |
@@ -43,7 +43,7 @@ Phases complete: 0-6
 
 ---
 
-## API Reference (v1.1.0)
+## API Reference (v1.3.0)
 
 Complete API documentation: [docs/api/README.md](api/README.md)
 
@@ -91,7 +91,7 @@ Complete API documentation: [docs/api/README.md](api/README.md)
 | `pulldb/api/schemas.py` | entities | Pydantic models: `JobRequest`, `JobResponse`, `JobSummary`, `JobHistoryItem` |
 | `pulldb/api/routes/*.py` | pages | Individual route modules (jobs, hosts, auth, admin) |
 
-### Domain Layer Files (v1.1.0)
+### Domain Layer Files (v1.3.0)
 
 | File | Layer | Purpose |
 |------|-------|---------|
@@ -120,11 +120,11 @@ Complete API documentation: [docs/api/README.md](api/README.md)
 
 ## Index (categories)
 - **Architecture Diagrams** - [docs/diagrams/pulldb-flowchart.md](diagrams/pulldb-flowchart.md) (Mermaid)
-- **API Reference** (v1.1.0)
+- **API Reference** (v1.3.0)
 - **Package Contents Summary** (Updated - v0.3.0)
 - **Default Accounts & Provisioning** (v0.2.0)
 - **CLI HMAC Authentication** (Phase 6) - includes multi-host API key management
-- **Security Rules & Patterns** (v1.1.0) - SQL injection prevention, cross-DB safety, ownership verification
+- **Security Rules & Patterns** (v1.3.0) - SQL injection prevention, cross-DB safety, ownership verification
 - **Host Provisioning Service** (Phase 6)
 - **Secret Rotation** (Phase 6)
 - **Database Retention** (Phase 6)
@@ -261,7 +261,7 @@ if not can_delete_job_database(current_user, job.owner_user_id, job_owner_manage
 
 ---
 
-## Security Rules & Patterns (v1.1.0)
+## Security Rules & Patterns (v1.3.0)
 
 Generalized security rules derived from audit findings. These rules apply to ALL pullDB code.
 
@@ -547,7 +547,7 @@ Job delete support is now integrated into the consolidated schema:
 
 ---
 
-## Resubmit Failed Jobs (v1.1.0+)
+## Resubmit Failed Jobs (v1.3.0+)
 
 Allows users to resubmit failed jobs using the same backup and settings. Available in the History view.
 
@@ -941,7 +941,7 @@ The web package follows HCA internally for UI component organization.
 | **widgets** | `web/widgets/` | `sidebar/`, `filter_bar/`, `lazy_table/`, `virtual_table/`, `breadcrumbs/`, `bulk_actions/`, `searchable_dropdown/` |
 | **pages** | `web/pages/` | Empty - pages co-located within features (`features/<name>/pages/`) |
 
-### Feature Packages (v1.1.0)
+### Feature Packages (v1.3.0)
 
 | Package | Files | Routes | Purpose |
 |---------|-------|--------|---------|
@@ -955,7 +955,7 @@ The web package follows HCA internally for UI component organization.
 | `requests/` | 2 | 10 | Feature request board |
 | `mockup/` | 2 | 1 | Development mockup pages |
 
-### Widget Packages (v1.1.0)
+### Widget Packages (v1.3.0)
 
 | Package | Files | Purpose |
 |---------|-------|---------|
@@ -1041,7 +1041,7 @@ Compiled static CSS:
 | `pulldb/web/static/js/pages/manager-dashboard.js` | Manager dashboard interactivity |
 | `pulldb/web/static/js/vendor/htmx.min.js` | HTMX library (vendored) |
 
-### Web UI Template Files (v1.1.0)
+### Web UI Template Files (v1.3.0)
 
 Admin templates:
 
@@ -1266,7 +1266,7 @@ The Worker performs all actual operations (database drops, S3 downloads, restore
 │ │BAR  │                  (content-body)                           │
 │ │HOVER│               Scrolls independently                       │
 │ │     ├───────────────────────────────────────────────────────────┤
-│ │     │ © 2026 pullDB • v1.1.0    │    Service Titan/Field Routes │
+│ │     │ © 2026 pullDB • v1.3.0    │    Service Titan/Field Routes │
 └───────┴───────────────────────────────────────────────────────────┘
 ```
 
@@ -1617,7 +1617,7 @@ This file should be created and applied in the production account only. Keep sec
 - Atomic rename via stored procedure: `pulldb_atomic_rename` / `pulldb_atomic_rename_preview` exists and is versioned
 - **Progress deduplication** (v0.2.0): ProcesslistMonitor polls every 2s but events only emit when overall percent OR any table's percent changes by 1%+. Dedup key: `(int(percent), active_threads, tuple(sorted(table_progress)))`. CLI uses TTY detection for in-place line updates (`\r`). Web UI has `_deduplicate_logs()`.
 
-### Worker Process Features (v1.1.0)
+### Worker Process Features (v1.3.0)
 
 | Feature | Description | Source |
 |---------|-------------|--------|
@@ -1651,7 +1651,7 @@ HEARTBEAT_SUPPRESSION_WINDOW_SECONDS = 30.0
 # - Meaningful events: table_progress, download_progress, etc.
 ```
 
-### Worker Module Files (v1.1.0)
+### Worker Module Files (v1.3.0)
 
 | File | Purpose |
 |------|---------|
