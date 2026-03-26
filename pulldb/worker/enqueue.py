@@ -142,7 +142,10 @@ def _is_known_customer_name(name: str) -> bool:
         name_lower = name.lower()
         return any(r.lower() == name_lower for r in results)
     except Exception:
-        logger.debug("Customer search failed for '%s', allowing name", name, exc_info=True)
+        # Broad catch is intentional: DiscoveryService can fail via boto errors,
+        # import errors in non-S3 environments, or simulation misconfig.
+        # Fail-open: if we can't verify, allow the name and let the user proceed.
+        logger.warning("Customer search failed for '%s', allowing name", name, exc_info=True)
         return False
 
 

@@ -85,8 +85,11 @@ class OverlordCompany:
         Handles varying schemas by using .get() for all optional fields.
         Only companyID is required.
         """
+        company_id = row.get("companyID")
+        if company_id is None:
+            raise ValueError(f"Missing required field 'companyID' in overlord row: {list(row.keys())}")
         return cls(
-            company_id=row["companyID"],
+            company_id=company_id,
             database=row.get("database", ""),
             company_name=row.get("company"),
             owner=row.get("owner"),

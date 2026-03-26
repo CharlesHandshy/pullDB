@@ -186,7 +186,7 @@ def execute_post_sql(
                 while True:
                     if cursor.with_rows:  # type: ignore
                         cursor.fetchall()  # Consume any result sets
-                    if cursor.rowcount > 0:
+                    if cursor.rowcount > 0:  # -1 means unknown (e.g. SELECT); skip
                         affected += cursor.rowcount
                     if not cursor.nextset():
                         break

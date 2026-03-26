@@ -61,7 +61,8 @@ def extract_filter_params(
 
     for key, value in items:
         if key == "filter_order" and value:
-            filter_order = [c.strip() for c in str(value).split(",") if c.strip()]
+            cols = [c.strip() for c in str(value).split(",") if c.strip()]
+            filter_order = cols[:32]  # cap: no table has more than 32 filterable columns
         elif key.startswith("filter_") and value:
             col_key = key[7:]  # Remove "filter_" prefix
             # Skip date range suffixes
