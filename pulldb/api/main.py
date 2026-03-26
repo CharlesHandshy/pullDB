@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import fastapi
+from pulldb import __version__
 import pydantic
 import uvicorn
 from fastapi import Depends, HTTPException, status
@@ -64,7 +65,7 @@ MAX_STATUS_LIMIT = 1000
 # Web UI enabled by default, can be disabled with PULLDB_WEB_ENABLED=false
 WEB_ENABLED = os.getenv("PULLDB_WEB_ENABLED", "true").lower() in ("true", "1", "yes")
 
-app = fastapi.FastAPI(title="pullDB API Service", version="1.0.0")
+app = fastapi.FastAPI(title="pullDB API Service", version=__version__)
 
 # Mount unified web UI router (if enabled)
 if WEB_ENABLED:
@@ -4259,7 +4260,7 @@ def main_web(argv: list[str] | None = None) -> int:
     allowing the Web UI to run on a different port than the API.
     """
     # Create a separate app for web-only mode
-    web_app = fastapi.FastAPI(title="pullDB Web UI", version="1.0.0")
+    web_app = fastapi.FastAPI(title="pullDB Web UI", version=__version__)
     
     try:
         from starlette.exceptions import HTTPException as StarletteHTTPException
