@@ -1,0 +1,47 @@
+name: CSS Manifest Check
+
+# Verify that committed theme CSS manifests match current ColorSchema defaults.
+# Prevents silent drift when ColorSchema presets or to_css_variables() changes.
+
+on:
+  pull_request:
+    paths:
+      - 'pulldb/domain/color_schemas.py'
+      - 'pulldb/web/features/admin/theme_generator.py'
+      - 'pulldb/web/static/css/generated/**'
+      - 'scripts/check_css_manifest.py'
+      - '.github/workflows/css-manifest-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'pulldb/domain/color_schemas.py'
+      - 'pulldb/web/features/admin/theme_generator.py'
+      - 'pulldb/web/static/css/generated/**'
+
+jobs:
+  css-manifest-check:
+    name: Verify CSS theme manifests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install package
+        run: pip install -e ".[dev]"
+
+      - name: Check CSS manifests
+        run: |
+          python scripts/check_css_manifest.py || {
+            echo ""
+            echo "The committed CSS theme manifests are out of date."
+            echo "Run locally and commit the result:"
+            echo "  python scripts/check_css_manifest.py --fix"
+            exit 1
+          }

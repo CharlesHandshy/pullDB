@@ -533,21 +533,28 @@ class OverlordRepository:
                 logger.info(f"Deleted overlord company: database={database_name}")
             return affected > 0
     
-    def get_all(self) -> list[dict[str, Any]]:
+    def get_all(self, limit: int = 50_000) -> list[dict[str, Any]]:
         """Get all company records from the overlord table.
-        
+
         Returns all rows as dictionaries. For tables < 15k rows,
         this is the preferred approach — pagination/filtering/sorting
         happens in Python to allow cross-database enrichment with
         local tracking data.
-        
+
+        Args:
+            limit: Maximum rows to return. Defaults to 50,000 to prevent
+                unbounded memory allocation on unexpectedly large tables.
+
         Returns:
-            List of all rows as dicts
+            List of rows as dicts (up to `limit` rows)
         """
         _validate_table_name(self._table)
         with self._conn.connection() as conn:
             cursor = conn.cursor(dictionary=True)
-            cursor.execute(f"SELECT * FROM {self._table} ORDER BY `companyID` ASC")
+            cursor.execute(
+                f"SELECT * FROM {self._table} ORDER BY `companyID` ASC LIMIT %s",
+                (limit,),
+            )
             rows = cursor.fetchall()
             cursor.close()
             return [dict(r) for r in rows]
@@ -586,8 +593,7 @@ class OverlordRepository:
         params: list[Any] = []
         if filters:
             for col, val in filters.items():
-                # Only allow alphanumeric + underscore column names
-                if not col.replace("_", "").isalnum():
+                if col not in _VALID_COLUMNS:
                     continue
                 where_clauses.append(f"`{col}` LIKE %s")
                 params.append(f"%{val}%")
@@ -595,7 +601,7 @@ class OverlordRepository:
         where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
         # Validate sort_column — use companyID as fallback for unknown columns
-        if not sort_column.replace("_", "").isalnum():
+        if sort_column not in _VALID_COLUMNS:
             sort_column = "companyID"
 
         with self._conn.connection() as conn:

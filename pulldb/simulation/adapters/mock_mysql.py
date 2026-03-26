@@ -2209,9 +2209,15 @@ class SimulatedUserRepository:
         with self.state.lock:
             return sorted(self.state.users.values(), key=lambda u: u.username)
 
+    def list_users_paginated(self, offset: int = 0, limit: int = 100) -> list[User]:
+        """Get a page of users ordered by username."""
+        with self.state.lock:
+            all_users = sorted(self.state.users.values(), key=lambda u: u.username)
+            return all_users[offset : offset + limit]
+
     def get_users_managed_by(self, manager_id: str) -> list[User]:
         """Get all users managed by a specific manager.
-        
+
         Excludes SERVICE role accounts and locked users.
         """
         with self.state.lock:

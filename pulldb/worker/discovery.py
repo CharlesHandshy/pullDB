@@ -16,7 +16,7 @@ from typing import Any
 
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.logging import get_logger
-from pulldb.infra.s3 import S3Client, parse_backup_filename
+from pulldb.infra.s3 import S3Client, _FORMAT_V2, parse_backup_filename
 
 
 logger = get_logger("pulldb.worker.discovery")
@@ -57,6 +57,7 @@ class BackupInfo:
     environment: str
     key: str
     bucket: str
+    format_version: str = "v1"  # "v1" (mydumper 0.9.x) or "v2" (mydumper 0.21.1+)
 
 
 @dataclass
@@ -653,7 +654,7 @@ class DiscoveryService:
     def _collect_customer_backups(
         self, ctx: SearchContext, customer: str, results: list[BackupInfo]
     ) -> None:
-        search_prefix = f"{ctx.prefix}{customer}/daily_mydumper_{customer}_"
+        search_prefix = f"{ctx.prefix}{customer}/"
         logger.debug(
             "Searching for customer backups",
             extra={
@@ -706,6 +707,7 @@ class DiscoveryService:
             return
 
         _, ts_str = parsed
+        format_version = "v2" if _FORMAT_V2.match(filename) else "v1"
         try:
             ts = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%S")
         except ValueError:
@@ -742,5 +744,6 @@ class DiscoveryService:
                 environment=ctx.env_name,
                 key=key,
                 bucket=ctx.bucket,
+                format_version=format_version,
             )
         )

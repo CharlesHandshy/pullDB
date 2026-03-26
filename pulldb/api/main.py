@@ -25,6 +25,10 @@ from fastapi import Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from pulldb.api.auth import AdminUser, AuthUser, ManagerUser, OptionalUser, validate_job_submission_user, get_authenticated_user
 from pulldb.api.logic import enqueue_job, validate_job_request
@@ -44,6 +48,7 @@ from pulldb.domain.models import Job, JobStatus, User
 from pulldb.worker.discovery import DiscoveryService
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
+from pulldb.infra.rate_limit import RateLimiter
 from pulldb.infra.mysql import (
     HostRepository,
     JobRepository,
@@ -65,7 +70,49 @@ MAX_STATUS_LIMIT = 1000
 # Web UI enabled by default, can be disabled with PULLDB_WEB_ENABLED=false
 WEB_ENABLED = os.getenv("PULLDB_WEB_ENABLED", "true").lower() in ("true", "1", "yes")
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add standard HTTP security headers to every response.
+
+    Headers applied:
+    - X-Content-Type-Options: nosniff  — prevents MIME-type sniffing
+    - X-Frame-Options: DENY            — prevents clickjacking via iframes
+    - X-XSS-Protection: 0              — disables legacy XSS filter (CSP is preferred)
+    - Referrer-Policy: strict-origin-when-cross-origin
+    - Permissions-Policy: camera=(), microphone=(), geolocation=()
+    """
+
+    async def dispatch(self, request: Request, call_next: Callable[..., Any]) -> Response:
+        """Add security headers to every outgoing response."""
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "0"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        return response
+
+
 app = fastapi.FastAPI(title="pullDB API Service", version=__version__)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# TrustedHostMiddleware: validate Host header to prevent Host header injection.
+# Set PULLDB_ALLOWED_HOSTS to a comma-separated list of allowed hostnames.
+# Defaults to ["*"] (allow all) when not configured — safe for reverse-proxy
+# deployments where nginx validates the Host before forwarding.
+_raw_allowed_hosts = os.getenv("PULLDB_ALLOWED_HOSTS", "")
+_allowed_hosts: list[str] = (
+    [h.strip() for h in _raw_allowed_hosts.split(",") if h.strip()]
+    if _raw_allowed_hosts
+    else ["*"]
+)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
+
+# Per-endpoint rate limiters (sliding window, per source IP).
+# Limits are intentionally conservative — brute-force requires many requests
+# per second; legitimate users rarely hit these ceilings.
+_change_password_limiter = RateLimiter(max_requests=10, window_seconds=60, name="change_password")
+_register_limiter = RateLimiter(max_requests=5, window_seconds=60, name="register")
+_request_key_limiter = RateLimiter(max_requests=5, window_seconds=60, name="request_host_key")
 
 # Mount unified web UI router (if enabled)
 if WEB_ENABLED:
@@ -421,6 +468,60 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/health/deep")
+async def health_deep() -> fastapi.responses.JSONResponse:
+    """Deep health check — validates all critical dependencies.
+
+    Unlike ``/api/health`` (shallow, always 200), this endpoint probes:
+    - MySQL connectivity: runs ``SELECT 1`` against the coordination pool
+    - Mode: reports ``simulation_mode`` so callers can distinguish environments
+
+    Returns HTTP 200 when all checks pass; HTTP 503 when any check fails.
+    No authentication required — intended for monitoring systems and
+    blue/green upgrade validation (``upgrade.sh`` Tier 1).
+    """
+    checks: dict[str, str] = {}
+    overall_ok = True
+
+    state: APIState | None = getattr(app.state, "api_state", None)
+
+    # --- Simulation mode short-circuit ---
+    if state is None or is_simulation_mode():
+        checks["database"] = "simulation"
+        checks["simulation_mode"] = "true"
+        return fastapi.responses.JSONResponse(
+            content={"status": "ok", "version": __version__, "checks": checks}
+        )
+
+    # --- MySQL connectivity ---
+    pool = state.pool
+    if pool is None:
+        checks["database"] = "no_pool"
+        overall_ok = False
+    else:
+        try:
+            def _ping() -> None:
+                with pool.connection() as conn:
+                    conn.cursor().execute("SELECT 1")
+            await run_in_threadpool(_ping)
+            checks["database"] = "ok"
+        except Exception as exc:  # pragma: no cover — only fails when MySQL is down
+            logger.warning("health_deep_database_check_failed error=%s", exc)
+            checks["database"] = f"error: {type(exc).__name__}"
+            overall_ok = False
+
+    checks["simulation_mode"] = "false"
+    status_code = 200 if overall_ok else 503
+    return fastapi.responses.JSONResponse(
+        content={
+            "status": "ok" if overall_ok else "degraded",
+            "version": __version__,
+            "checks": checks,
+        },
+        status_code=status_code,
+    )
+
+
 @app.get("/api/users/{username}", response_model=UserInfoResponse)
 async def get_user_info(
     username: str,
@@ -466,7 +567,9 @@ class ChangePasswordRequest(pydantic.BaseModel):
 @app.post("/api/auth/change-password")
 async def change_password(
     request: ChangePasswordRequest,
+    fastapi_request: fastapi.Request,
     state: APIState = Depends(get_api_state),
+    _: None = Depends(_change_password_limiter),
 ) -> dict[str, str]:
     """Change user password.
 
@@ -613,6 +716,7 @@ async def register_user(
     request: RegisterRequest,
     fastapi_request: fastapi.Request,
     state: APIState = Depends(get_api_state),
+    _: None = Depends(_register_limiter),
 ) -> RegisterResponse:
     """Self-register a new user account.
 
@@ -772,6 +876,7 @@ async def request_host_key(
     request: RequestHostKeyRequest,
     fastapi_request: fastapi.Request,
     state: APIState = Depends(get_api_state),
+    _: None = Depends(_request_key_limiter),
 ) -> RequestHostKeyResponse:
     """Request an API key for a new host.
 
@@ -4051,6 +4156,7 @@ class BackupInfo(pydantic.BaseModel):
     environment: str
     key: str
     bucket: str
+    format_version: str = "v1"
 
 
 class BackupSearchResponse(pydantic.BaseModel):
@@ -4107,6 +4213,7 @@ def _search_backups(
             environment=b.environment,
             key=b.key,
             bucket=b.bucket,
+            format_version=b.format_version,
         )
         for b in result.backups
     ]
@@ -4261,6 +4368,8 @@ def main_web(argv: list[str] | None = None) -> int:
     """
     # Create a separate app for web-only mode
     web_app = fastapi.FastAPI(title="pullDB Web UI", version=__version__)
+    web_app.add_middleware(SecurityHeadersMiddleware)
+    web_app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
     
     try:
         from starlette.exceptions import HTTPException as StarletteHTTPException

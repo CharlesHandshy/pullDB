@@ -153,9 +153,10 @@ class OverlordReleaseResponse(BaseModel):
 class EmployeeRecord(BaseModel):
     """A single employee record from the customer database.
 
-    All 54 columns from the employees table minus signature (binary)
-    and recoveryHash (security).  Sensitive fields like passwordHash
-    and twoFactorSecretBase32 are returned read-only for display.
+    All 54 columns from the employees table minus signature (binary),
+    recoveryHash (security), passwordHash, and twoFactorSecretBase32.
+    Credential fields are replaced with boolean status flags to avoid
+    returning credential material in API responses.
     """
 
     employeeID: int
@@ -206,8 +207,8 @@ class EmployeeRecord(BaseModel):
     twoFactorConfigDueDate: str | None = None
     twoFactorEnabled: int | None = None
     password: str | None = None
-    passwordHash: str | None = None
-    twoFactorSecretBase32: str | None = None
+    passwordHashSet: bool = False
+    twoFactorSecretBase32Set: bool = False
     officeExtentionPassword: str | None = None
     pwCodeCreated: str | None = None
 
@@ -832,8 +833,10 @@ def create_overlord_router(
     # Employee Management Endpoints
     # =========================================================================
 
-    # Allowlist of safe column names for reading from the employees table.
-    # Excludes only: signature (binary blob), recoveryHash (security).
+    # Allowlist of column names fetched from the employees table.
+    # Excludes: signature (binary blob), recoveryHash (security).
+    # passwordHash and twoFactorSecretBase32 are fetched but stripped from the
+    # response — replaced by boolean status fields (passwordHashSet, twoFactorSecretBase32Set).
     _EMPLOYEE_SAFE_COLUMNS: frozenset[str] = frozenset({
         "employeeID", "fname", "lname", "phone", "email", "username",
         "active", "type", "officeID", "lastLogin", "loginLocation",
@@ -933,11 +936,15 @@ def create_overlord_router(
                     )
                     rows = cursor.fetchall()
 
-            # Serialize datetime fields
+            # Serialize datetime fields; replace credential values with boolean status
             for row in rows:
                 for k, v in row.items():
                     if hasattr(v, "isoformat"):
                         row[k] = v.isoformat()
+                # Replace raw credential hashes with boolean status flags to
+                # avoid returning credential material in API responses.
+                row["passwordHashSet"] = bool(row.pop("passwordHash", None))
+                row["twoFactorSecretBase32Set"] = bool(row.pop("twoFactorSecretBase32", None))
 
             return {
                 "database": job.target,

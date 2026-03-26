@@ -494,10 +494,11 @@ class DisallowedUserRepository:
                 )
                 conn.commit()
                 return True
-        except mysql_errors.IntegrityError:
-            # Duplicate key - user already in disallowed list
-            logger.debug("Disallowed user '%s' already exists", username)
-            return False
+        except mysql_errors.IntegrityError as e:
+            if e.errno == 1062:  # ER_DUP_ENTRY — user already in disallowed list
+                logger.debug("Disallowed user '%s' already exists", username)
+                return False
+            raise
         except mysql_errors.Error as e:
             # Other MySQL errors - log with more detail
             logger.warning(

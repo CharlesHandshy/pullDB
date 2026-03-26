@@ -109,9 +109,12 @@ def _read_script(path: Path) -> str:
     """
     data = path.read_bytes()
     if len(data) > MAX_SCRIPT_SIZE_BYTES:
+        size_mb = len(data) / 1_000_000
+        limit_mb = MAX_SCRIPT_SIZE_BYTES / 1_000_000
         raise ValueError(
-            f"Script {path.name} exceeds max size {MAX_SCRIPT_SIZE_BYTES} bytes "
-            f"(size={len(data)})"
+            f"Post-SQL script '{path.name}' is {size_mb:.1f} MB, which exceeds the "
+            f"{limit_mb:.0f} MB per-script limit. Split the script into smaller files "
+            f"or remove large seed-data inserts."
         )
     return data.decode("utf-8", errors="replace")
 

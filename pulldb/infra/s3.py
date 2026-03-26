@@ -27,7 +27,9 @@ HCA Layer: shared
 from __future__ import annotations
 
 import os
+import concurrent.futures
 import re
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -45,6 +47,16 @@ if TYPE_CHECKING:
 
 from pulldb.domain.errors import BackupValidationError
 from pulldb.infra.logging import get_logger
+
+# B3b: Serialise the ProfileNotFound fallback that temporarily mutates
+# os.environ["AWS_PROFILE"].  _clients_lock already prevents concurrent
+# get_client() calls, but this module-level lock ensures other threads that
+# happen to read os.environ directly cannot observe the transient absence.
+_aws_env_lock = threading.Lock()
+
+# Maximum time (seconds) to wait for S3 list_keys during backup discovery.
+# A slow or unresponsive S3 endpoint would otherwise block the worker indefinitely.
+_S3_DISCOVERY_TIMEOUT_SECONDS = 60
 
 
 logger = get_logger("pulldb.infra.s3")
@@ -199,6 +211,7 @@ class BackupSpec:
     size_bytes: int
     format_tag: str | None = None
     profile: str | None = None
+    sha256_key: str | None = None  # S3 key of companion .sha256 file, if present
 
     @property
     def filename(self) -> str:
@@ -230,6 +243,7 @@ class S3Client:
         self._default_profile = profile
         self._default_region = region
         self._clients: dict[str | None, Any] = {}
+        self._clients_lock = threading.Lock()
         # Initialize default client
         self._clients[profile] = self._create_client(profile, region)
 
@@ -251,15 +265,18 @@ class S3Client:
             # Temporarily remove AWS_PROFILE to avoid recursive failures when
             # constructing a client in hermetic/moto environments where that
             # profile is not configured locally.
-            env_profile = os.environ.pop("AWS_PROFILE", None)
-            try:
-                return boto3.client(
-                    "s3",
-                    region_name=(region or "us-east-1"),
-                )
-            finally:
-                if env_profile is not None:
-                    os.environ["AWS_PROFILE"] = env_profile
+            # _aws_env_lock serialises this mutation against any concurrent
+            # thread that may read os.environ directly.
+            with _aws_env_lock:
+                env_profile = os.environ.pop("AWS_PROFILE", None)
+                try:
+                    return boto3.client(
+                        "s3",
+                        region_name=(region or "us-east-1"),
+                    )
+                finally:
+                    if env_profile is not None:
+                        os.environ["AWS_PROFILE"] = env_profile
         except Exception:  # pragma: no cover - defensive catch for strange local env
             logger.debug("Failed to create S3 client, falling back to default", exc_info=True)
             return boto3.client(
@@ -270,11 +287,12 @@ class S3Client:
     def get_client(self, profile: str | None = None) -> Any:
         """Get or create a boto3 client for the specified profile."""
         target_profile = profile if profile is not None else self._default_profile
-        if target_profile not in self._clients:
-            self._clients[target_profile] = self._create_client(
-                target_profile, self._default_region
-            )
-        return self._clients[target_profile]
+        with self._clients_lock:
+            if target_profile not in self._clients:
+                self._clients[target_profile] = self._create_client(
+                    target_profile, self._default_region
+                )
+            return self._clients[target_profile]
 
     def list_keys(
         self,
@@ -539,7 +557,21 @@ def discover_latest_backup(
     search_prefix = f"{prefix}{target}/"
 
     logger.info("Starting list_keys for bucket=%s prefix=%s", bucket, search_prefix)
-    keys = s3.list_keys(bucket, search_prefix, profile=profile)
+    # M10: Wrap list_keys in a timeout so a slow/unresponsive S3 endpoint does
+    # not block the worker indefinitely.  _S3_DISCOVERY_TIMEOUT_SECONDS = 60.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
+        _future = _pool.submit(s3.list_keys, bucket, search_prefix, profile=profile)
+        try:
+            keys = _future.result(timeout=_S3_DISCOVERY_TIMEOUT_SECONDS)
+        except concurrent.futures.TimeoutError:
+            raise BackupValidationError(
+                job_id="discovery",
+                backup_key=f"s3://{bucket}/{search_prefix}",
+                missing_files=[
+                    f"(S3 list timed out after {_S3_DISCOVERY_TIMEOUT_SECONDS}s — "
+                    "check S3 connectivity and bucket permissions)"
+                ],
+            )
     logger.info(
         "Found %d keys for target '%s' in %s/%s",
         len(keys), target, bucket, search_prefix,
@@ -604,6 +636,34 @@ def discover_latest_backup(
     head = s3.head_object(bucket, newest_key, profile=profile)
     size_bytes = int(head.get("ContentLength", 0))
 
+    # M5: Check for companion SHA-256 checksum file alongside the .tar archive.
+    # Convention: replace trailing .tar with .sha256 (e.g. backup.tar → backup.sha256).
+    # If the file exists, store its key in BackupSpec so downloader can verify.
+    # If absent, log a warning — checksums are encouraged but not always present.
+    sha256_key: str | None = None
+    if newest_key.endswith(".tar"):
+        candidate_sha256_key = newest_key[:-4] + ".sha256"
+        try:
+            sha256_head = s3.head_object(bucket, candidate_sha256_key, profile=profile)
+        except Exception:
+            sha256_head = None
+        if sha256_head is not None:
+            sha256_key = candidate_sha256_key
+            logger.info(
+                "SHA-256 checksum file found",
+                extra={"phase": "s3_discovery", "sha256_key": sha256_key},
+            )
+        else:
+            logger.warning(
+                "No SHA-256 checksum file found alongside backup archive; "
+                "integrity will not be verified after download",
+                extra={
+                    "phase": "s3_discovery",
+                    "backup_key": newest_key,
+                    "expected_sha256_key": candidate_sha256_key,
+                },
+            )
+
     spec = BackupSpec(
         bucket=bucket,
         key=newest_key,
@@ -612,6 +672,7 @@ def discover_latest_backup(
         size_bytes=size_bytes,
         format_tag=format_tag,
         profile=profile,
+        sha256_key=sha256_key,
     )
 
     logger.info(

@@ -16,6 +16,7 @@ HCA Layer: features (pulldb/worker/)
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import time
@@ -32,6 +33,135 @@ logger = get_logger("pulldb.worker.downloader")
 BUFFER_SIZE = 8 * 1024 * 1024  # 8MB streaming chunks
 PROGRESS_INTERVAL_MB = 64  # Log every 64MB downloaded
 CANCEL_CHECK_INTERVAL_MB = 128  # Check for cancellation every 128MB
+
+# S3 error codes that are safe to retry (throttling / transient service errors).
+# Permanent errors (NoSuchKey, AccessDenied, InvalidBucketName) are NOT listed
+# here and will propagate immediately without retrying.
+_RETRYABLE_S3_CODES = frozenset({
+    "SlowDown",           # 503 throttling
+    "RequestTimeout",     # transient timeout
+    "ServiceUnavailable", # 503 temporary unavailability
+    "InternalError",      # S3 internal error
+    "RequestTimeTooSkewed",  # clock skew; usually resolves on retry
+})
+_S3_RETRY_DELAYS = (1.0, 2.0, 4.0)  # seconds between attempts (3 total attempts)
+
+
+def _is_retryable_s3_error(exc: Exception) -> bool:
+    """Return True if *exc* is a transient S3 error worth retrying."""
+    code = (
+        getattr(getattr(exc, "response", None), "get", lambda *_: {})("Error", {}).get("Code")
+        or getattr(exc, "error_code", None)
+    )
+    if code is None:
+        # Fallback: try dict-style access (boto3 ClientError stores response as dict)
+        try:
+            code = exc.response["Error"]["Code"]  # type: ignore[attr-defined]
+        except (AttributeError, KeyError, TypeError):
+            return False
+    return code in _RETRYABLE_S3_CODES
+
+
+def _get_object_with_retry(
+    s3: S3ClientProtocol,
+    bucket: str,
+    key: str,
+    profile: str | None,
+    job_id: str,
+) -> Any:
+    """Call s3.get_object with exponential-backoff retry on transient errors.
+
+    Makes up to ``len(_S3_RETRY_DELAYS) + 1`` attempts.  Retries only when
+    ``_is_retryable_s3_error`` returns True; permanent errors (NoSuchKey,
+    AccessDenied) propagate immediately.
+
+    Args:
+        s3: S3 client protocol instance.
+        bucket: S3 bucket name.
+        key: S3 object key.
+        profile: AWS profile name (or None for default credentials).
+        job_id: Job identifier used in retry log messages.
+
+    Returns:
+        S3 GetObject response dict.
+
+    Raises:
+        DownloadError: After all retry attempts are exhausted, or immediately
+            for non-retryable errors.
+    """
+    last_exc: Exception | None = None
+    for attempt, delay in enumerate((*_S3_RETRY_DELAYS, None), start=1):
+        try:
+            return s3.get_object(bucket, key, profile=profile)
+        except Exception as exc:
+            error_code = "Unknown"
+            try:
+                error_code = exc.response["Error"]["Code"]  # type: ignore[attr-defined]
+            except (AttributeError, KeyError, TypeError):
+                pass
+
+            if not _is_retryable_s3_error(exc) or delay is None:
+                # Non-retryable, or final attempt — raise immediately
+                raise DownloadError(
+                    job_id=job_id,
+                    backup_key=key,
+                    error_code=error_code,
+                    message=str(exc),
+                ) from exc
+
+            logger.warning(
+                "S3 get_object transient error, will retry",
+                extra={
+                    "job_id": job_id,
+                    "attempt": attempt,
+                    "max_attempts": len(_S3_RETRY_DELAYS) + 1,
+                    "error_code": error_code,
+                    "retry_in_seconds": delay,
+                },
+            )
+            last_exc = exc
+            time.sleep(delay)
+
+    # Should be unreachable, but satisfy type checker
+    raise DownloadError(  # pragma: no cover
+        job_id=job_id,
+        backup_key=key,
+        error_code="Unknown",
+        message=str(last_exc),
+    )
+
+
+def _verify_sha256(local_path: str, expected_hex: str, job_id: str) -> None:
+    """Compute SHA-256 of *local_path* and raise ``DownloadError`` on mismatch.
+
+    Args:
+        local_path: Path to the downloaded file.
+        expected_hex: Expected hex digest from the companion .sha256 file.
+        job_id: Job identifier for error context.
+
+    Raises:
+        DownloadError: When the computed digest does not match *expected_hex*.
+    """
+    hasher = hashlib.sha256()
+    with open(local_path, "rb") as fh:
+        for block in iter(lambda: fh.read(8 * 1024 * 1024), b""):
+            hasher.update(block)
+    actual = hasher.hexdigest()
+    if actual != expected_hex.strip().lower():
+        raise DownloadError(
+            job_id=job_id,
+            backup_key=local_path,
+            error_code="ChecksumMismatch",
+            message=(
+                f"SHA-256 mismatch for {os.path.basename(local_path)}: "
+                f"expected {expected_hex.strip()!r}, got {actual!r}. "
+                "The downloaded archive may be corrupt or tampered with."
+            ),
+        )
+    logger.info(
+        "SHA-256 verification passed",
+        extra={"job_id": job_id, "sha256": actual, "path": local_path},
+    )
 
 
 def ensure_disk_capacity(job_id: str, required_bytes: int, path: str) -> None:
@@ -116,16 +246,7 @@ def download_backup(
         },
     )
 
-    try:
-        response = s3.get_object(spec.bucket, spec.key, profile=spec.profile)
-    except Exception as e:  # pragma: no cover - network errors hard to unit test
-        error_code = getattr(e, "response", {}).get("Error", {}).get("Code", "Unknown")
-        raise DownloadError(
-            job_id=job_id,
-            backup_key=spec.key,
-            error_code=error_code,
-            message=str(e),
-        ) from e
+    response = _get_object_with_retry(s3, spec.bucket, spec.key, spec.profile, job_id)
 
     body = response["Body"]  # Streaming body object
     start_time = time.monotonic()
@@ -140,6 +261,24 @@ def download_backup(
             "expected_bytes": spec.size_bytes,
         },
     )
+
+    # M5: Verify SHA-256 checksum when companion file was found during discovery.
+    if spec.sha256_key:
+        try:
+            sha256_response = s3.get_object(spec.bucket, spec.sha256_key, profile=spec.profile)
+            expected_hex = sha256_response["Body"].read().decode("ascii").split()[0]
+            _verify_sha256(dest_path, expected_hex, job_id)
+        except DownloadError:
+            raise  # Checksum mismatch — propagate immediately
+        except Exception as exc:  # Failed to fetch/parse the .sha256 file
+            logger.warning(
+                "Could not retrieve or parse SHA-256 checksum file; skipping verification",
+                extra={
+                    "job_id": job_id,
+                    "sha256_key": spec.sha256_key,
+                    "error": str(exc),
+                },
+            )
 
     return dest_path
 

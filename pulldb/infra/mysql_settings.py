@@ -9,6 +9,8 @@ HCA Layer: shared (pulldb/infra/)
 from __future__ import annotations
 
 import logging
+import threading
+import time
 
 from pulldb.infra.mysql_pool import (
     MySQLPool,
@@ -17,6 +19,9 @@ from pulldb.infra.mysql_pool import (
 )
 
 logger = logging.getLogger(__name__)
+
+_SETTINGS_CACHE_TTL: float = 5.0
+
 
 class SettingsRepository:
     """Repository for settings operations.
@@ -40,6 +45,9 @@ class SettingsRepository:
             pool: MySQL connection pool for coordination database access.
         """
         self.pool = pool
+        # TTL cache: key → (value, expiry_timestamp)
+        self._cache: dict[str, tuple[str | None, float]] = {}
+        self._cache_lock = threading.Lock()
 
     def get(self, key: str) -> str | None:
         """Alias for get_setting().
@@ -55,12 +63,24 @@ class SettingsRepository:
     def get_setting(self, key: str) -> str | None:
         """Get setting value by key.
 
+        Results are cached in-process for up to ``_SETTINGS_CACHE_TTL`` seconds
+        (default 5s) to avoid hitting MySQL on every worker poll tick and API
+        request.  Writes (``set_setting``, ``delete_setting``) invalidate the
+        relevant cache entry immediately.
+
         Args:
             key: Setting key to look up.
 
         Returns:
             Setting value if found, None otherwise.
         """
+        now = time.monotonic()
+        with self._cache_lock:
+            if key in self._cache:
+                val, expiry = self._cache[key]
+                if now < expiry:
+                    return val
+
         with self.pool.connection() as conn:
             cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
@@ -72,7 +92,11 @@ class SettingsRepository:
                 (key,),
             )
             row = cursor.fetchone()
-            return row["setting_value"] if row else None
+            val = row["setting_value"] if row else None
+
+        with self._cache_lock:
+            self._cache[key] = (val, now + _SETTINGS_CACHE_TTL)
+        return val
 
     def get_setting_required(self, key: str) -> str:
         """Get required setting value.
@@ -201,6 +225,8 @@ class SettingsRepository:
                     (key, value),
                 )
             conn.commit()
+        with self._cache_lock:
+            self._cache.pop(key, None)
 
     def get_all_settings(self) -> dict[str, str]:
         """Get all settings as dictionary.
@@ -239,7 +265,10 @@ class SettingsRepository:
                 (key,),
             )
             conn.commit()
-            return bool(cursor.rowcount > 0)
+            deleted = bool(cursor.rowcount > 0)
+        with self._cache_lock:
+            self._cache.pop(key, None)
+        return deleted
 
     def get_all_settings_with_metadata(self) -> list[dict[str, str | None]]:
         """Get all settings with their metadata (description, updated_at).

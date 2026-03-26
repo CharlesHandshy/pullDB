@@ -1,0 +1,7 @@
+# Build artifacts — copy in manually before packaging for transfer
+*.deb
+
+# Runtime state written by upgrade.sh / rollback.sh
+rollback-state.env
+upgrade-*.log
+rollback-*.log

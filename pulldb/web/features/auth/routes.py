@@ -14,8 +14,13 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from pulldb.domain.models import User
+from pulldb.infra.rate_limit import RateLimiter
 from pulldb.web.dependencies import get_api_state, get_session_user, templates
 from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
+
+# Rate limiters for sensitive web auth endpoints
+_web_login_limiter = RateLimiter(max_requests=10, window_seconds=60, name="web_login")
+_web_api_key_limiter = RateLimiter(max_requests=5, window_seconds=60, name="web_api_key")
 
 router = APIRouter(prefix="/web", tags=["web-auth"])
 
@@ -41,6 +46,7 @@ async def login_submit(
     username: str = Form(...),
     password: str = Form(...),
     state: Any = Depends(get_api_state),
+    _: None = Depends(_web_login_limiter),
 ) -> Any:
     """Handle login form submission."""
     from pulldb.auth.password import verify_password
@@ -306,6 +312,7 @@ async def generate_api_key(
     request: Request,
     user: User | None = Depends(get_session_user),
     state: Any = Depends(get_api_state),
+    _: None = Depends(_web_api_key_limiter),
 ) -> Response:
     """Generate a new API key and return credentials file for download.
 

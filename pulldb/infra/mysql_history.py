@@ -52,6 +52,23 @@ class JobHistorySummaryRepository:
         "canceled_by_user": ["cancel", "aborted by user"],
         "worker_crash": ["worker", "crash", "segfault", "killed"],
     }
+
+    # Class-name → category map for structured error_detail format:
+    #   "ExceptionClassName: <message>"
+    # Takes priority over keyword matching to avoid false positives
+    # (e.g. a path containing "download" being mis-categorized).
+    _CLASS_CATEGORY: dict[str, str] = {
+        "DownloadError": "download_failed",
+        "BackupDiscoveryError": "download_failed",
+        "ExtractionError": "extraction_failed",
+        "DiskCapacityError": "disk_full",
+        "MyLoaderError": "mysql_error",
+        "PostSQLError": "mysql_error",
+        "AtomicRenameError": "mysql_error",
+        "MetadataInjectionError": "mysql_error",
+        "CancellationError": "canceled_by_user",
+        "CommandTimeoutError": "download_timeout",
+    }
     
     def __init__(self, pool: MySQLPool) -> None:
         """Initialize repository with connection pool."""
@@ -549,20 +566,35 @@ class JobHistorySummaryRepository:
     @classmethod
     def categorize_error(cls, error_detail: str | None) -> str:
         """Categorize an error message into a standard category.
-        
+
+        Prefers class-based categorization when ``error_detail`` starts with a
+        known exception class name prefix (format: ``"ClassName: <message>"``).
+        This is more reliable than keyword matching and eliminates false positives
+        (e.g. a path that contains "download" being mis-categorized).
+
+        Falls back to keyword matching for legacy records and cleanup failures
+        that don't use the prefixed format.
+
         Args:
             error_detail: Error message or detail text.
-            
+
         Returns:
             Error category string (one of ERROR_CATEGORIES keys or 'uncategorized').
         """
         if not error_detail:
             return "uncategorized"
-        
+
+        # Class-name prefix check (new structured format: "ClassName: message")
+        colon_idx = error_detail.find(":")
+        if colon_idx > 0:
+            class_name = error_detail[:colon_idx].strip()
+            if class_name in cls._CLASS_CATEGORY:
+                return cls._CLASS_CATEGORY[class_name]
+
+        # Legacy: keyword matching (handles "Delete failed", cleanup errors, etc.)
         error_lower = error_detail.lower()
-        
         for category, keywords in cls.ERROR_CATEGORIES.items():
             if any(kw in error_lower for kw in keywords):
                 return category
-        
+
         return "uncategorized"

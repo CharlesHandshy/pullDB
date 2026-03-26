@@ -400,10 +400,13 @@
 }
 
 .backup-list-scroll {
-    max-height: 280px;
-    overflow-y: auto;
+    /* Outer frame — fixed height, flex column, no overflow here */
+    height: 260px;
+    display: flex;
+    flex-direction: column;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
+    overflow: hidden;   /* clip child edges flush with border-radius */
 }
 
 .backup-list-empty {
@@ -419,15 +422,38 @@
     color: var(--gray-300);
 }
 
-/* Backup Table */
+/* -----------------------------------------------
+   Backup Table
+   ----------------------------------------------- */
+
+/* Inner scroll area — grows to fill frame, scrolls independently */
+.backup-table-wrap {
+    flex: 1 1 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;      /* allow flex child to shrink */
+}
+
+.backup-list-scroll .backup-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
 .backup-table {
     width: 100%;
     border-collapse: collapse;
 }
 
+/* Sticky header — sits flush against the container top edge */
+.backup-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
 .backup-table th {
     text-align: left;
-    padding: var(--space-3);
+    padding: 6px var(--space-3);
     background: var(--gray-50);
     border-bottom: 1px solid var(--color-border);
     font-size: var(--text-xs);
@@ -435,15 +461,23 @@
     color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.025em;
-    position: sticky;
-    top: 0;
+    white-space: nowrap;
 }
 
+.backup-table th.col-fmt { width: 34px; padding-left: var(--space-3); }
+.backup-table th.col-date { }
+.backup-table th.col-env  { width: 62px; }
+.backup-table th.col-size { width: 72px; text-align: right; padding-right: var(--space-3); }
+
 .backup-table td {
-    padding: var(--space-3);
+    padding: 6px var(--space-3);
     border-bottom: 1px solid var(--gray-100);
     font-size: var(--text-sm);
+    vertical-align: middle;
 }
+
+.backup-table td.col-size { text-align: right; padding-right: var(--space-3); white-space: nowrap; }
+.backup-table td.col-fmt  { padding-right: 2px; }
 
 .backup-table tr:last-child td {
     border-bottom: none;
@@ -464,6 +498,47 @@
 
 .backup-table tbody tr.is-selected td {
     border-bottom-color: var(--primary-100);
+}
+
+/* Format version badge (inline pill) */
+.bfmt-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 13px;
+    border-radius: 2px;
+    font-size: 7.5px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    line-height: 1;
+    color: #fff;
+    cursor: default;
+    user-select: none;
+    vertical-align: middle;
+}
+
+.bfmt-v1 { background: #7c3aed; }   /* purple — legacy 0.9.x */
+.bfmt-v2 { background: #0284c7; }   /* blue   — current 0.21.x */
+
+/* Empty state */
+.backup-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-6) var(--space-4);
+    text-align: center;
+    color: var(--color-text-muted);
+}
+
+.backup-empty-state svg {
+    color: var(--gray-300);
+}
+
+.backup-empty-state p {
+    margin: 0;
+    font-size: var(--text-sm);
 }
 
 .backup-list {
@@ -1248,6 +1323,15 @@
     border-color: var(--color-border);
 }
 
+[data-theme="dark"] .backup-table-wrap {
+    /* inherits from parent */
+}
+
+[data-theme="dark"] .backup-load-more {
+    background: var(--gray-800);
+    border-color: var(--color-border);
+}
+
 [data-theme="dark"] .backup-list-count {
     background: var(--gray-700);
 }
@@ -1467,13 +1551,18 @@
    =========================================== */
 
 .backup-load-more {
-    padding: var(--space-3);
+    padding: var(--space-2) var(--space-3);
     text-align: center;
+    /* Sits below the scroll container, outside it */
     border-top: 1px solid var(--color-border);
+    background: var(--gray-50);
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    flex-shrink: 0;
 }
 
 .load-more-btn {
-    min-width: 200px;
+    min-width: 180px;
+    font-size: var(--text-xs);
 }
 
 .load-more-btn .htmx-indicator {
@@ -1825,10 +1914,7 @@
 }
 
 .backup-list {
-    max-height: 300px;
-    overflow-y: auto;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    /* Container cleared — scroll is now handled by .backup-list-scroll + .backup-table-wrap */
 }
 
 .backup-error {

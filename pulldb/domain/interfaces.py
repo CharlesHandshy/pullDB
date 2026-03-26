@@ -1110,6 +1110,18 @@ class UserRepository(Protocol):
         """
         ...
 
+    def list_users_paginated(self, offset: int = 0, limit: int = 100) -> list[User]:
+        """Get a page of users ordered by username.
+
+        Args:
+            offset: Number of rows to skip (0-based).
+            limit: Maximum number of rows to return.
+
+        Returns:
+            List of User instances for the requested page.
+        """
+        ...
+
     def set_last_maintenance_ack(self, user_id: str, ack_date: datetime) -> None:
         """Set last maintenance acknowledgment date for a user.
 

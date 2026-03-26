@@ -3573,8 +3573,11 @@ class JobRepository:
             )
             conn.commit()
 
-    def get_all_locked_databases(self) -> list[Job]:
+    def get_all_locked_databases(self, limit: int = 10_000) -> list[Job]:
         """Get all locked databases across all users (manager report).
+
+        Args:
+            limit: Maximum rows to return. Defaults to 10,000.
 
         Returns:
             List of locked jobs ordered by user, then lock date.
@@ -3593,7 +3596,9 @@ class JobRepository:
                 WHERE locked_at IS NOT NULL
                   AND db_dropped_at IS NULL
                 ORDER BY owner_username ASC, locked_at ASC
-                """
+                LIMIT %s
+                """,
+                (limit,),
             )
             rows = cursor.fetchall()
             return [self._row_to_job(row) for row in rows]

@@ -295,6 +295,7 @@ async def search_backups(
             "environment": b.get("environment", ""),
             "key": b.get("key", ""),
             "bucket": b.get("bucket", ""),
+            "format_version": b.get("format_version", "v1"),
         })
 
     return templates.TemplateResponse(
@@ -500,9 +501,16 @@ async def restore_submit(
             # Extract customer-only part (letters only, lowercase)
             customer_letters = ''.join(ch for ch in expected_customer.lower() if ch.isalpha())
             if customer_letters:
-                # Validate backup_key contains the expected pattern
-                expected_pattern = f"{customer_letters}/daily_mydumper_{customer_letters}_"
-                if expected_pattern not in backup_key.lower():
+                # Validate backup_key is in the expected customer S3 directory.
+                # V1: {customer}/daily_mydumper_{customer}_...
+                # V2: {customer}/daily_mydumper_{host}_..._{customer}.tar
+                # Both live under the customer prefix directory.
+                v1_pattern = f"{customer_letters}/daily_mydumper_{customer_letters}_"
+                v2_pattern = f"{customer_letters}/daily_mydumper_"
+                key_lower = backup_key.lower()
+                if v1_pattern not in key_lower and not (
+                    v2_pattern in key_lower and f"_{customer_letters}.tar" in key_lower
+                ):
                     return templates.TemplateResponse(
                         "features/restore/restore.html",
                         {

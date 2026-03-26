@@ -1541,10 +1541,13 @@ class WorkerJobExecutor:
 
         self._append_event(job.id, event_type, event_detail)
         try:
-            # Redact sensitive data from the error message stored in job status
+            # Redact sensitive data from the error message stored in job status.
+            # Prefix with the exception class name so categorize_error() can use
+            # class-based categorization instead of fragile keyword matching.
             from pulldb.infra.exec import redact_sensitive_data
 
-            self.job_repo.mark_job_failed(job.id, redact_sensitive_data(str(exc)))
+            error_detail = f"{type(exc).__name__}: {redact_sensitive_data(str(exc))}"
+            self.job_repo.mark_job_failed(job.id, error_detail)
         except Exception:  # pragma: no cover - logging only
             logger.exception(
                 "Failed to mark job as failed",

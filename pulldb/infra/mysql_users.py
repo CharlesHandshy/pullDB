@@ -173,6 +173,35 @@ class UserRepository:
             rows = cursor.fetchall()
             return [self._row_to_user(row) for row in rows]
 
+    def list_users_paginated(self, offset: int = 0, limit: int = 100) -> list[User]:
+        """Get a page of users ordered by username.
+
+        Prevents unbounded memory usage on large deployments — prefer this
+        over ``list_users()`` in any context that could have > a few hundred
+        users.
+
+        Args:
+            offset: Number of rows to skip (0-based).
+            limit: Maximum number of rows to return.
+
+        Returns:
+            List of User instances for the requested page.
+        """
+        with self.pool.connection() as conn:
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
+            cursor.execute(
+                """
+                SELECT user_id, username, user_code, role, created_at,
+                       disabled_at, manager_id, max_active_jobs, locked_at
+                FROM auth_users
+                ORDER BY username
+                LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_user(row) for row in rows]
+
     def create_user(self, username: str, user_code: str, manager_id: str | None = None) -> User:
         """Create new user with generated UUID.
 
@@ -278,10 +307,22 @@ class UserRepository:
 
         Algorithm:
         1. Extract first 6 alphabetic characters (lowercase, letters only)
-        2. Check if code is unique in database
-        3. If collision, replace 6th char with next unused letter from username
-        4. If still collision, try 5th char, then 4th char (max 3 adjustments)
-        5. Fail if unique code cannot be generated
+        2. If fewer than 6 alpha chars, pad deterministically using SHA256(username):
+           - Compute SHA256 hex digest of username.lower()
+           - Map each hex character to a letter via: chr(ord('a') + int(c, 16) % 16)
+             (maps hex 0-f → letters a-p, producing a reproducible 64-char letter string)
+           - Take as many letters from this string as needed to reach 6 total
+        3. Check if base code is unique in database
+        4. If collision, replace character at position 5 (6th) with the next unused
+           letter drawn from the padded letter sequence
+        5. If still collision, try position 4 (5th char), then position 3 (4th char)
+           (max 3 adjustment positions)
+        6. Fail if no unique code found after exhausting all candidates
+
+        The hash-padding in step 2 is deterministic — the same username always
+        produces the same padding, so re-running never creates a different code
+        for a given user. The position-shift in steps 4–5 resolves collisions
+        without changing the leading characters, preserving readability.
 
         Examples:
             "jdoe" → ValueError (< 6 letters)

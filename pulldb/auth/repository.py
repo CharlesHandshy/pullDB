@@ -238,7 +238,7 @@ class AuthRepository:
             return None
 
     def get_totp_secret(self, user_id: str) -> str | None:
-        """Get TOTP secret for user.
+        """Get TOTP secret for user, decrypting if stored encrypted.
 
         Args:
             user_id: UUID of the user.
@@ -257,16 +257,23 @@ class AuthRepository:
             )
             row = cursor.fetchone()
             if row and row.get("totp_secret"):
-                return str(row["totp_secret"])
+                raw = str(row["totp_secret"])
+                # Decrypt if stored with AES-256-GCM prefix
+                return decrypt_secret(raw) if is_encrypted(raw) else raw
             return None
 
     def set_totp_secret(self, user_id: str, totp_secret: str) -> None:
-        """Set and enable TOTP for user.
+        """Set and enable TOTP for user, encrypting the secret at rest.
+
+        The secret is encrypted with AES-256-GCM when
+        ``PULLDB_KEY_ENCRYPTION_KEY`` is configured; stored as plaintext
+        in passthrough mode (local dev without the env var).
 
         Args:
             user_id: UUID of the user.
-            totp_secret: Base32-encoded TOTP secret.
+            totp_secret: Base32-encoded TOTP secret (plaintext input).
         """
+        stored_secret = encrypt_secret(totp_secret)
         with self.pool.connection() as conn:
             cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
@@ -279,7 +286,7 @@ class AuthRepository:
                     totp_enabled = TRUE,
                     updated_at = UTC_TIMESTAMP(6)
                 """,
-                (user_id, totp_secret),
+                (user_id, stored_secret),
             )
             conn.commit()
 
@@ -594,10 +601,14 @@ class AuthRepository:
             return decrypt_secret(str(secret))
 
     def migrate_encrypt_existing_keys(self) -> int:
-        """Encrypt plaintext ``key_secret`` rows and re-encrypt old-key rows.
+        """Encrypt plaintext secrets and re-encrypt old-key rows.
+
+        Migrates two columns:
+        - ``api_keys.key_secret`` — API key secrets
+        - ``auth_credentials.totp_secret`` — TOTP 2FA secrets
 
         **Normal mode** (only ``PULLDB_KEY_ENCRYPTION_KEY`` set):
-        Iterates rows whose ``key_secret`` does not carry the ``aes256gcm:``
+        Iterates rows whose secret does not carry the ``aes256gcm:``
         prefix and encrypts them in-place.  Already-encrypted rows are skipped.
 
         **Rotation mode** (both ``PULLDB_KEY_ENCRYPTION_KEY`` and
@@ -616,7 +627,7 @@ class AuthRepository:
         This method is idempotent — safe to call multiple times.
 
         Returns:
-            The number of rows updated during this call.
+            The total number of rows updated across all tables during this call.
 
         Raises:
             RuntimeError: If ``PULLDB_KEY_ENCRYPTION_KEY`` is not configured.
@@ -628,50 +639,72 @@ class AuthRepository:
             )
 
         rotation_mode = get_old_encryption_key() is not None
-
         _BATCH = 500
         migrated = 0
-        with self.pool.connection() as conn:
-            read_cursor = TypedDictCursor(conn.cursor(dictionary=True))
-            if rotation_mode:
-                # Full scan: also re-encrypt rows currently using the old key
-                read_cursor.execute(
-                    "SELECT key_id, key_secret FROM api_keys "
-                    "WHERE key_secret IS NOT NULL"
-                )
-            else:
-                # Fast path: only rows that haven't been encrypted yet
-                read_cursor.execute(
-                    "SELECT key_id, key_secret FROM api_keys "
-                    "WHERE key_secret NOT LIKE 'aes256gcm:%'"
-                )
-            write_cursor = TypedTupleCursor(conn.cursor())
+
+        def _migrate_column(
+            conn: object,
+            select_sql: str,
+            update_sql: str,
+            id_col: str,
+            val_col: str,
+        ) -> int:
+            """Encrypt/re-encrypt one column in batches. Returns rows changed."""
+            read_cursor = TypedDictCursor(conn.cursor(dictionary=True))  # type: ignore[union-attr]
+            read_cursor.execute(select_sql)
+            write_cursor = TypedTupleCursor(conn.cursor())  # type: ignore[union-attr]
+            changed = 0
             while batch := read_cursor.fetchmany(_BATCH):
                 for row in batch:
-                    key_id = row["key_id"]
-                    raw = row["key_secret"]
+                    row_id = row[id_col]
+                    raw = row[val_col]
                     if raw is None:
                         continue
                     raw_str = str(raw)
                     if is_encrypted(raw_str):
-                        # Already encrypted — re-encrypt only if using old key
-                        new_val, changed = reencrypt_if_needed(raw_str)
-                        if not changed:
+                        new_val, did_change = reencrypt_if_needed(raw_str)
+                        if not did_change:
                             continue
                         updated_val = new_val
                     else:
-                        # Plaintext row — encrypt with primary key
                         updated_val = encrypt_secret(raw_str)
-                    write_cursor.execute(
-                        "UPDATE api_keys SET key_secret = %s WHERE key_id = %s",
-                        (updated_val, key_id),
-                    )
-                    migrated += 1
-                conn.commit()  # commit each batch
+                    write_cursor.execute(update_sql, (updated_val, row_id))
+                    changed += 1
+                conn.commit()  # type: ignore[union-attr]
+            return changed
+
+        with self.pool.connection() as conn:
+            # --- api_keys.key_secret ---
+            if rotation_mode:
+                api_select = "SELECT key_id, key_secret FROM api_keys WHERE key_secret IS NOT NULL"
+            else:
+                api_select = "SELECT key_id, key_secret FROM api_keys WHERE key_secret NOT LIKE 'aes256gcm:%'"
+            migrated += _migrate_column(
+                conn, api_select,
+                "UPDATE api_keys SET key_secret = %s WHERE key_id = %s",
+                "key_id", "key_secret",
+            )
+
+            # --- auth_credentials.totp_secret ---
+            if rotation_mode:
+                totp_select = (
+                    "SELECT user_id, totp_secret FROM auth_credentials "
+                    "WHERE totp_secret IS NOT NULL"
+                )
+            else:
+                totp_select = (
+                    "SELECT user_id, totp_secret FROM auth_credentials "
+                    "WHERE totp_secret IS NOT NULL AND totp_secret NOT LIKE 'aes256gcm:%'"
+                )
+            migrated += _migrate_column(
+                conn, totp_select,
+                "UPDATE auth_credentials SET totp_secret = %s WHERE user_id = %s",
+                "user_id", "totp_secret",
+            )
 
         if migrated:
             logger.info(
-                "migrate_encrypt_existing_keys: updated %d key_secret row(s)%s",
+                "migrate_encrypt_existing_keys: updated %d row(s)%s",
                 migrated,
                 " (rotation pass)" if rotation_mode else "",
             )

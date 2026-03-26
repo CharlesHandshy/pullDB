@@ -144,17 +144,19 @@ def write_design_tokens(
         # Replace the whole semantic + dark mode section
         content = content[:start_idx] + new_tokens_css + content[end_idx:]
     else:
-        # Can't find markers - append to end of :root section as fallback
-        # This is a degraded mode; log warning but don't fail
-        import logging
-        logging.warning(
-            "Could not find semantic tokens markers in design-tokens.css. "
-            "CSS will be appended but may need manual cleanup."
+        # Neither marker format found — FAIL HARD rather than silently corrupting the CSS.
+        # The file must contain exactly one of the two known section marker formats:
+        #   - "SEMANTIC COLOR TOKENS (Database-Synced)" (current format)
+        #   - "SEMANTIC COLOR TOKENS" + "DARK MODE OVERRIDES" (legacy format)
+        # If neither is present the CSS has been manually edited or is from an
+        # unexpected version; raise so the caller can surface this to the admin.
+        raise ValueError(
+            f"design-tokens.css at {css_path} does not contain a recognised "
+            "semantic-tokens section marker. Expected one of:\n"
+            f"  - {db_synced_marker!r}\n"
+            f"  - {semantic_start_marker!r} (legacy)\n"
+            "Inspect the file and ensure it matches the expected format."
         )
-        # Find end of first :root section and insert there
-        root_end = content.find("}\n\n/*")
-        if root_end > 0:
-            content = content[:root_end + 1] + "\n\n" + new_tokens_css + content[root_end + 1:]
     
     # Write atomically using temp file + rename
     fd, temp_path = tempfile.mkstemp(
@@ -214,5 +216,5 @@ def sync_design_tokens_from_settings(settings_repo: object, css_path: Path | Non
     try:
         write_design_tokens(light_schema, dark_schema, css_path)
         return True
-    except (FileNotFoundError, IOError):
+    except (FileNotFoundError, IOError, ValueError):
         return False

@@ -553,6 +553,46 @@ async def get_admin_task_page(
     )
 
 
+@router.get("/admin-tasks/{task_id}/partial", response_class=HTMLResponse)
+async def get_admin_task_partial(
+    request: Request,
+    task_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> HTMLResponse:
+    """Return the task status/results section as an HTML partial for HTMX polling.
+
+    Called by HTMX every 3 seconds while the task is pending or running.
+    Renders the same partial that the full page embeds, so the user sees
+    live progress without a full page reload.
+    """
+    from pulldb.infra.factory import get_admin_task_repository
+
+    admin_task_repo: Any = get_admin_task_repository(state.pool)
+    task = admin_task_repo.get_task(task_id)
+
+    if not task:
+        return HTMLResponse(content="<p class='text-muted'>Task not found.</p>")
+
+    target_username = None
+    if task.target_user_id:
+        target_user = state.user_repo.get_user_by_id(task.target_user_id)
+        if target_user:
+            target_username = target_user.username
+
+    enhanced_params = dict(task.parameters_json) if task.parameters_json else {}
+    enhanced_params["target_username"] = target_username or task.target_user_id
+
+    return templates.TemplateResponse(
+        "features/admin/partials/_admin_task_body.html",
+        {
+            "request": request,
+            "task": task,
+            "task_params": enhanced_params,
+        },
+    )
+
+
 @router.post("/users/{user_id}/role")
 async def update_user_role(
     user_id: str,
@@ -578,7 +618,11 @@ async def update_user_role(
         role_enum = UserRole(new_role.lower())
         if hasattr(state.user_repo, "update_user_role"):
             state.user_repo.update_user_role(user_id, role_enum)
-        
+
+        # Invalidate all existing sessions so the new role takes effect immediately
+        if hasattr(state, "auth_repo") and state.auth_repo:
+            state.auth_repo.invalidate_all_user_sessions(user_id)
+
         # Audit log
         if hasattr(state, "audit_repo") and state.audit_repo:
             state.audit_repo.log_action(
@@ -5550,6 +5594,34 @@ async def admin_unlock_database(
 # =============================================================================
 # API Keys Management
 # =============================================================================
+
+
+@router.get("/api-keys/pending-badge", response_class=HTMLResponse)
+async def api_keys_pending_badge(
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> HTMLResponse:
+    """Return an inline HTML badge with pending API key count for HTMX polling.
+
+    Used by the sidebar to display a notification badge next to the API Keys
+    link when there are keys awaiting admin approval. Returns an empty string
+    when the count is zero so the badge disappears cleanly.
+    """
+    count = 0
+    if hasattr(state, "auth_repo") and state.auth_repo:
+        try:
+            pending = state.auth_repo.get_pending_api_keys()
+            count = len(pending)
+        except Exception:
+            logger.debug("Failed to get pending API keys count for badge", exc_info=True)
+
+    if count == 0:
+        return HTMLResponse(content="")
+
+    display = str(count) if count < 100 else "99+"
+    return HTMLResponse(
+        content=f'<span class="nav-badge" aria-label="{count} pending API key approvals">{display}</span>'
+    )
 
 
 @router.get("/api-keys", response_class=HTMLResponse)

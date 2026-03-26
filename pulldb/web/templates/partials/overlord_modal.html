@@ -2850,8 +2850,7 @@ function startEditEmployee(employeeId) {
     // Password hash status badge
     const hashBadge = document.getElementById('ecard-passwordHash');
     if (hashBadge) {
-        const hashVal = emp.passwordHash;
-        if (hashVal && hashVal.length > 0) {
+        if (emp.passwordHashSet) {
             hashBadge.textContent = 'Set';
             hashBadge.className = 'emp-field__status-badge is-set';
         } else {

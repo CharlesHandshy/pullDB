@@ -1,52 +1,88 @@
-{% if backups %}
-<div data-total-count="{{ total_count }}" data-offset="{{ offset }}" data-limit="{{ limit }}">
-<table class="backup-table">
-    <thead>
-        <tr>
-            <th>Date</th>
-            <th>Environment</th>
-            <th>Size</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for backup in backups %}
-        {% set filename = backup.key.split('/')[-1] %}
-        {% set full_s3_path = 's3://' ~ backup.bucket ~ '/' ~ backup.key %}
-        <tr data-backup-key="{{ full_s3_path }}" 
-            onclick="(function(el) {
-                var isQa = el.closest('#qa-backup-list') !== null;
-                var fn = isQa ? window.selectQaBackup : window.selectBackup;
-                if (fn) fn('{{ full_s3_path }}', '{{ backup.environment }}', '{{ backup.timestamp.strftime('%b %d, %y %H:%M') }}', '{{ backup.size_display }}');
-            })(this)">
-            <td title="{{ filename }}">{{ backup.timestamp.strftime('%b %d, %y %H:%M') }}</td>
-            <td>
-                <span class="badge {% if backup.environment == 'prod' %}badge-primary{% else %}badge-neutral{% endif %}">
-                    {{ backup.environment }}
-                </span>
-            </td>
-            <td>{{ backup.size_display }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-</div>
+{% macro backup_rows(backups) %}
+{% for backup in backups %}
+{% set filename = backup.key.split('/')[-1] %}
+{% set full_s3_path = 's3://' ~ backup.bucket ~ '/' ~ backup.key %}
+{% set fmt = backup.format_version | default('v1') %}
+{% set fmt_tip = ('V1 — mydumper 0.9.x (legacy)' if fmt == 'v1' else 'V2 — mydumper 0.21.x (current)') ~ '&#10;' ~ filename %}
+<tr data-backup-key="{{ full_s3_path }}"
+    onclick="(function(el){
+        var isQa=el.closest('#qa-backup-list')!==null;
+        var fn=isQa?window.selectQaBackup:window.selectBackup;
+        if(fn)fn('{{ full_s3_path }}','{{ backup.environment }}','{{ backup.timestamp.strftime('%b %d, %y %H:%M') }}','{{ backup.size_display }}');
+    })(this)">
+    <td class="col-fmt">
+        <span class="bfmt-badge bfmt-{{ fmt }}" title="{{ fmt_tip }}">{{ fmt | upper }}</span>
+    </td>
+    <td class="col-date" title="{{ filename }}">{{ backup.timestamp.strftime('%b %d, %y %H:%M') }}</td>
+    <td class="col-env">
+        <span class="badge {% if backup.environment == 'prod' %}badge-primary{% else %}badge-neutral{% endif %}">
+            {{ backup.environment }}
+        </span>
+    </td>
+    <td class="col-size">{{ backup.size_display }}</td>
+</tr>
+{% endfor %}
+{% endmacro %}
 
+{% if offset == 0 %}
+{# ── First page: render full table shell ── #}
+{% if backups %}
+<div class="backup-table-wrap">
+    <table class="backup-table">
+        <thead>
+            <tr>
+                <th class="col-fmt"></th>
+                <th class="col-date">Date</th>
+                <th class="col-env">Env</th>
+                <th class="col-size">Size</th>
+            </tr>
+        </thead>
+        <tbody id="backup-tbody">
+            {{ backup_rows(backups) }}
+        </tbody>
+    </table>
+</div>
 {% if has_more %}
-<div class="backup-load-more">
-    <button type="button" 
+<div class="backup-load-more" id="backup-load-more">
+    <button type="button"
             class="btn btn-secondary btn-sm load-more-btn"
             hx-get="/web/restore/search-backups?customer={{ customer }}&env={{ env }}&date_from={{ date_from }}{% if date_to %}&date_to={{ date_to }}{% endif %}&date_mode={{ date_mode }}&offset={{ offset + limit }}&limit={{ limit }}"
-            hx-target="closest .backup-list-scroll"
-            hx-swap="innerHTML"
+            hx-target="#backup-load-more"
+            hx-swap="outerHTML"
             hx-indicator=".load-more-btn">
-        <span class="btn-text">Load More ({{ total_count - (offset + limit) }} remaining)</span>
-        <span class="htmx-indicator">Loading...</span>
+        <span class="btn-text">Load more &mdash; {{ total_count - (offset + limit) }} remaining</span>
+        <span class="htmx-indicator">Loading&hellip;</span>
     </button>
 </div>
 {% endif %}
 {% else %}
-<div class="alert alert-warning" style="margin-top: 1rem; padding: 1rem; background: var(--warning-50); border: 1px solid var(--warning-200); border-radius: var(--radius-md); color: var(--warning-700);">
-    <strong>No backups found.</strong>
-    <p style="margin: 0.5rem 0 0 0;">No backups are available for this customer in the selected environment within the date range.</p>
+<div class="backup-empty-state">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <strong>No backups found</strong>
+    <p>No backups are available for this customer in the selected environment within the date range.</p>
 </div>
+{% endif %}
+
+{% else %}
+{# ── Subsequent pages: OOB-append rows into existing tbody, replace load-more ── #}
+<tbody id="backup-tbody" hx-swap-oob="beforeend">
+    {{ backup_rows(backups) }}
+</tbody>
+{% if has_more %}
+<div class="backup-load-more" id="backup-load-more" hx-swap-oob="outerHTML:#backup-load-more">
+    <button type="button"
+            class="btn btn-secondary btn-sm load-more-btn"
+            hx-get="/web/restore/search-backups?customer={{ customer }}&env={{ env }}&date_from={{ date_from }}{% if date_to %}&date_to={{ date_to }}{% endif %}&date_mode={{ date_mode }}&offset={{ offset + limit }}&limit={{ limit }}"
+            hx-target="#backup-load-more"
+            hx-swap="outerHTML"
+            hx-indicator=".load-more-btn">
+        <span class="btn-text">Load more &mdash; {{ total_count - (offset + limit) }} remaining</span>
+        <span class="htmx-indicator">Loading&hellip;</span>
+    </button>
+</div>
+{% else %}
+<div id="backup-load-more" hx-swap-oob="delete"></div>
+{% endif %}
 {% endif %}

@@ -72,6 +72,14 @@
                     {{ icon('settings', size='20') }}
                     <span class="nav-label">Settings</span>
                 </a>
+                <a href="/web/admin/api-keys" class="nav-link {% if '/web/admin/api-keys' in request.url.path %}active{% endif %}" title="API Keys">
+                    {{ icon('key', size='20') }}
+                    <span class="nav-label">API Keys</span>
+                    <span id="api-keys-badge"
+                          hx-get="/web/admin/api-keys/pending-badge"
+                          hx-trigger="load, every 60s"
+                          hx-swap="innerHTML"></span>
+                </a>
                 <a href="/web/admin/cleanup-staging/preview" class="nav-link {% if request.url.path == '/web/admin/cleanup-staging/preview' %}active{% endif %}" title="Cleanup">
                     {{ icon('trash', size='20') }}
                     <span class="nav-label">Cleanup</span>

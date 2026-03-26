@@ -182,14 +182,16 @@ class CustomerBackupStats:
 
 def _get_backup_locations(
     environment: str,
-) -> list[tuple[str, str, str, str | None]]:
+) -> list[tuple[str, str, str, str | None, str | None]]:
     """Get S3 backup locations filtered by environment.
 
     Args:
         environment: 'staging', 'prod', or 'both'.
 
     Returns:
-        List of (name, bucket, prefix, profile) tuples.
+        List of (name, bucket, prefix, profile, region) tuples.
+        ``region`` is ``None`` when not specified; boto3 then resolves via
+        the profile / environment configuration.
 
     Raises:
         click.ClickException: If no locations configured.
@@ -215,7 +217,7 @@ def _get_backup_locations(
             "PULLDB_S3_BACKUP_LOCATIONS must be a JSON array."
         )
 
-    locations: list[tuple[str, str, str, str | None]] = []
+    locations: list[tuple[str, str, str, str | None, str | None]] = []
     env_lower = environment.lower()
 
     for entry in payload:
@@ -225,6 +227,7 @@ def _get_backup_locations(
         bucket_path = entry.get("bucket_path", "")
         name = entry.get("name", "unknown")
         profile = entry.get("profile")
+        region = entry.get("region")  # M8: per-location AWS region
 
         if not bucket_path.startswith("s3://"):
             continue
@@ -246,7 +249,7 @@ def _get_backup_locations(
             bucket = path
             prefix = ""
 
-        locations.append((name, bucket, prefix, profile))
+        locations.append((name, bucket, prefix, profile, region))
 
     if not locations:
         raise click.ClickException(
@@ -262,7 +265,7 @@ def _get_backup_locations(
 
 
 def _collect_all_backups(
-    locations: list[tuple[str, str, str, str | None]],
+    locations: list[tuple[str, str, str, str | None, str | None]],
     customer_filter: str | None,
     date_from: str | None,
     date_to: str | None,
@@ -276,7 +279,9 @@ def _collect_all_backups(
     per-customer API calls.
 
     Args:
-        locations: List of (name, bucket, prefix, profile) tuples.
+        locations: List of (name, bucket, prefix, profile, region) tuples.
+            A per-location S3 client is created for each entry so that
+            multi-region deployments are fully supported (M8).
         customer_filter: Optional customer name filter (exact match).
         date_from: Optional start date (YYYYMMDD).
         date_to: Optional end date (YYYYMMDD).
@@ -287,12 +292,14 @@ def _collect_all_backups(
     Returns:
         Dict mapping customer name to CustomerBackupStats.
     """
-    s3 = S3Client()
     stats: dict[str, CustomerBackupStats] = {}
 
-    for loc_name, bucket, prefix, profile in locations:
+    for loc_name, bucket, prefix, profile, region in locations:
         if verbose:
             click.echo(f"  Scanning {loc_name}: s3://{bucket}/{prefix}")
+
+        # M8: create a per-location S3 client so each location's region is honoured
+        s3 = S3Client(profile=profile, region=region)
 
         # If customer filter provided, search only that customer's prefix
         if customer_filter:
@@ -303,7 +310,7 @@ def _collect_all_backups(
         try:
             # Single API call to get all keys with sizes
             keys_with_sizes = s3.list_keys_with_sizes(
-                bucket, search_prefix, profile=profile
+                bucket, search_prefix
             )
         except Exception as exc:
             if verbose:
@@ -366,7 +373,7 @@ def _collect_all_backups(
 
 
 def _collect_pattern_backups(
-    locations: list[tuple[str, str, str, str | None]],
+    locations: list[tuple[str, str, str, str | None, str | None]],
     pattern: str,
     date_from: str | None,
     date_to: str | None,
@@ -379,7 +386,9 @@ def _collect_pattern_backups(
     Uses efficient single-pass listing with client-side pattern matching.
 
     Args:
-        locations: List of (name, bucket, prefix, profile) tuples.
+        locations: List of (name, bucket, prefix, profile, region) tuples.
+            A per-location S3 client is created for each entry so that
+            multi-region deployments are fully supported (M8).
         pattern: Wildcard pattern (supports * and ?).
         date_from: Optional start date (YYYYMMDD).
         date_to: Optional end date (YYYYMMDD).
@@ -390,7 +399,6 @@ def _collect_pattern_backups(
     Returns:
         Dict mapping customer name to CustomerBackupStats.
     """
-    s3 = S3Client()
     stats: dict[str, CustomerBackupStats] = {}
 
     # Extract prefix before first wildcard for efficient listing
@@ -400,16 +408,19 @@ def _collect_pattern_backups(
     )
     search_prefix_part = pattern[:wildcard_pos].lower()
 
-    for loc_name, bucket, prefix, profile in locations:
+    for loc_name, bucket, prefix, profile, region in locations:
         if verbose:
             click.echo(f"  Scanning {loc_name}: s3://{bucket}/{prefix}")
+
+        # M8: create a per-location S3 client so each location's region is honoured
+        s3 = S3Client(profile=profile, region=region)
 
         # Construct S3 prefix for listing
         s3_prefix = f"{prefix}{search_prefix_part}"
 
         try:
             keys_with_sizes = s3.list_keys_with_sizes(
-                bucket, s3_prefix, profile=profile
+                bucket, s3_prefix
             )
         except Exception as exc:
             if verbose:
