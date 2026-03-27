@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "partials/icons/_index.html" import icon %}
+
+{% block title %}Notifications - pullDB{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/pages/notifications.css">
+{% endblock %}
+
+{% block content %}
+<div class="notifications-page">
+
+    <div class="page-header-row mb-4">
+        <div class="page-header-left">
+            <h1 class="page-title">
+                {{ icon('bell', size='24') }}
+                Notifications
+            </h1>
+        </div>
+    </div>
+
+    {% if notifications %}
+    <div class="card mb-4">
+        <div class="card-padding">
+            <ul class="notification-list">
+            {% for n in notifications %}
+                <li class="notification-item">
+                    {% if n.type == "ownership_claimed" %}
+                    <span class="notification-icon">{{ icon('info', size='16') }}</span>
+                    <div>
+                        <strong>{{ n.context.new_owner_code }}</strong> has taken ownership of
+                        <code>{{ n.context.target }}</code> on <code>{{ n.context.dbhost }}</code>.
+                        Your deployed record for that database has been superseded.
+                        <div class="notification-meta text-muted">
+                            {{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}
+                        </div>
+                    </div>
+                    {% else %}
+                    <span class="notification-icon">{{ icon('info', size='16') }}</span>
+                    <div>
+                        {{ n.message }}
+                        <div class="notification-meta text-muted">
+                            {{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}
+                        </div>
+                    </div>
+                    {% endif %}
+                </li>
+            {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <form method="POST" action="/web/notifications/dismiss">
+        <button type="submit" class="btn btn-primary">Dismiss and continue</button>
+    </form>
+
+    {% else %}
+    <div class="alert alert-info">
+        {{ icon('info', size='16') }}
+        <div>No notifications.</div>
+    </div>
+    <a href="/web/dashboard/" class="btn btn-primary">Go to dashboard</a>
+    {% endif %}
+
+</div>
+{% endblock %}

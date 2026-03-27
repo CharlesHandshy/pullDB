@@ -1,0 +1,56 @@
+/* =================================================================
+   pullDB Notifications Page Styles
+   HCA Layer: pages (Layer 4)
+
+   Purpose: Page-specific styles for the notifications inbox.
+   Depends: design-tokens.css, cards.css, alerts.css
+   ================================================================= */
+
+/* ===========================================
+   PAGE LAYOUT
+   =========================================== */
+
+.notifications-page {
+    max-width: var(--content-max-xl);
+    margin: 0 auto;
+}
+
+/* ===========================================
+   NOTIFICATION LIST
+   =========================================== */
+
+.notification-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.notification-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+}
+
+.notification-item + .notification-item {
+    border-top: 1px solid var(--color-border);
+}
+
+.notification-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: var(--info-500);
+}
+
+.notification-meta {
+    margin-top: var(--space-1);
+    font-size: var(--text-sm);
+}
+
+/* ===========================================
+   DARK MODE
+   =========================================== */
+
+[data-theme="dark"] .notification-item + .notification-item {
+    border-top-color: var(--color-border);
+}
