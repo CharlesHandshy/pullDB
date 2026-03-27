@@ -12,6 +12,7 @@ HCA Layer: shared (pulldb/infra/)
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from collections import deque
@@ -20,6 +21,14 @@ from fastapi import HTTPException, Request, status
 
 
 logger = logging.getLogger(__name__)
+
+# IPs from which X-Forwarded-For is trusted (typically the local nginx/proxy).
+# Configure via PULLDB_TRUSTED_PROXY_IPS (comma-separated). Defaults to loopback.
+_TRUSTED_PROXY_IPS: frozenset[str] = frozenset(
+    ip.strip()
+    for ip in os.getenv("PULLDB_TRUSTED_PROXY_IPS", "127.0.0.1,::1").split(",")
+    if ip.strip()
+)
 
 
 class RateLimiter:
@@ -61,11 +70,11 @@ class RateLimiter:
         self._lock = threading.Lock()
 
     def _get_client_ip(self, request: Request) -> str:
-        """Extract client IP, honouring ``X-Forwarded-For`` from a trusted proxy.
+        """Extract client IP, honouring ``X-Forwarded-For`` only from trusted proxies.
 
-        Takes the *leftmost* entry from ``X-Forwarded-For`` (the original
-        client address as set by the first proxy in the chain).  Falls back
-        to ``request.client.host`` if the header is absent.
+        Only uses ``X-Forwarded-For`` when the direct connection comes from a
+        trusted proxy IP (see ``PULLDB_TRUSTED_PROXY_IPS``). Falls back to
+        ``request.client.host`` otherwise to prevent IP spoofing.
 
         Args:
             request: The incoming Starlette request.
@@ -73,12 +82,12 @@ class RateLimiter:
         Returns:
             Best-effort client IP string; ``"unknown"`` if unavailable.
         """
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
-        if request.client:
-            return request.client.host
-        return "unknown"
+        direct_ip = request.client.host if request.client else None
+        if direct_ip in _TRUSTED_PROXY_IPS:
+            forwarded_for = request.headers.get("X-Forwarded-For")
+            if forwarded_for:
+                return forwarded_for.split(",")[0].strip()
+        return direct_ip or "unknown"
 
     def check(self, request: Request) -> None:
         """Apply the rate limit to *request*.
@@ -96,34 +105,42 @@ class RateLimiter:
         ip = self._get_client_ip(request)
         now = time.monotonic()
         cutoff = now - self.window_seconds
+        retry_after: int | None = None
 
         with self._lock:
-            if ip not in self._buckets:
-                self._buckets[ip] = deque()
-            bucket = self._buckets[ip]
+            bucket = self._buckets.get(ip)
+            if bucket is not None:
+                # Evict timestamps outside the sliding window
+                while bucket and bucket[0] < cutoff:
+                    bucket.popleft()
+                # Evict empty buckets to prevent unbounded growth
+                if not bucket:
+                    del self._buckets[ip]
+                    bucket = None
 
-            # Evict timestamps outside the sliding window
-            while bucket and bucket[0] < cutoff:
-                bucket.popleft()
+            if bucket is None:
+                bucket = deque()
+                self._buckets[ip] = bucket
 
             if len(bucket) >= self.max_requests:
                 # Time until the oldest request ages out of the window
                 retry_after = max(1, int(self.window_seconds - (now - bucket[0])) + 1)
-                logger.warning(
-                    "rate_limit_exceeded ip=%s endpoint=%s count=%d limit=%d retry_after=%ds",
-                    ip,
-                    self.name,
-                    len(bucket),
-                    self.max_requests,
-                    retry_after,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Too many requests. Try again in {retry_after}s.",
-                    headers={"Retry-After": str(retry_after)},
-                )
+            else:
+                bucket.append(now)
 
-            bucket.append(now)
+        if retry_after is not None:
+            logger.warning(
+                "rate_limit_exceeded ip=%s endpoint=%s limit=%d retry_after=%ds",
+                ip,
+                self.name,
+                self.max_requests,
+                retry_after,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Too many requests. Try again in {retry_after}s.",
+                headers={"Retry-After": str(retry_after)},
+            )
 
     def __call__(self, request: Request) -> None:
         """FastAPI dependency interface — called automatically by the DI system."""

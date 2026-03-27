@@ -89,6 +89,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "0"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "font-src 'self'; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'"
+        )
         return response
 
 
@@ -105,6 +114,12 @@ _allowed_hosts: list[str] = (
     if _raw_allowed_hosts
     else ["*"]
 )
+if _allowed_hosts == ["*"]:
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "TrustedHostMiddleware: PULLDB_ALLOWED_HOSTS is not set — "
+        "accepting requests for any Host header. Set this env var in production."
+    )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
 
 # Per-endpoint rate limiters (sliding window, per source IP).
@@ -623,6 +638,15 @@ async def change_password(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Current password is incorrect",
             )
+
+    # Validate new password against policy
+    from pulldb.domain.validation import validate_password_policy
+    is_valid, policy_error = validate_password_policy(request.new_password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=policy_error,
+        )
 
     # Hash and set new password
     new_hash = hash_password(request.new_password)

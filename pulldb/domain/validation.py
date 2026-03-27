@@ -489,6 +489,33 @@ def try_create_directory(path: str) -> tuple[bool, str | None]:
 
 
 # =============================================================================
+# Password Policy Validation
+# =============================================================================
+
+
+def validate_password_policy(password: str) -> tuple[bool, str]:
+    """Validate password against policy: 8+ chars, upper, lower, number, symbol.
+
+    Args:
+        password: Password to validate.
+
+    Returns:
+        Tuple of (is_valid, error_message). error_message is empty string on success.
+    """
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters"
+    if not re.search(r"[A-Z]", password):
+        return False, "Password must contain at least one uppercase letter"
+    if not re.search(r"[a-z]", password):
+        return False, "Password must contain at least one lowercase letter"
+    if not re.search(r"[0-9]", password):
+        return False, "Password must contain at least one number"
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;\'`~]', password):
+        return False, "Password must contain at least one symbol (!@#$%^&*...)"
+    return True, ""
+
+
+# =============================================================================
 # Setting-Type Validators (for SettingMeta.validators)
 # =============================================================================
 

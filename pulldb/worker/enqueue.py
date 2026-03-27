@@ -850,7 +850,7 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
                         ),
                     )
         except Exception:
-            logger.debug("Job supersession failed for target '%s'", target, exc_info=True)
+            logger.error("Job supersession failed for target '%s'", target, exc_info=True)
 
     stored = state.job_repo.get_job_by_id(job_id) or job
 

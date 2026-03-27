@@ -140,6 +140,13 @@ def _try_process_restore_job(
                 str(exc),
                 MetricLabels(phase="job_execute", status="error"),
             )
+            try:
+                job_repo.mark_job_failed(job.id, str(exc))
+            except Exception as mark_exc:
+                logger.error(
+                    "Failed to mark job as failed",
+                    extra={"job_id": job.id, "error": str(mark_exc)},
+                )
     finally:
         current_task_name.reset(token)
 

@@ -412,8 +412,8 @@ def _safe_extract_with_progress(
                 f"Archive entry '{member.name}' escapes extraction directory"
             )
 
-        # Extract single member
-        tar.extract(member, path=base)
+        # Extract single member (filter='data' strips dangerous attributes)
+        tar.extract(member, path=base, filter="data")
         files_extracted += 1
         if member.isfile():
             extracted_bytes += member.size

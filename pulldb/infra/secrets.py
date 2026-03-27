@@ -111,11 +111,9 @@ class CredentialResolver:
         self._secrets_manager: Any = None
         self._ssm: Any = None
 
-        # Set AWS profile in environment if provided
-        if self.aws_profile:
-            os.environ["AWS_PROFILE"] = self.aws_profile
-            logger.debug(f"Using AWS profile: {self.aws_profile}")
         logger.debug(f"Using AWS region: {self.aws_region}")
+        if self.aws_profile:
+            logger.debug(f"Using AWS profile: {self.aws_profile}")
 
     def _get_secrets_manager_client(self) -> Any:
         """Get or create Secrets Manager client (lazy initialization).

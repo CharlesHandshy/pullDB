@@ -178,7 +178,7 @@ def run_command(
 
     return CommandResult(
         command=list(command),
-        exit_code=proc.returncode or 0,
+        exit_code=proc.returncode if proc.returncode is not None else 0,
         started_at=start,
         completed_at=completed,
         duration_seconds=duration,
@@ -308,7 +308,7 @@ def run_command_streaming(
 
     return CommandResult(
         command=list(command),
-        exit_code=proc.returncode or 0,
+        exit_code=proc.returncode if proc.returncode is not None else 0,
         started_at=start,
         completed_at=completed,
         duration_seconds=duration,

@@ -888,7 +888,7 @@ class OverlordProvisioningService:
                         creds = resolver.resolve(credential_ref)
                         port = creds.port if hasattr(creds, 'port') else 3306
                     except Exception:
-                        pass
+                        logger.warning("Failed to resolve overlord credentials for port lookup; using default 3306", exc_info=True)
 
                 self._drop_user(
                     host=overlord_host,

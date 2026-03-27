@@ -200,6 +200,112 @@ def _get_api_state_dependency() -> "APIState":
     return cast(APIState, state)
 
 
+async def _resolve_hmac_user(
+    request: Request,
+    x_api_key: str,
+    x_timestamp: str,
+    x_signature: str,
+    auth_repo: "AuthRepository | None",
+    user_repo: object,
+) -> "User":
+    """Verify HMAC credentials and return the authenticated user.
+
+    Shared logic for get_authenticated_user and get_optional_user to avoid
+    duplication. Raises HTTPException on any auth failure.
+    """
+    import uuid as _uuid
+
+    if not validate_signature_timestamp(x_timestamp):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Request timestamp expired or invalid",
+        )
+
+    try:
+        secret = get_api_secret(x_api_key, auth_repo)
+    except KeyPendingApprovalError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"API key pending approval: {e.key_id}. Contact an administrator to approve your key.",
+        )
+    except KeyRevokedError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"API key has been revoked: {e.key_id}. Contact an administrator if you believe this is an error.",
+        )
+
+    if not secret:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+        )
+
+    method = request.method
+    path = request.url.path
+    body: bytes | None = None
+    if method in ("POST", "PUT", "PATCH"):
+        body = await request.body()
+
+    if not verify_signature(method, path, body, x_timestamp, x_signature, secret):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid request signature",
+        )
+
+    try:
+        user_or_username = get_user_for_api_key(x_api_key, auth_repo)
+    except KeyPendingApprovalError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"API key pending approval: {e.key_id}. Contact an administrator to approve your key.",
+        )
+    except KeyRevokedError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"API key has been revoked: {e.key_id}. Contact an administrator if you believe this is an error.",
+        )
+
+    if not user_or_username:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key has no associated user",
+        )
+
+    try:
+        _uuid.UUID(user_or_username)
+        _is_uuid = True
+    except ValueError:
+        _is_uuid = False
+
+    user: User | None
+    if _is_uuid:
+        user = await run_in_threadpool(
+            user_repo.get_user_by_id, user_or_username  # type: ignore[union-attr]
+        )
+    else:
+        user = await run_in_threadpool(
+            user_repo.get_user_by_username, user_or_username  # type: ignore[union-attr]
+        )
+
+    if user and user.disabled_at:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is disabled",
+        )
+    if user and user.locked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is locked",
+        )
+    if user:
+        return user
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="User not found for API key",
+    )
+
+
 async def get_authenticated_user(
     request: Request,
     state: "APIState" = Depends(_get_api_state_dependency),
@@ -230,108 +336,18 @@ async def get_authenticated_user(
             ...
     """
     # Try HMAC signed authentication first (CLI/programmatic)
+    auth_repo = state.auth_repo if hasattr(state, "auth_repo") else None
     if x_api_key and x_timestamp and x_signature:
-        # Validate timestamp is recent (prevent replay attacks)
-        if not validate_signature_timestamp(x_timestamp):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Request timestamp expired or invalid",
-            )
-
-        # Get secret for this API key (try database first, then env vars)
-        auth_repo = state.auth_repo if hasattr(state, "auth_repo") else None
-        
-        try:
-            secret = get_api_secret(x_api_key, auth_repo)
-        except KeyPendingApprovalError as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"API key pending approval: {e.key_id}. Contact an administrator to approve your key.",
-            )
-        except KeyRevokedError as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"API key has been revoked: {e.key_id}. Contact an administrator if you believe this is an error.",
-            )
-        
-        if not secret:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid API key",
-            )
-
-        # Get request details for signature verification
-        method = request.method
-        path = request.url.path
-
-        # Read body for POST/PUT/PATCH requests
-        body: bytes | None = None
-        if method in ("POST", "PUT", "PATCH"):
-            body = await request.body()
-
-        # Verify signature
-        if not verify_signature(method, path, body, x_timestamp, x_signature, secret):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid request signature",
-            )
-
-        # Signature valid - get user for this API key
-        try:
-            user_or_username = get_user_for_api_key(x_api_key, auth_repo)
-        except KeyPendingApprovalError as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"API key pending approval: {e.key_id}. Contact an administrator to approve your key.",
-            )
-        except KeyRevokedError as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"API key has been revoked: {e.key_id}. Contact an administrator if you believe this is an error.",
-            )
-        if not user_or_username:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="API key has no associated user",
-            )
-
-        # If we got a user_id from database, look up by ID; otherwise by username
-        # Check if it looks like a UUID (36 chars with hyphens)
-        user: User | None
-        if len(user_or_username) == 36 and user_or_username.count("-") == 4:
-            # It's a user_id from the database
-            user = await run_in_threadpool(
-                state.user_repo.get_user_by_id, user_or_username
-            )
-        else:
-            # It's a username from env var
-            user = await run_in_threadpool(
-                state.user_repo.get_user_by_username, user_or_username
-            )
-
-        if user and user.disabled_at:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User account is disabled",
-            )
-        if user and user.locked:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account is locked",
-            )
-        if user:
-            # Update last_used_at and last_used_ip for this API key
-            if auth_repo and hasattr(auth_repo, "update_api_key_last_used"):
-                client_ip = request.client.host if request.client else None
-                await run_in_threadpool(
-                    auth_repo.update_api_key_last_used, x_api_key, client_ip
-                )
-            return user
-
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found for API key",
+        user = await _resolve_hmac_user(
+            request, x_api_key, x_timestamp, x_signature, auth_repo, state.user_repo
         )
+        # Update last_used_at and last_used_ip for this API key
+        if auth_repo and hasattr(auth_repo, "update_api_key_last_used"):
+            client_ip = request.client.host if request.client else None
+            await run_in_threadpool(
+                auth_repo.update_api_key_last_used, x_api_key, client_ip
+            )
+        return user
 
     # Try session authentication (Web UI)
     session_token = x_session_token or request.cookies.get("session_token")
@@ -424,100 +440,11 @@ async def get_optional_user(
     """
     # Get auth_repo from state for database lookups
     auth_repo = state.auth_repo if hasattr(state, "auth_repo") else None
-    
+
     # Try HMAC signed authentication first
     if x_api_key and x_timestamp and x_signature:
-        # Validate timestamp is recent (prevent replay attacks)
-        if not validate_signature_timestamp(x_timestamp):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Request timestamp expired or invalid",
-            )
-
-        # Get secret for this API key (check database first, then env vars)
-        try:
-            secret = get_api_secret(x_api_key, auth_repo)
-        except KeyPendingApprovalError as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"API key pending approval: {e.key_id}. Contact an administrator to approve your key.",
-            )
-        except KeyRevokedError as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"API key has been revoked: {e.key_id}. Contact an administrator if you believe this is an error.",
-            )
-        if not secret:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid API key",
-            )
-
-        # Get request details for signature verification
-        method = request.method
-        path = request.url.path
-
-        # Read body for POST/PUT/PATCH requests
-        body: bytes | None = None
-        if method in ("POST", "PUT", "PATCH"):
-            body = await request.body()
-
-        # Verify signature
-        if not verify_signature(method, path, body, x_timestamp, x_signature, secret):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid request signature",
-            )
-
-        # Signature valid - get user for this API key
-        try:
-            user_or_username = get_user_for_api_key(x_api_key, auth_repo)
-        except KeyPendingApprovalError as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"API key pending approval: {e.key_id}. Contact an administrator to approve your key.",
-            )
-        except KeyRevokedError as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"API key has been revoked: {e.key_id}. Contact an administrator if you believe this is an error.",
-            )
-        if not user_or_username:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="API key has no associated user",
-            )
-
-        # If we got a user_id from database, look up by ID; otherwise by username
-        # Check if it looks like a UUID (36 chars with hyphens)
-        user: User | None
-        if len(user_or_username) == 36 and user_or_username.count("-") == 4:
-            # It's a user_id from the database
-            user = await run_in_threadpool(
-                state.user_repo.get_user_by_id, user_or_username
-            )
-        else:
-            # It's a username from env var
-            user = await run_in_threadpool(
-                state.user_repo.get_user_by_username, user_or_username
-            )
-            
-        if user and user.disabled_at:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User account is disabled",
-            )
-        if user and user.locked:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account is locked",
-            )
-        if user:
-            return user
-
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found for API key",
+        return await _resolve_hmac_user(
+            request, x_api_key, x_timestamp, x_signature, auth_repo, state.user_repo
         )
 
     # Try session authentication (Web UI)

@@ -912,26 +912,26 @@ class JobRepository:
         with self.pool.connection() as conn:
             cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
-            # Get current retry_count before incrementing
-            cursor.execute(
-                "SELECT retry_count FROM jobs WHERE id = %s",
-                (job_id,),
-            )
-            row = cursor.fetchone()
-            current_retry = row["retry_count"] if row else 0
-            new_retry = current_retry + 1
-
+            # Atomic increment avoids TOCTOU race between SELECT and UPDATE
             cursor.execute(
                 """
                 UPDATE jobs
                 SET status = 'deleting',
                     started_at = UTC_TIMESTAMP(6),
                     worker_id = NULL,
-                    retry_count = %s
+                    retry_count = retry_count + 1
                 WHERE id = %s
                 """,
-                (new_retry, job_id),
+                (job_id,),
             )
+
+            # Read back the new retry_count for the event log
+            cursor.execute(
+                "SELECT retry_count FROM jobs WHERE id = %s",
+                (job_id,),
+            )
+            row = cursor.fetchone()
+            new_retry = row["retry_count"] if row else 1
 
             # Log delete_started event with attempt number
             detail = json.dumps({"attempt": new_retry})

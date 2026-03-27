@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from pulldb.domain.models import User
+from pulldb.domain.validation import validate_password_policy
 from pulldb.infra.rate_limit import RateLimiter
 from pulldb.web.dependencies import get_api_state, get_session_user, templates
 from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
@@ -137,6 +138,7 @@ async def login_submit(
         key="session_token",
         value=session_token,
         httponly=True,
+        secure=True,
         samesite="lax",
         path="/"
     )
@@ -161,25 +163,6 @@ async def logout(
 # Forced Password Change (for users with force_password_reset flag)
 # =============================================================================
 
-def validate_password_policy(password: str) -> tuple[bool, str]:
-    """Validate password against policy: 8+ chars, upper, lower, number, symbol.
-    
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    import re
-    
-    if len(password) < 8:
-        return False, "Password must be at least 8 characters"
-    if not re.search(r'[A-Z]', password):
-        return False, "Password must contain at least one uppercase letter"
-    if not re.search(r'[a-z]', password):
-        return False, "Password must contain at least one lowercase letter"
-    if not re.search(r'[0-9]', password):
-        return False, "Password must contain at least one number"
-    if not re.search(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;\'`~]', password):
-        return False, "Password must contain at least one symbol (!@#$%^&*...)"
-    return True, ""
 
 
 @router.get("/change-password", response_class=HTMLResponse)
@@ -534,13 +517,13 @@ async def change_password(
             },
         )
 
-    except Exception as exc:
+    except Exception:
         return templates.TemplateResponse(
             "features/auth/profile.html",
             {
                 "request": request,
                 "user": user,
-                "error": f"Error changing password: {str(exc)}",
+                "error": "An error occurred while changing your password. Please try again.",
                 "active_nav": "profile",
             },
             status_code=500,
