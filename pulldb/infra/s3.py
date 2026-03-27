@@ -152,14 +152,16 @@ class S3ClientProtocol(Protocol):
 
 # Old format (mydumper 0.9.x): daily_mydumper_<customer>_<ts>Z_<Day>_<host>.tar
 # e.g. daily_mydumper_acme_2026-03-23T07-39-14Z_Monday_db10.tar
+# Host pattern accepts any hostname: dbimp, db10, aurora-prod, pestroutes-db1, etc.
 _FORMAT_V1 = re.compile(
-    r"^daily_mydumper_(?P<target>.+?)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_[A-Za-z]+_(?:dbimp|db\d+)\.tar$"
+    r"^daily_mydumper_(?P<target>.+?)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_[A-Za-z]+_[A-Za-z][A-Za-z0-9_-]*\.tar$"
 )
 
 # New format (mydumper 0.21.1+): daily_mydumper_<host>_<ts>_<Day>_<customer>.tar
 # e.g. daily_mydumper_db10_2026-03-23T07-17-16_Monday_acme.tar
+# Host pattern accepts any hostname: dbimp, db10, aurora-prod, pestroutes-db1, etc.
 _FORMAT_V2 = re.compile(
-    r"^daily_mydumper_(?:dbimp|db\d+)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})_[A-Za-z]+_(?P<target>.+?)\.tar$"
+    r"^daily_mydumper_(?P<host>[A-Za-z][A-Za-z0-9_-]*)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})_[A-Za-z]+_(?P<target>.+?)\.tar$"
 )
 
 # Backward-compatible alias — matches old format only.
@@ -593,7 +595,7 @@ def discover_latest_backup(
             # Detect structurally similar filename with bad timestamp to
             # provide clearer diagnostic (test expectation).
             if filename.startswith(f"daily_mydumper_{target}_") and (
-                filename.endswith("_dbimp.tar") or re.search(r"_db\d+\.tar$", filename)
+                re.search(r"_[A-Za-z][A-Za-z0-9_-]*\.tar$", filename)
             ):
                 raise BackupValidationError(
                     job_id="discovery",
