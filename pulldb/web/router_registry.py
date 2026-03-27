@@ -21,6 +21,7 @@ from pulldb.web.features.dashboard.routes import router as dashboard_router
 from pulldb.web.features.jobs.routes import router as jobs_router
 from pulldb.web.features.manager.routes import router as manager_router
 from pulldb.web.features.mockup.routes import router as mockup_router
+from pulldb.web.features.notifications.routes import router as notifications_router
 from pulldb.web.features.requests.routes import router as requests_router
 from pulldb.web.features.restore.routes import router as restore_router
 
@@ -41,6 +42,7 @@ main_router.include_router(admin_overlord_router)
 main_router.include_router(admin_db_discovery_router)
 main_router.include_router(audit_router)
 main_router.include_router(manager_router)
+main_router.include_router(notifications_router, prefix="/web/notifications")
 main_router.include_router(requests_router)
 main_router.include_router(mockup_router)
 

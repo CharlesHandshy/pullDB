@@ -327,7 +327,7 @@ class RetentionService:
             user_id: User ID to get items for.
 
         Returns:
-            MaintenanceItems with expired, expiring, and locked lists.
+            MaintenanceItems with expired and expiring lists.
         """
         notice_days = self.settings_repo.get_expiring_warning_days()
         grace_days = self.settings_repo.get_cleanup_grace_days()

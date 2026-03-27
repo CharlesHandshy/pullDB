@@ -377,6 +377,12 @@ def validate_job_request(req: JobRequest) -> None:
             "Must specify exactly one of customer or qatemplate for restore request.",
         )
 
+    if req.custom_target and req.suffix:
+        raise EnqueueValidationError(
+            "Cannot specify both 'custom_target' and 'suffix'. "
+            "With 'custom_target' you control the full database name directly.",
+        )
+
 
 def check_host_active_capacity(state: EnqueueDeps, hostname: str) -> None:
     """Check if host has capacity for more active jobs.
@@ -504,6 +510,7 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
     # Accumulate soft-block acks so all conditions can be presented at once.
     _pending_acks: list[str] = []
     _pending_context: dict[str, Any] = {}
+    _ownership_transfer_from_user_id: str | None = None  # For post-enqueue notification
 
     try:
         target_result = _construct_target(user, req)
@@ -701,6 +708,7 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
             else:
                 # Acknowledged — supersede the previous owner's deployed job so the
                 # new restore can proceed and will write fresh pullDB metadata.
+                _ownership_transfer_from_user_id = owner_id  # Notify this user after enqueue
                 if old_job:
                     state.job_repo.supersede_job(old_job.id, "pending-" + target)
                     emit_event(
@@ -716,23 +724,26 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
                     )
 
         # ack_ownership_transfer implies overwrite consent (the DB must be replaced).
-        # Also suppress the overwrite error when any ack is still pending — the user
-        # will see the ack panel first; overwrite can be validated on re-submit.
-        if not req.overwrite and not req.ack_ownership_transfer and not _pending_acks:
-            emit_event(
-                "job_enqueue_blocked",
-                f"Restore blocked: database '{target}' on '{dbhost}' exists "
-                f"(overwrite not enabled)",
-                labels=MetricLabels(
-                    target=target,
-                    phase="enqueue",
-                    status="blocked_no_overwrite",
-                ),
-            )
-            raise DuplicateJobError(
-                f"Database '{target}' already exists on '{dbhost}'. "
-                f"Enable 'Allow Overwrite' to replace it, or use a different target name.",
-            )
+        if not req.overwrite and not req.ack_ownership_transfer:
+            if _pending_acks:
+                # Bundle the overwrite requirement into the ack context so the UI
+                # can show the overwrite checkbox on the same confirmation panel.
+                _pending_context["overwrite_needed"] = True
+            else:
+                emit_event(
+                    "job_enqueue_blocked",
+                    f"Restore blocked: database '{target}' on '{dbhost}' exists "
+                    f"(overwrite not enabled)",
+                    labels=MetricLabels(
+                        target=target,
+                        phase="enqueue",
+                        status="blocked_no_overwrite",
+                    ),
+                )
+                raise DuplicateJobError(
+                    f"Database '{target}' already exists on '{dbhost}'. "
+                    f"Enable 'Allow Overwrite' to replace it, or use a different target name.",
+                )
 
     # Raise combined ack exception if any soft-block conditions are unacknowledged.
     if _pending_acks:
@@ -793,6 +804,31 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
             f"Failed to enqueue job due to an unexpected error. Please try again later.",
         ) from exc
 
+    # Notify the previous owner that ownership was transferred to this user.
+    if _ownership_transfer_from_user_id:
+        try:
+            state.user_repo.create_notification(
+                user_id=_ownership_transfer_from_user_id,
+                notification_type="ownership_claimed",
+                message=(
+                    f"{user.user_code} has taken ownership of "
+                    f"{target} on {dbhost}"
+                ),
+                context={
+                    "job_id": job_id,
+                    "target": target,
+                    "dbhost": dbhost,
+                    "new_owner_code": user.user_code,
+                    "new_owner_username": user.username,
+                },
+            )
+        except Exception:
+            logger.debug(
+                "Failed to create ownership notification for user %s",
+                _ownership_transfer_from_user_id,
+                exc_info=True,
+            )
+
     # Mark any previous completed job for this target as superseded
     if hasattr(state.job_repo, "get_latest_completed_job_for_target"):
         try:
@@ -842,7 +878,9 @@ def enqueue_job(state: EnqueueDeps, req: JobRequest) -> EnqueueResult:
                 "dbhost": dbhost,
             },
         )
-        if req.ack_customer_name_override:
+        if req.ack_customer_name_override and req.custom_target and (
+            _letters_only(req.custom_target) == _letters_only(req.customer or "")
+        ):
             state.audit_repo.log_action(
                 actor_user_id=user.user_id,
                 action="override_customer_name",

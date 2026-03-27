@@ -679,6 +679,31 @@
     flex-shrink: 0;
 }
 
+.no-hosts-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--warning-50, #fffbeb);
+    border: 1px solid var(--warning-200, #fde68a);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-5);
+    color: var(--warning-800, #92400e);
+}
+
+.no-hosts-banner-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--warning-600, #d97706);
+    flex-shrink: 0;
+}
+
+.section-icon {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
 /* ===========================================
    HOST SELECTION
    =========================================== */
@@ -1464,8 +1489,6 @@
 }
 
 .restore-section--highlight .section-icon {
-    width: 20px;
-    height: 20px;
     color: var(--primary-600);
 }
 
@@ -1944,19 +1967,12 @@
    =========================================== */
 
 .override-ack-section {
-    border: 2px solid var(--warning-400, #f59e0b);
+    border: 1px solid var(--warning-300);
     border-radius: var(--radius-md);
-    background: var(--warning-50, #fffbeb);
-}
-
-.override-ack-section .restore-section-header {
-    background: var(--warning-100, #fef3c7);
-    border-bottom: 1px solid var(--warning-300, #fcd34d);
-    color: var(--warning-900, #78350f);
 }
 
 .override-ack-section .section-icon {
-    color: var(--warning-600, #d97706);
+    color: var(--warning-600);
 }
 
 .override-ack-intro {
@@ -2013,6 +2029,18 @@
     width: 16px;
     height: 16px;
     cursor: pointer;
+}
+
+.override-ack-sub {
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--color-border);
+}
+
+.override-ack-sub p {
+    margin-bottom: var(--space-2);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
 }
 
 .override-frozen-summary {

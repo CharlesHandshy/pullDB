@@ -539,20 +539,21 @@ class AdminTask:
 @dataclass(frozen=True)
 class MaintenanceItems:
     """Container for user's maintenance modal items.
-    
+
     Groups databases by their maintenance status for display in the
     daily maintenance acknowledgment modal.
-    
+
+    Locked databases are intentionally excluded — they are already protected
+    from cleanup and must be managed via the job detail page.
+
     Attributes:
         expired: Jobs with databases past their expiration date (action required).
         expiring: Jobs with databases expiring soon (notice only).
-        locked: Jobs with locked databases past expiration (notice only).
     """
-    
+
     expired: list[Job]
     expiring: list[Job]
-    locked: list[Job]
-    
+
     @property
     def has_items(self) -> bool:
         """Check if there are any maintenance items to display."""
@@ -566,6 +567,29 @@ class MaintenanceItems:
         User can acknowledge without taking action.
         """
         return bool(self.expired)
+
+
+@dataclass(frozen=True)
+class UserNotification:
+    """A notification delivered to a user's inbox on next login.
+
+    Attributes:
+        id: UUID primary key.
+        user_id: Recipient user UUID.
+        type: Notification type key (e.g. 'ownership_claimed').
+        message: Human-readable message shown to the user.
+        context: Optional structured data (target, dbhost, new_owner …).
+        created_at: When the notification was created.
+        read_at: When dismissed; None means unread.
+    """
+
+    id: str
+    user_id: str
+    type: str
+    message: str
+    context: dict
+    created_at: datetime
+    read_at: datetime | None = None
 
 
 @dataclass(frozen=True)

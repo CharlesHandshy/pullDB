@@ -109,8 +109,19 @@ async def login_submit(
                             notice_days=7,
                             grace_days=7,
                         )
-                        if items.expired or items.expiring or items.locked:
+                        if items.expired or items.expiring:
                             redirect_url = "/web/maintenance"
+
+    # Check for pending inbox notifications
+    if redirect_url == "/web/dashboard/":
+        if hasattr(state, "user_repo") and state.user_repo:
+            if hasattr(state.user_repo, "get_pending_notifications"):
+                try:
+                    pending = state.user_repo.get_pending_notifications(user.user_id)
+                    if pending:
+                        redirect_url = "/web/notifications/"
+                except Exception:
+                    pass  # Non-fatal: proceed to dashboard if check fails
 
     # Check for settings drift (admin users only)
     if redirect_url == "/web/dashboard/" and user.is_admin:
@@ -703,12 +714,15 @@ async def maintenance_submit(
                         days = int(str(days_str))
                         if hasattr(state.job_repo, "extend_job_expiration"):
                             from pulldb.worker.retention import RetentionService
-                            
+
                             settings_repo = getattr(state, "settings_repo", None)
+                            if settings_repo is None:
+                                errors.append(f"Cannot extend job {job_id[:8]}: settings repository not available")
+                                continue
                             retention_service = RetentionService(
                                 job_repo=state.job_repo,
                                 user_repo=state.user_repo,
-                                settings_repo=settings_repo,  # type: ignore[arg-type]
+                                settings_repo=settings_repo,
                             )
                             await run_in_threadpool(
                                 retention_service.extend_job,
@@ -716,11 +730,10 @@ async def maintenance_submit(
                                 days,
                                 user.user_id,
                             )
-                    
+
                     elif action == "lock":
-                        reason = str(form.get(f"lock_reason_{job_id}", "User locked via maintenance modal"))
                         from pulldb.worker.retention import RetentionService
-                        
+
                         settings_repo = getattr(state, "settings_repo", None)
                         retention_service = RetentionService(
                             job_repo=state.job_repo,
@@ -731,7 +744,7 @@ async def maintenance_submit(
                             retention_service.lock_job,
                             job_id,
                             user.user_id,
-                            reason,
+                            user.username,
                         )
                     
                 except Exception as e:

@@ -46,7 +46,7 @@ class ExtractionStats:
 #   3. Built-in defaults in config.py (_MYLOADER_DEFAULT_ARGS_BUILTIN)
 #
 # The format_tag parameter is now only used for informational purposes.
-# All backups use myloader 0.19.3-3 with metadata synthesis for legacy formats.
+# All backups use myloader 0.21.1-1 with metadata synthesis for legacy formats.
 
 
 @dataclass(slots=True)
@@ -137,7 +137,7 @@ def build_configured_myloader_spec(
         extra_args: Optional additional CLI args provided by caller.
         env: Optional env overrides passed to subprocess.
         format_tag: Backup format tag (informational only - all backups now
-            use myloader 0.19.3-3 with metadata synthesis for legacy formats).
+            use myloader 0.21.1-1 with metadata synthesis for legacy formats).
 
     Returns:
         Configured MyLoaderSpec honoring environment/settings overrides.

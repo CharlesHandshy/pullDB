@@ -199,6 +199,26 @@ class MySQLPool:
         """
         if pool_size is None:
             pool_size = int(os.getenv("PULLDB_MYSQL_POOL_SIZE", "5"))
+
+        # Enforce a minimum pool size driven by the myloader thread count.
+        # During a restore the worker fires concurrent DB calls from every
+        # myloader thread (event logging, abort checks) plus the main loop —
+        # a pool smaller than threads+4 will exhaust under normal load.
+        myloader_threads = int(os.getenv("PULLDB_MYLOADER_THREADS", "4"))
+        min_pool_size = myloader_threads + 4
+        if pool_size < min_pool_size:
+            logger.warning(
+                "PULLDB_MYSQL_POOL_SIZE=%d is too small for PULLDB_MYLOADER_THREADS=%d "
+                "(minimum required: %d = threads + 4 overhead). "
+                "Raising pool_size to %d. Set PULLDB_MYSQL_POOL_SIZE >= %d to silence this warning.",
+                pool_size,
+                myloader_threads,
+                min_pool_size,
+                min_pool_size,
+                min_pool_size,
+            )
+            pool_size = min_pool_size
+
         self._pool: MySQLConnectionPool = MySQLConnectionPool(
             pool_name=pool_name,
             pool_size=pool_size,

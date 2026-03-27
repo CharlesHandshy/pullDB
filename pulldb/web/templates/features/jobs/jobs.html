@@ -142,12 +142,18 @@
             <div id="resubmit-warnings" class="hidden">
                 <div class="alert alert-warning mt-3" id="resubmit-warning-text"></div>
             </div>
-            
+
+            <!-- Acknowledgment checkboxes - shown when override ack is required -->
+            <div id="resubmit-acks" class="hidden mt-3">
+                <div class="alert alert-warning"><strong>Acknowledgment required before resubmitting:</strong></div>
+                <div id="resubmit-ack-items" class="mt-2"></div>
+            </div>
+
             <!-- Error alerts populated by preflight -->
             <div id="resubmit-errors" class="hidden">
                 <div class="alert alert-danger mt-3" id="resubmit-error-text"></div>
             </div>
-            
+
             <!-- Loading state during preflight -->
             <div id="resubmit-loading" class="mt-3 text-center hidden">
                 <span class="spinner-sm"></span> Validating...
@@ -1121,21 +1127,25 @@
         resubmit: {
             currentJobId: null,
             currentTarget: null,
-            
+            pendingAcks: {},
+
             async open(jobId, target, owner) {
                 this.currentJobId = jobId;
                 this.currentTarget = target;
-                
+                this.pendingAcks = {};
+
                 // Reset modal state
                 document.getElementById('resubmit-job-id').textContent = jobId;
                 document.getElementById('resubmit-target').textContent = target;
                 document.getElementById('resubmit-warnings').classList.add('hidden');
+                document.getElementById('resubmit-acks').classList.add('hidden');
+                document.getElementById('resubmit-ack-items').innerHTML = '';
                 document.getElementById('resubmit-errors').classList.add('hidden');
                 document.getElementById('resubmit-loading').classList.remove('hidden');
                 document.getElementById('resubmit-execute').disabled = true;
-                
+
                 Modals.show('resubmit-modal');
-                
+
                 // Preflight validation
                 try {
                     const response = await fetch(`/web/jobs/api/${jobId}/resubmit`, {
@@ -1144,74 +1154,117 @@
                         credentials: 'same-origin',
                         body: JSON.stringify({ preflight: true })
                     });
-                    
+
                     const data = await response.json();
                     document.getElementById('resubmit-loading').classList.add('hidden');
-                    
+
                     if (!response.ok || data.can_resubmit === false) {
-                        // Hard error - cannot resubmit
                         document.getElementById('resubmit-error-text').textContent = data.detail || 'Cannot resubmit this job';
                         document.getElementById('resubmit-errors').classList.remove('hidden');
-                        document.getElementById('resubmit-execute').disabled = true;
                         return;
                     }
-                    
-                    // Show warnings if any
+
                     if (data.warnings && data.warnings.length > 0) {
-                        document.getElementById('resubmit-warning-text').innerHTML = 
+                        document.getElementById('resubmit-warning-text').innerHTML =
                             data.warnings.map(w => `⚠️ ${w}`).join('<br>');
                         document.getElementById('resubmit-warnings').classList.remove('hidden');
                     }
-                    
-                    // Enable execute button
+
                     document.getElementById('resubmit-execute').disabled = false;
-                    
+
                 } catch (error) {
                     document.getElementById('resubmit-loading').classList.add('hidden');
                     document.getElementById('resubmit-error-text').textContent = `Validation failed: ${error.message}`;
                     document.getElementById('resubmit-errors').classList.remove('hidden');
                 }
             },
-            
+
+            showAcks(required, context) {
+                const container = document.getElementById('resubmit-ack-items');
+                container.innerHTML = '';
+                const labels = {
+                    customer_name_override: `The target name <code>${context.target || ''}</code> matches a known customer. I confirm this is intended.`,
+                    ownership_transfer: `Database <code>${context.target || ''}</code> is owned by <strong>${context.current_owner || 'another user'}</strong>. I understand I am taking ownership.`,
+                };
+                required.forEach(key => {
+                    const label = document.createElement('label');
+                    label.style.cssText = 'display:flex;align-items:flex-start;gap:0.5rem;margin-bottom:0.75rem;cursor:pointer;';
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.dataset.ack = key;
+                    cb.style.marginTop = '3px';
+                    cb.addEventListener('change', () => this._updateAckButton(required));
+                    const span = document.createElement('span');
+                    span.innerHTML = labels[key] || key;
+                    label.appendChild(cb);
+                    label.appendChild(span);
+                    container.appendChild(label);
+                });
+                document.getElementById('resubmit-acks').classList.remove('hidden');
+                document.getElementById('resubmit-execute').disabled = true;
+            },
+
+            _updateAckButton(required) {
+                const container = document.getElementById('resubmit-ack-items');
+                const allChecked = required.every(key => {
+                    const cb = container.querySelector(`[data-ack="${key}"]`);
+                    return cb && cb.checked;
+                });
+                document.getElementById('resubmit-execute').disabled = !allChecked;
+            },
+
+            _collectAcks() {
+                const acks = {};
+                document.querySelectorAll('#resubmit-ack-items [data-ack]').forEach(cb => {
+                    if (cb.checked) acks[cb.dataset.ack] = true;
+                });
+                return acks;
+            },
+
             close() {
                 Modals.hide('resubmit-modal');
                 this.currentJobId = null;
                 this.currentTarget = null;
+                this.pendingAcks = {};
             },
-            
+
             async execute() {
                 if (!this.currentJobId) return;
-                
+
                 const btn = document.getElementById('resubmit-execute');
                 btn.disabled = true;
                 btn.textContent = 'Submitting...';
-                
+
+                const acks = this._collectAcks();
+                const body = { confirm: true, ...acks };
+
                 try {
                     const response = await fetch(`/web/jobs/api/${this.currentJobId}/resubmit`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin',
-                        body: JSON.stringify({ confirm: true })
+                        body: JSON.stringify(body)
                     });
-                    
+
                     const data = await response.json();
-                    
+
+                    if (response.status === 409 && data.requires_acknowledgment) {
+                        this.showAcks(data.required, data.context || {});
+                        btn.textContent = 'Resubmit Job';
+                        return;
+                    }
+
                     if (!response.ok || !data.success) {
                         showToast(`Resubmit failed: ${data.detail || 'Unknown error'}`, 'error');
                         btn.textContent = 'Resubmit Job';
                         btn.disabled = false;
                         return;
                     }
-                    
-                    // Success - redirect to new job
+
                     this.close();
                     showToast(`Job resubmitted as #${data.new_job_id}`, 'success');
-                    
-                    // Redirect to new job details after a short delay
-                    setTimeout(() => {
-                        window.location.href = `/web/jobs/${data.new_job_id}`;
-                    }, 500);
-                    
+                    setTimeout(() => { window.location.href = `/web/jobs/${data.new_job_id}`; }, 500);
+
                 } catch (error) {
                     showToast(`Resubmit failed: ${error.message}`, 'error');
                     btn.textContent = 'Resubmit Job';

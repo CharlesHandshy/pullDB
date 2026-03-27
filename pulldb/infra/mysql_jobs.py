@@ -3424,7 +3424,8 @@ class JobRepository:
     ) -> MaintenanceItems:
         """Get maintenance items for a user's daily modal.
 
-        Returns jobs grouped by maintenance status: expired, expiring, locked.
+        Returns jobs grouped by maintenance status: expired and expiring.
+        Locked databases are excluded by the query (AND locked_at IS NULL).
 
         Args:
             user_id: User ID to get items for.
@@ -3432,7 +3433,7 @@ class JobRepository:
             grace_days: Not used in query but available for reference.
 
         Returns:
-            MaintenanceItems with expired, expiring, and locked job lists.
+            MaintenanceItems with expired and expiring job lists.
         """
         with self.pool.connection() as conn:
             cursor = TypedDictCursor(conn.cursor(dictionary=True))
@@ -3468,7 +3469,7 @@ class JobRepository:
             elif job.is_expiring(notice_days):
                 expiring.append(job)
 
-        return MaintenanceItems(expired=expired, expiring=expiring, locked=[])
+        return MaintenanceItems(expired=expired, expiring=expiring)
 
     def get_expired_cleanup_candidates(self, grace_days: int) -> list[Job]:
         """Get jobs eligible for automatic database cleanup.

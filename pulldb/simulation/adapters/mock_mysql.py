@@ -1468,7 +1468,7 @@ class SimulatedJobRepository:
                 elif job.is_expiring(notice_days):
                     expiring.append(job)
 
-        return MaintenanceItems(expired=expired, expiring=expiring, locked=[])
+        return MaintenanceItems(expired=expired, expiring=expiring)
 
     def get_owned_databases(
         self,

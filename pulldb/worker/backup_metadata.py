@@ -669,6 +669,11 @@ def _synthesize_metadata(
         if result:
             db, table = result
             table_files[(db, table)].append(filepath)
+    for filepath in backup_path.glob("*.sql.zst"):
+        result = _parse_mydumper_filename(filepath.name.replace(".sql.zst", ".sql.gz"))
+        if result:
+            db, table = result
+            table_files[(db, table)].append(filepath)
 
     # For legacy backups, we skip expensive row estimation
     # Set rows=0 for all tables - progress tracking uses file counts instead
@@ -854,6 +859,11 @@ def _scan_for_row_estimates(
         # Fall back to scanning the directory
         for filepath in backup_dir.glob("*.sql.gz"):
             result = _parse_mydumper_filename(filepath.name)
+            if result:
+                db, table = result
+                table_files[(db, table)].append((filepath.name, filepath.stat().st_size))
+        for filepath in backup_dir.glob("*.sql.zst"):
+            result = _parse_mydumper_filename(filepath.name.replace(".sql.zst", ".sql.gz"))
             if result:
                 db, table = result
                 table_files[(db, table)].append((filepath.name, filepath.stat().st_size))

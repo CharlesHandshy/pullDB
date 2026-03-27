@@ -26,6 +26,7 @@ from pulldb.domain.models import (
     MaintenanceItems,
     User,
     UserDetail,
+    UserNotification,
     UserRole,
     UserSummary,
 )
@@ -777,7 +778,8 @@ class JobRepository(Protocol):
     ) -> "MaintenanceItems":
         """Get maintenance items for a user's daily modal.
 
-        Returns jobs grouped by maintenance status: expired, expiring, locked.
+        Returns jobs grouped by maintenance status: expired and expiring.
+        Locked databases are excluded — they are already protected from cleanup.
 
         Args:
             user_id: User ID to get items for.
@@ -785,7 +787,7 @@ class JobRepository(Protocol):
             grace_days: Additional grace days after expiry (for reference).
 
         Returns:
-            MaintenanceItems with expired, expiring, and locked job lists.
+            MaintenanceItems with expired and expiring job lists.
         """
         ...
 
@@ -1139,6 +1141,45 @@ class UserRepository(Protocol):
 
         Returns:
             True if user hasn't acknowledged today, False otherwise.
+        """
+        ...
+
+    def create_notification(
+        self,
+        user_id: str,
+        notification_type: str,
+        message: str,
+        context: dict[str, Any] | None = None,
+    ) -> str:
+        """Create an inbox notification for a user.
+
+        Args:
+            user_id: Recipient user UUID.
+            notification_type: Type key (e.g. 'ownership_claimed').
+            message: Human-readable message.
+            context: Optional structured data stored as JSON.
+
+        Returns:
+            Notification UUID.
+        """
+        ...
+
+    def get_pending_notifications(self, user_id: str) -> list[UserNotification]:
+        """Return all unread notifications for a user.
+
+        Args:
+            user_id: Recipient user UUID.
+
+        Returns:
+            List of unread UserNotification instances, oldest first.
+        """
+        ...
+
+    def mark_notifications_read(self, user_id: str) -> None:
+        """Mark all unread notifications for a user as read.
+
+        Args:
+            user_id: Recipient user UUID.
         """
         ...
 

@@ -9,6 +9,7 @@ HCA Layer: shared (pulldb/infra/)
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import uuid
 from datetime import datetime
@@ -20,6 +21,7 @@ from pulldb.domain.errors import LockedUserError
 from pulldb.domain.models import (
     User,
     UserDetail,
+    UserNotification,
     UserRole,
     UserSummary,
 )
@@ -624,6 +626,78 @@ class UserRepository:
                 last_ack_date = last_ack
             
             return last_ack_date < today
+
+    # ------------------------------------------------------------------
+    # User notifications
+    # ------------------------------------------------------------------
+
+    def create_notification(
+        self,
+        user_id: str,
+        notification_type: str,
+        message: str,
+        context: dict[str, Any] | None = None,
+    ) -> str:
+        """Create an inbox notification for a user."""
+        notification_id = str(uuid.uuid4())
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO user_notifications (id, user_id, type, message, context_json, created_at)
+                VALUES (%s, %s, %s, %s, %s, NOW())
+                """,
+                (
+                    notification_id,
+                    user_id,
+                    notification_type,
+                    message,
+                    json.dumps(context) if context else None,
+                ),
+            )
+            conn.commit()
+        return notification_id
+
+    def get_pending_notifications(self, user_id: str) -> list[UserNotification]:
+        """Return all unread notifications for a user, oldest first."""
+        with self.pool.connection() as conn:
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
+            cursor.execute(
+                """
+                SELECT id, user_id, type, message, context_json, created_at, read_at
+                FROM user_notifications
+                WHERE user_id = %s AND read_at IS NULL
+                ORDER BY created_at ASC
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+        return [
+            UserNotification(
+                id=row["id"],
+                user_id=row["user_id"],
+                type=row["type"],
+                message=row["message"],
+                context=json.loads(row["context_json"]) if row["context_json"] else {},
+                created_at=row["created_at"],
+                read_at=row["read_at"],
+            )
+            for row in rows
+        ]
+
+    def mark_notifications_read(self, user_id: str) -> None:
+        """Mark all unread notifications for a user as read."""
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE user_notifications
+                SET read_at = NOW()
+                WHERE user_id = %s AND read_at IS NULL
+                """,
+                (user_id,),
+            )
+            conn.commit()
 
     def _row_to_user(self, row: dict[str, Any]) -> User:
         """Convert database row to User dataclass.

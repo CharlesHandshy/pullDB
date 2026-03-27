@@ -41,16 +41,16 @@
         <!-- Expired Databases (Action Required) -->
         {% if expired_jobs %}
         <div class="card mb-4">
-            <div class="card-header" style="background-color: var(--danger-bg); border-color: var(--danger-border);">
-                <h2 style="color: var(--danger-text);">
+            <div class="card-header" style="background-color: var(--danger-100); border-color: var(--danger-300);">
+                <h2 style="color: var(--danger-800);">
                     {{ icon('alert-circle', size='20') }}
                     Expired Databases ({{ expired_jobs|length }})
                 </h2>
                 <span class="badge badge-danger">Action Required</span>
             </div>
-            <div class="card-body">
+            <div class="card-padding">
                 <p class="text-muted mb-3">
-                    These databases have passed their expiration date and will be automatically 
+                    These databases have passed their expiration date and will be automatically
                     cleaned up after the grace period unless you extend or lock them.
                 </p>
                 <div class="table-responsive">
@@ -102,16 +102,16 @@
         <!-- Expiring Soon (Notice) -->
         {% if expiring_jobs %}
         <div class="card mb-4">
-            <div class="card-header" style="background-color: var(--warning-bg); border-color: var(--warning-border);">
-                <h2 style="color: var(--warning-text);">
+            <div class="card-header" style="background-color: var(--warning-100); border-color: var(--warning-300);">
+                <h2 style="color: var(--warning-700);">
                     {{ icon('clock', size='20') }}
                     Expiring Soon ({{ expiring_jobs|length }})
                 </h2>
                 <span class="badge badge-warning">Notice</span>
             </div>
-            <div class="card-body">
+            <div class="card-padding">
                 <p class="text-muted mb-3">
-                    These databases will expire soon. Consider extending retention or locking 
+                    These databases will expire soon. Consider extending retention or locking
                     if you still need them.
                 </p>
                 <div class="table-responsive">
@@ -163,7 +163,7 @@
         <!-- No Items Message -->
         {% if not expired_jobs and not expiring_jobs %}
         <div class="card mb-4">
-            <div class="card-body text-center py-5">
+            <div class="card-padding text-center py-4">
                 {{ icon('check-circle', size='48', class='text-success mb-3') }}
                 <h3>No Maintenance Items</h3>
                 <p class="text-muted">All your databases are within their retention period.</p>
@@ -215,28 +215,27 @@
 }
 
 .badge-danger {
-    background-color: var(--danger-bg);
-    color: var(--danger-text);
-    border: 1px solid var(--danger-border);
+    background-color: var(--danger-100);
+    color: var(--danger-800);
+    border: 1px solid var(--danger-300);
 }
 
 .badge-warning {
-    background-color: var(--warning-bg);
-    color: var(--warning-text);
-    border: 1px solid var(--warning-border);
+    background-color: var(--warning-100);
+    color: var(--warning-700);
+    border: 1px solid var(--warning-300);
 }
 
-
 .text-danger {
-    color: var(--danger-text);
+    color: var(--danger-700);
 }
 
 .text-warning {
-    color: var(--warning-text);
+    color: var(--warning-700);
 }
 
 .text-success {
-    color: var(--success-text);
+    color: var(--success-600);
 }
 
 .form-actions {

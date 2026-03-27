@@ -2606,6 +2606,7 @@ async def api_resubmit_job(
         HostUnauthorizedError,
         JobLockedError,
         JobNotFoundError,
+        OverrideAcknowledgmentRequired,
         RateLimitError,
         UserDisabledError,
     )
@@ -2657,14 +2658,14 @@ async def api_resubmit_job(
             "warnings": warnings,
             "requires_confirmation": True
         }, status_code=400)
-    
+
     # Extract parameters from original job's options_json
     options = original_job.options_json or {}
-    
+
     # Determine job type
     is_qatemplate = options.get("is_qatemplate", "false").lower() == "true"
     is_custom_target = options.get("custom_target_used") == "true"
-    
+
     # Construct JobRequest from original parameters
     # Note: customer and qatemplate are mutually exclusive
     # BUT custom_target jobs ALSO need a customer (the backup source)
@@ -2676,6 +2677,8 @@ async def api_resubmit_job(
         backup_path=options.get("backup_path"),  # Use exact same backup
         overwrite=True,  # Resubmit implies overwrite intent
         custom_target=original_job.target if is_custom_target else None,
+        ack_customer_name_override=bool(body.get("customer_name_override")),
+        ack_ownership_transfer=bool(body.get("ownership_transfer")),
     )
     
     # Add audit trail to new job
@@ -2698,6 +2701,13 @@ async def api_resubmit_job(
             "message": f"Job resubmitted successfully as {original_job.owner_username}",
         }, status_code=201)
         
+    except OverrideAcknowledgmentRequired as e:
+        return JSONResponse(content={
+            "detail": str(e),
+            "requires_acknowledgment": True,
+            "required": e.required,
+            "context": e.context,
+        }, status_code=409)
     except EnqueueError as e:
         _error_status_map: dict[type[EnqueueError], int] = {
             EnqueueValidationError: 400,

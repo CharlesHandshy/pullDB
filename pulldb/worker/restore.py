@@ -680,10 +680,6 @@ def orchestrate_restore_workflow(
                 except Exception as e:
                     logger.warning(f"Early analyze worker error: {e}")
                     result["early_analyze"] = {"error": str(e)}
-                    # Safety net: finalize any tables stuck in analyzing phase
-                    # This prevents progress from showing stuck tables at 99%
-                    if tracker:
-                        tracker.finalize_analyze_phase()
         finally:
             # CRITICAL: Always stop both monitors to prevent connection leaks
             # This runs on success, failure, and abort - closing all staging DB connections
