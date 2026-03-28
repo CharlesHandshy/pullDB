@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="pullDB REST API reference — HMAC authentication, endpoints, request/response examples.">
     <title>API Reference - pullDB Help</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../../css/help.css">
     <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="../../js/alpine.min.js"></script>
 </head>
-<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
-    
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch(); closeShortcuts()" @keydown.window="if($event.key==='?' && !searchOpen) { shortcutsOpen ? closeShortcuts() : openShortcuts() }">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <div class="bg-gradient"></div>
     <div class="bg-grid"></div>
     
@@ -38,14 +37,21 @@
             </div>
             
             <div class="nav-actions">
-                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                <button class="mobile-menu-btn" @click="openMobileNav()" :aria-expanded="mobileNavOpen" aria-controls="mobile-nav-drawer" aria-label="Open navigation menu" title="Menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <button class="search-trigger" @click="openSearch()" :aria-expanded="searchOpen" aria-label="Search documentation" title="Search (/)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="M21 21l-4.35-4.35"/>
                     </svg>
                     <span class="search-hint">/</span>
                 </button>
-                <button class="theme-toggle" @click="toggleTheme()">
+                <button class="theme-toggle" @click="toggleTheme()" :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
                     <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
@@ -57,27 +63,51 @@
             </div>
         </div>
     </nav>
+
+    <!-- Mobile Nav Overlay -->
+    <div class="mobile-nav-overlay" :class="{ 'open': mobileNavOpen }" @click="closeMobileNav()"></div>
+    <div class="mobile-nav-drawer" id="mobile-nav-drawer" :class="{ 'open': mobileNavOpen }">
+        <div class="mobile-nav-header">
+            <span style="font-weight:700;font-size:1rem;">Navigation</span>
+            <button class="mobile-nav-close" @click="closeMobileNav()" aria-label="Close menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <a href="../getting-started.html" class="mobile-nav-link" @click="closeMobileNav()">Getting Started</a>
+        <a href="../cli/index.html" class="mobile-nav-link" @click="closeMobileNav()">CLI</a>
+        <a href="index.html" class="mobile-nav-link active" @click="closeMobileNav()">API</a>
+        <a href="../concepts/job-lifecycle.html" class="mobile-nav-link" @click="closeMobileNav()">Concepts</a>
+        <a href="../web-ui/index.html" class="mobile-nav-link" @click="closeMobileNav()">Web UI</a>
+    </div>
     
     <!-- Search Modal -->
-    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+    <div class="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" x-show="searchOpen" x-transition @click.self="closeSearch()" @keydown="handleSearchKeydown($event)">
         <div class="search-container" @click.stop>
             <div class="search-input-wrapper">
                 <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8"/>
                     <path d="M21 21l-4.35-4.35"/>
                 </svg>
-                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <label for="help-search-input" class="sr-only">Search documentation</label>
+                <input id="help-search-input" type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()" :aria-activedescendant="selectedIndex >= 0 && searchResults.length > 0 ? 'search-result-' + selectedIndex : undefined">
                 <kbd class="search-kbd">ESC</kbd>
             </div>
-            <div class="search-results" x-show="searchQuery.length > 0">
+            <div class="search-results" aria-live="polite" aria-atomic="false" x-show="searchQuery.length > 0">
+                <ul role="listbox" aria-label="Search results">
                 <template x-for="(result, index) in searchResults" :key="result.id">
+                    <li role="option" :id="'search-result-' + index" :aria-selected="index === selectedIndex">
                     <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
                         <div class="result-content">
                             <div class="result-title" x-html="result.title"></div>
                             <div class="result-preview" x-html="result.preview"></div>
                         </div>
                     </a>
+                    </li>
                 </template>
+                </ul>
             </div>
         </div>
     </div>
@@ -119,7 +149,7 @@
             </nav>
         </aside>
         
-        <main class="page-content">
+        <main id="main-content" class="page-content">
             <div class="breadcrumbs">
                 <a href="../../index.html">Help</a>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
@@ -142,7 +172,7 @@
                     <strong>Documentation Scope</strong><br>
                     This page covers the most commonly used API endpoints for CLI integration.
                     The full API includes 53 endpoints. For complete coverage including admin APIs,
-                    see the <a href="http://pulldb-server:8080/docs" target="_blank">OpenAPI documentation</a>
+                    see the OpenAPI / Swagger UI at <code>https://your-pulldb-server:8080/docs</code>
                     or use <code>GET /api/openapi.json</code>.
                 </div>
             </div>
@@ -175,7 +205,7 @@
                     <div class="terminal-header">
                         <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
                         <span class="terminal-title">curl with HMAC signature</span>
-                        <button class="terminal-copy" onclick="copyTerminal(this)">
+                        <button class="terminal-copy" onclick="copyTerminal(this)" aria-label="Copy to clipboard" title="Copy to clipboard">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -193,7 +223,7 @@
                 <h4>Signature Computation</h4>
                 <p>The signature is computed over a canonical string:</p>
                 <div class="code-block">
-                    <pre><code>string_to_sign = f"{METHOD}\n{PATH}\n{TIMESTAMP}\n{BODY_SHA256}"
+                    <pre><code class="language-python">string_to_sign = f"{METHOD}\n{PATH}\n{TIMESTAMP}\n{BODY_SHA256}"
 signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                 </div>
                 <p class="text-muted">Where <code>BODY_SHA256</code> is the SHA256 hash of the request body (or empty string for GET).</p>
@@ -204,7 +234,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     <div class="terminal-header">
                         <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
                         <span class="terminal-title">curl with session cookie</span>
-                        <button class="terminal-copy" onclick="copyTerminal(this)">
+                        <button class="terminal-copy" onclick="copyTerminal(this)" aria-label="Copy to clipboard" title="Copy to clipboard">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -225,7 +255,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     </svg>
                     <div>
                         <strong>Note:</strong> Most users should use the <code>pulldb</code> CLI rather than calling the API directly.
-                        The CLI handles HMAC signing automatically using <code>PULLDB_API_KEY</code> and <code>PULLDB_API_SECRET</code> environment variables.
+                        The CLI handles HMAC signing automatically using credentials stored in <code>~/.pulldb/credentials</code> (written at registration). Environment variables <code>PULLDB_API_KEY</code> and <code>PULLDB_API_SECRET</code> override the file if set.
                     </div>
                 </div>
                 
@@ -255,7 +285,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Request Body</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "username": "jsmith",
   "password": "securepassword123",
   "host_name": "dev-workstation"
@@ -263,12 +293,13 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     </div>
                     
                     <table class="param-table">
+                        <caption class="sr-only">Request body fields for POST /api/auth/register</caption>
                         <thead>
                             <tr>
-                                <th>Field</th>
-                                <th>Type</th>
-                                <th>Required</th>
-                                <th>Description</th>
+                                <th scope="col">Field</th>
+                                <th scope="col">Type</th>
+                                <th scope="col">Required</th>
+                                <th scope="col">Description</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -295,7 +326,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response (201 Created)</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "username": "jsmith",
   "user_code": "JSMITH",
   "api_key": "key_abc123def456...",
@@ -331,7 +362,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Request Body</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "username": "jsmith",
   "password": "securepassword123",
   "host_name": "my-laptop"
@@ -339,12 +370,13 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     </div>
                     
                     <table class="param-table">
+                        <caption class="sr-only">Request body fields for POST /api/auth/login</caption>
                         <thead>
                             <tr>
-                                <th>Field</th>
-                                <th>Type</th>
-                                <th>Required</th>
-                                <th>Description</th>
+                                <th scope="col">Field</th>
+                                <th scope="col">Type</th>
+                                <th scope="col">Required</th>
+                                <th scope="col">Description</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -371,7 +403,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response (200 OK)</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "username": "jsmith",
   "user_code": "JSMITH",
   "host_name": "my-laptop",
@@ -409,7 +441,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "hosts": [
     {
       "hostname": "localhost",
@@ -441,7 +473,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Request Body</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "user": "jsmith",
   "customer": "acme_pest",
   "dbhost": "localhost",
@@ -451,12 +483,13 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     </div>
                     
                     <table class="param-table">
+                        <caption class="sr-only">Request body fields for POST /api/jobs (submit a restore job)</caption>
                         <thead>
                             <tr>
-                                <th>Field</th>
-                                <th>Type</th>
-                                <th>Required</th>
-                                <th>Description</th>
+                                <th scope="col">Field</th>
+                                <th scope="col">Type</th>
+                                <th scope="col">Required</th>
+                                <th scope="col">Description</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -464,7 +497,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                                 <td><code>user</code></td>
                                 <td>string</td>
                                 <td>Yes</td>
-                                <td>User code for job ownership (e.g., "jsmith")</td>
+                                <td>User code for job ownership — a 6-character unique identifier assigned at registration (distinct from the username; visible in the registration response as <code>user_code</code>)</td>
                             </tr>
                             <tr>
                                 <td><code>customer</code></td>
@@ -538,7 +571,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response (201 Created)</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
   "target": "jsmithacmepest",
   "staging_name": "pulldb_stg_7f3a2b1c",
@@ -555,7 +588,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     <div class="terminal-header">
                         <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
                         <span class="terminal-title">curl</span>
-                        <button class="terminal-copy" onclick="copyTerminal(this)">
+                        <button class="terminal-copy" onclick="copyTerminal(this)" aria-label="Copy to clipboard" title="Copy to clipboard">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -604,7 +637,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
   "target": "jsmithacmepest",
   "status": "running",
@@ -636,6 +669,9 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Query Parameters</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Parameter</th><th scope="col">Type</th><th scope="col">Required</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td><code>limit</code></td>
@@ -653,7 +689,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                                 <td><code>history</code></td>
                                 <td>boolean</td>
                                 <td>No</td>
-                                <td>Only completed/failed/canceled jobs (default: false)</td>
+                                <td>Only terminal-state jobs (complete, failed, canceled, etc.) (default: false)</td>
                             </tr>
                             <tr>
                                 <td><code>filter</code></td>
@@ -666,7 +702,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response</h3>
                     <div class="code-block">
-                        <pre><code>[
+                        <pre><code class="language-json">[
   {
     "id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
     "target": "jsmithacmepest",
@@ -700,7 +736,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response (Queued Job)</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
   "status": "canceled",
   "message": "Job canceled successfully (was queued)"
@@ -709,7 +745,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response (Running Job)</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
   "status": "canceling",
   "message": "Cancellation requested; worker will stop at next checkpoint"
@@ -745,6 +781,9 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Query Parameters</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Parameter</th><th scope="col">Type</th><th scope="col">Required</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td><code>since_id</code></td>
@@ -757,7 +796,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response</h3>
                     <div class="code-block">
-                        <pre><code>[
+                        <pre><code class="language-json">[
   {
     "id": 1,
     "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
@@ -798,7 +837,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Request Body</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "months": 3
 }</code></pre>
                     </div>
@@ -806,10 +845,10 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     <table class="param-table">
                         <thead>
                             <tr>
-                                <th>Field</th>
-                                <th>Type</th>
-                                <th>Required</th>
-                                <th>Description</th>
+                                <th scope="col">Field</th>
+                                <th scope="col">Type</th>
+                                <th scope="col">Required</th>
+                                <th scope="col">Description</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -824,7 +863,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "success": true,
   "message": "Retention extended by 3 month(s)",
   "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
@@ -860,7 +899,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Request Body</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "reason": "Keeping for demo next week"
 }</code></pre>
                     </div>
@@ -868,10 +907,10 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     <table class="param-table">
                         <thead>
                             <tr>
-                                <th>Field</th>
-                                <th>Type</th>
-                                <th>Required</th>
-                                <th>Description</th>
+                                <th scope="col">Field</th>
+                                <th scope="col">Type</th>
+                                <th scope="col">Required</th>
+                                <th scope="col">Description</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -886,7 +925,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "success": true,
   "message": "Database locked successfully",
   "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
@@ -923,7 +962,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "success": true,
   "message": "Database unlocked successfully",
   "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
@@ -948,6 +987,9 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Query Parameters</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Parameter</th><th scope="col">Type</th><th scope="col">Required</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td><code>customer</code></td>
@@ -978,7 +1020,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     
                     <h3>Response</h3>
                     <div class="code-block">
-                        <pre><code>{
+                        <pre><code class="language-json">{
   "backups": [
     {
       "customer": "acmecorp",
@@ -1006,10 +1048,11 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                 <h2>HTTP Status Codes</h2>
                 
                 <table class="param-table">
+                    <caption class="sr-only">HTTP status codes returned by the pullDB API</caption>
                     <thead>
                         <tr>
-                            <th>Code</th>
-                            <th>Meaning</th>
+                            <th scope="col">Code</th>
+                            <th scope="col">Meaning</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1039,7 +1082,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                         </tr>
                         <tr>
                             <td><code>409</code></td>
-                            <td>Conflict (e.g., can't cancel completed job)</td>
+                            <td>Conflict (e.g., can't cancel a job in a terminal state)</td>
                         </tr>
                         <tr>
                             <td><code>500</code></td>
@@ -1055,13 +1098,13 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                 <p>Error responses use standard FastAPI/HTTP format with a <code>detail</code> field:</p>
                 
                 <div class="code-block">
-                    <pre><code>{"detail": "No backup found for customer 'acme' on date '2026-01-01'"}</code></pre>
+                    <pre><code class="language-json">{"detail": "No backup found for customer 'acme' on date '2026-01-01'"}</code></pre>
                 </div>
                 
                 <p style="margin-top: 16px;">For validation errors (422), the response includes field-level details:</p>
                 
                 <div class="code-block">
-                    <pre><code>{
+                    <pre><code class="language-json">{
   "detail": [
     {
       "type": "string_type",
@@ -1075,6 +1118,9 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                 
                 <h3>Common Error Messages</h3>
                 <table class="param-table">
+                        <thead>
+                            <tr><th scope="col">Error Message</th><th scope="col">Meaning</th></tr>
+                        </thead>
                     <tbody>
                         <tr>
                             <td><code>Authentication required</code></td>
@@ -1106,7 +1152,7 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                         </tr>
                         <tr>
                             <td><code>Cannot cancel job in state...</code></td>
-                            <td>Job already completed, failed, or canceled</td>
+                            <td>Job is already in a terminal state (complete, failed, canceled, etc.)</td>
                         </tr>
                         <tr>
                             <td><code>Cannot cancel during load phase</code></td>
@@ -1156,5 +1202,22 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
             sections.forEach(section => observer.observe(section));
         });
     </script>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="shortcuts-modal" x-show="shortcutsOpen" x-transition @click.self="closeShortcuts()" @keydown="handleShortcutsKeydown($event)" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="shortcuts-container">
+            <div class="shortcuts-header">
+                <h2 style="margin:0;font-size:1.1rem;">Keyboard Shortcuts</h2>
+                <button @click="closeShortcuts()" aria-label="Close shortcuts" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text);">&#x2715;</button>
+            </div>
+            <dl class="shortcuts-list">
+                <div><dt><kbd>/</kbd></dt><dd>Open search</dd></div>
+                <div><dt><kbd>Esc</kbd></dt><dd>Close modal</dd></div>
+                <div><dt><kbd>?</kbd></dt><dd>Show shortcuts</dd></div>
+                <div><dt><kbd>Tab</kbd></dt><dd>Navigate within modal</dd></div>
+            </dl>
+            <p style="font-size:0.8rem;color:var(--color-text-muted);margin-top:1rem;">Press <kbd>Esc</kbd> to close</p>
+        </div>
+    </div>
 </body>
 </html>

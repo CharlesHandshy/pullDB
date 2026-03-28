@@ -3,18 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="pullDB help documentation — CLI, API, Web UI guides and tutorials for database restore operations.">
     <title>pullDB Help Center</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/help.css">
     <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script defer src="js/alpine.min.js"></script>
 </head>
-<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
-    
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch(); closeShortcuts()" @keydown.window="if($event.key==='?' && !searchOpen) { shortcutsOpen ? closeShortcuts() : openShortcuts() }">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <!-- Animated Background -->
     <div class="bg-gradient"></div>
     <div class="bg-grid"></div>
@@ -40,7 +38,14 @@
             </div>
             
             <div class="nav-actions">
-                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                <button class="mobile-menu-btn" @click="openMobileNav()" :aria-expanded="mobileNavOpen" aria-controls="mobile-nav-drawer" aria-label="Open navigation menu" title="Menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <button class="search-trigger" @click="openSearch()" :aria-expanded="searchOpen" aria-label="Search documentation" title="Search (/)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="M21 21l-4.35-4.35"/>
@@ -59,18 +64,39 @@
             </div>
         </div>
     </nav>
+
+    <!-- Mobile Nav Overlay -->
+    <div class="mobile-nav-overlay" :class="{ 'open': mobileNavOpen }" @click="closeMobileNav()"></div>
+    <div class="mobile-nav-drawer" id="mobile-nav-drawer" :class="{ 'open': mobileNavOpen }">
+        <div class="mobile-nav-header">
+            <span style="font-weight:700;font-size:1rem;">Navigation</span>
+            <button class="mobile-nav-close" @click="closeMobileNav()" aria-label="Close menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <a href="pages/getting-started.html" class="mobile-nav-link" @click="closeMobileNav()">Getting Started</a>
+        <a href="pages/cli/index.html" class="mobile-nav-link" @click="closeMobileNav()">CLI</a>
+        <a href="pages/api/index.html" class="mobile-nav-link" @click="closeMobileNav()">API</a>
+        <a href="pages/concepts/job-lifecycle.html" class="mobile-nav-link" @click="closeMobileNav()">Concepts</a>
+        <a href="pages/web-ui/index.html" class="mobile-nav-link" @click="closeMobileNav()">Web UI</a>
+    </div>
     
     <!-- Search Modal -->
-    <div class="search-modal" x-show="searchOpen" x-transition:enter="modal-enter" x-transition:leave="modal-leave" @click.self="closeSearch()">
+    <div class="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" x-show="searchOpen" x-transition:enter="modal-enter" x-transition:leave="modal-leave" @click.self="closeSearch()" @keydown="handleSearchKeydown($event)">
         <div class="search-container" @click.stop>
             <div class="search-input-wrapper">
                 <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8"/>
                     <path d="M21 21l-4.35-4.35"/>
                 </svg>
-                <input 
-                    type="text" 
-                    class="search-input" 
+                <label for="help-search-input" class="sr-only">Search documentation</label>
+                <input
+                    id="help-search-input"
+                    type="text"
+                    class="search-input"
                     placeholder="Search documentation..."
                     x-model="searchQuery"
                     x-ref="searchInput"
@@ -78,11 +104,12 @@
                     @keydown.arrow-down.prevent="navigateResults(1)"
                     @keydown.arrow-up.prevent="navigateResults(-1)"
                     @keydown.enter.prevent="selectResult()"
+                    :aria-activedescendant="selectedIndex >= 0 && searchResults.length > 0 ? 'search-result-' + selectedIndex : undefined"
                 >
                 <kbd class="search-kbd">ESC</kbd>
             </div>
             
-            <div class="search-results" x-show="searchQuery.length > 0">
+            <div class="search-results" aria-live="polite" aria-atomic="false" x-show="searchQuery.length > 0">
                 <template x-if="searchResults.length === 0 && searchQuery.length > 0">
                     <div class="search-empty">
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -92,9 +119,11 @@
                         <p>No results found for "<span x-text="searchQuery"></span>"</p>
                     </div>
                 </template>
+                <ul role="listbox" aria-label="Search results">
                 <template x-for="(result, index) in searchResults" :key="result.id">
-                    <a 
-                        :href="result.url" 
+                    <li role="option" :id="'search-result-' + index" :aria-selected="index === selectedIndex">
+                    <a
+                        :href="result.url"
                         class="search-result"
                         :class="{ 'active': selectedIndex === index }"
                         @mouseenter="selectedIndex = index"
@@ -131,7 +160,9 @@
                         </div>
                         <div class="result-category" x-text="result.category"></div>
                     </a>
+                    </li>
                 </template>
+                </ul>
             </div>
             
             <div class="search-footer">
@@ -145,7 +176,7 @@
     </div>
     
     <!-- Hero Section -->
-    <section class="hero">
+    <section class="hero" id="main-content">
         <div class="hero-content">
             <div class="hero-badge">
                 <span class="badge-dot"></span>
@@ -174,12 +205,12 @@
                     <span class="stat-label">CLI Commands</span>
                 </div>
                 <div class="stat">
-                    <span class="stat-value">50+</span>
+                    <span class="stat-value">53+</span>
                     <span class="stat-label">API Endpoints</span>
                 </div>
                 <div class="stat">
-                    <span class="stat-value">50+</span>
-                    <span class="stat-label">Code Examples</span>
+                    <span class="stat-value">14</span>
+                    <span class="stat-label">Help Pages</span>
                 </div>
             </div>
         </div>
@@ -253,7 +284,7 @@
                     <h3 class="card-title">API Reference</h3>
                     <p class="card-desc">REST API endpoints, authentication, and code samples</p>
                     <div class="card-meta">
-                        <span class="meta-badge">50+ endpoints</span>
+                        <span class="meta-badge">53+ endpoints</span>
                         <span class="meta-arrow">→</span>
                     </div>
                 </a>
@@ -394,7 +425,7 @@
                                 </div>
                             </div>
                             <div class="demo-explanation">
-                                <h4>What's happening?</h4>
+                                <h3>What's happening?</h3>
                                 <ol>
                                     <li>pullDB searches S3 for the latest backup matching "acme"</li>
                                     <li>A job is created with your user code prefix (chrles)</li>
@@ -443,9 +474,9 @@
                                 </div>
                             </div>
                             <div class="demo-explanation">
-                                <h4>Status Information</h4>
+                                <h3>Status Information</h3>
                                 <ul>
-                                    <li><strong>STATUS:</strong> Current job state (queued, running, complete, failed, canceled)</li>
+                                    <li><strong>STATUS:</strong> Current job state — one of: <code>queued</code>, <code>running</code>, <code>canceling</code>, <code>deployed</code>, <code>complete</code>, <code>expired</code>, <code>failed</code>, <code>canceled</code>, <code>deleting</code>, <code>deleted</code>, <code>superseded</code></li>
                                     <li><strong>OPERATION:</strong> What the job is currently doing</li>
                                     <li><strong>Use --rt:</strong> Stream events in realtime with <code>pulldb status --rt</code></li>
                                 </ul>
@@ -484,7 +515,7 @@
                                 </div>
                             </div>
                             <div class="demo-explanation">
-                                <h4>Cancellation Notes</h4>
+                                <h3>Cancellation Notes</h3>
                                 <ul>
                                     <li>Cancellation is graceful—no data corruption</li>
                                     <li>Staging databases are automatically cleaned up</li>
@@ -509,13 +540,13 @@
                 </div>
                 <div class="footer-links">
                     <div class="footer-col">
-                        <h4>Documentation</h4>
+                        <h3>Documentation</h3>
                         <a href="pages/getting-started.html">Getting Started</a>
                         <a href="pages/cli/index.html">CLI Reference</a>
                         <a href="pages/api/index.html">API Docs</a>
                     </div>
                     <div class="footer-col">
-                        <h4>Resources</h4>
+                        <h3>Resources</h3>
                         <a href="pages/troubleshooting/index.html">Troubleshooting</a>
                         <a href="pages/concepts/job-lifecycle.html">Concepts</a>
                         <a href="/api/docs" target="_blank">OpenAPI Spec</a>
@@ -532,5 +563,22 @@
     <script src="js/help.js"></script>
     <script src="js/terminal.js"></script>
     <script src="js/search.js"></script>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="shortcuts-modal" x-show="shortcutsOpen" x-transition @click.self="closeShortcuts()" @keydown="handleShortcutsKeydown($event)" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="shortcuts-container">
+            <div class="shortcuts-header">
+                <h2 style="margin:0;font-size:1.1rem;">Keyboard Shortcuts</h2>
+                <button @click="closeShortcuts()" aria-label="Close shortcuts" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text);">&#x2715;</button>
+            </div>
+            <dl class="shortcuts-list">
+                <div><dt><kbd>/</kbd></dt><dd>Open search</dd></div>
+                <div><dt><kbd>Esc</kbd></dt><dd>Close modal</dd></div>
+                <div><dt><kbd>?</kbd></dt><dd>Show shortcuts</dd></div>
+                <div><dt><kbd>Tab</kbd></dt><dd>Navigate within modal</dd></div>
+            </dl>
+            <p style="font-size:0.8rem;color:var(--color-text-muted);margin-top:1rem;">Press <kbd>Esc</kbd> to close</p>
+        </div>
+    </div>
 </body>
 </html>

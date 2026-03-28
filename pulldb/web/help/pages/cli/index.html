@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="pullDB CLI command reference — restore, search, list, cancel, admin commands with full syntax and examples.">
     <title>CLI Reference - pullDB Help</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../../css/help.css">
     <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="../../js/alpine.min.js"></script>
 </head>
-<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
-    
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch(); closeShortcuts()" @keydown.window="if($event.key==='?' && !searchOpen) { shortcutsOpen ? closeShortcuts() : openShortcuts() }">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <div class="bg-gradient"></div>
     <div class="bg-grid"></div>
     
@@ -38,14 +37,21 @@
             </div>
             
             <div class="nav-actions">
-                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                <button class="mobile-menu-btn" @click="openMobileNav()" :aria-expanded="mobileNavOpen" aria-controls="mobile-nav-drawer" aria-label="Open navigation menu" title="Menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <button class="search-trigger" @click="openSearch()" :aria-expanded="searchOpen" aria-label="Search documentation" title="Search (/)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="M21 21l-4.35-4.35"/>
                     </svg>
                     <span class="search-hint">/</span>
                 </button>
-                <button class="theme-toggle" @click="toggleTheme()">
+                <button class="theme-toggle" @click="toggleTheme()" :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
                     <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
@@ -57,27 +63,51 @@
             </div>
         </div>
     </nav>
+
+    <!-- Mobile Nav Overlay -->
+    <div class="mobile-nav-overlay" :class="{ 'open': mobileNavOpen }" @click="closeMobileNav()"></div>
+    <div class="mobile-nav-drawer" id="mobile-nav-drawer" :class="{ 'open': mobileNavOpen }">
+        <div class="mobile-nav-header">
+            <span style="font-weight:700;font-size:1rem;">Navigation</span>
+            <button class="mobile-nav-close" @click="closeMobileNav()" aria-label="Close menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <a href="../getting-started.html" class="mobile-nav-link" @click="closeMobileNav()">Getting Started</a>
+        <a href="index.html" class="mobile-nav-link active" @click="closeMobileNav()">CLI</a>
+        <a href="../api/index.html" class="mobile-nav-link" @click="closeMobileNav()">API</a>
+        <a href="../concepts/job-lifecycle.html" class="mobile-nav-link" @click="closeMobileNav()">Concepts</a>
+        <a href="../web-ui/index.html" class="mobile-nav-link" @click="closeMobileNav()">Web UI</a>
+    </div>
     
     <!-- Search Modal (same as index) -->
-    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+    <div class="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" x-show="searchOpen" x-transition @click.self="closeSearch()" @keydown="handleSearchKeydown($event)">
         <div class="search-container" @click.stop>
             <div class="search-input-wrapper">
                 <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8"/>
                     <path d="M21 21l-4.35-4.35"/>
                 </svg>
-                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()" @keydown.arrow-down.prevent="navigateResults(1)" @keydown.arrow-up.prevent="navigateResults(-1)" @keydown.enter.prevent="selectResult()">
+                <label for="help-search-input" class="sr-only">Search documentation</label>
+                <input id="help-search-input" type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()" @keydown.arrow-down.prevent="navigateResults(1)" @keydown.arrow-up.prevent="navigateResults(-1)" @keydown.enter.prevent="selectResult()">
                 <kbd class="search-kbd">ESC</kbd>
             </div>
-            <div class="search-results" x-show="searchQuery.length > 0">
+            <div class="search-results" aria-live="polite" aria-atomic="false" x-show="searchQuery.length > 0">
+                <ul role="listbox" aria-label="Search results">
                 <template x-for="(result, index) in searchResults" :key="result.id">
+                    <li role="option" :id="'search-result-' + index" :aria-selected="index === selectedIndex">
                     <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
                         <div class="result-content">
                             <div class="result-title" x-html="result.title"></div>
                             <div class="result-preview" x-html="result.preview"></div>
                         </div>
                     </a>
+                    </li>
                 </template>
+                </ul>
             </div>
         </div>
     </div>
@@ -118,7 +148,7 @@
         </aside>
         
         <!-- Main Content -->
-        <main class="page-content">
+        <main id="main-content" class="page-content">
             <div class="breadcrumbs">
                 <a href="../../index.html">Help</a>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
@@ -175,9 +205,9 @@
                     <table class="param-table">
                         <thead>
                             <tr>
-                                <th>Parameter</th>
-                                <th>Required</th>
-                                <th>Description</th>
+                                <th scope="col">Parameter</th>
+                                <th scope="col">Required</th>
+                                <th scope="col">Description</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -199,9 +229,9 @@
                     <table class="param-table">
                         <thead>
                             <tr>
-                                <th>Option</th>
-                                <th>Default</th>
-                                <th>Description</th>
+                                <th scope="col">Option</th>
+                                <th scope="col">Default</th>
+                                <th scope="col">Description</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -216,7 +246,7 @@
                                 <td>Suffix for target database (1-3 lowercase letters, pattern: <code>^[a-z]{1,3}$</code>)</td>
                             </tr>
                             <tr>
-                                <td><code>--custom-target=NAME</code></td>
+                                <td><code>target=&lt;name&gt;</code></td>
                                 <td>-</td>
                                 <td>Override target database name (1-51 lowercase letters, pattern: <code>^[a-z]{1,51}$</code>)</td>
                             </tr>
@@ -236,7 +266,7 @@
                         </svg>
                         <div>
                             <strong>Custom Target + Suffix</strong><br>
-                            <code>--custom-target</code> and <code>suffix=</code> cannot be used together. Include any suffix directly in your custom target name.
+                            <code>target=</code> and <code>suffix=</code> cannot be used together. Include any suffix directly in your custom target name.
                         </div>
                     </div>
                     
@@ -244,9 +274,9 @@
                     <table class="param-table">
                         <thead>
                             <tr>
-                                <th>Option</th>
-                                <th>Default</th>
-                                <th>Description</th>
+                                <th scope="col">Option</th>
+                                <th scope="col">Default</th>
+                                <th scope="col">Description</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -260,25 +290,20 @@
                                 <td>prod</td>
                                 <td>S3 environment: <code>staging</code>, <code>prod</code>, or <code>both</code></td>
                             </tr>
-                            <tr>
-                                <td><code>--backup-path=S3_KEY</code></td>
-                                <td>-</td>
-                                <td>Use specific backup (from <code>pulldb list</code> output)</td>
-                            </tr>
                         </tbody>
                     </table>
-                    
+
                     <h3>Admin Options</h3>
                     <table class="param-table">
                         <thead>
                             <tr>
-                                <th>Option</th>
-                                <th>Description</th>
+                                <th scope="col">Option</th>
+                                <th scope="col">Description</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
-                                <td><code>--on-behalf-of=USER</code></td>
+                                <td><code>user=&lt;username&gt;</code></td>
                                 <td>Submit job for another user (admin only)</td>
                             </tr>
                         </tbody>
@@ -286,7 +311,7 @@
                     
                     <h3>Target Database Naming</h3>
                     <p>Your restored database is named using your <strong>user code</strong> (first 6 alpha characters of username). All names use <strong>lowercase letters only [a-z]</strong>:</p>
-                    <pre><code>&lt;usercode&gt;&lt;customer&gt;[&lt;suffix&gt;]</code></pre>
+                    <pre><code class="language-plaintext">&lt;usercode&gt;&lt;customer&gt;[&lt;suffix&gt;]</code></pre>
                     <p>Example: User <code>charles</code> (code: <code>chrles</code>) restoring customer <code>acme</code>:</p>
                     <ul>
                         <li><strong>Default:</strong> <code>chrlesacme</code></li>
@@ -300,7 +325,7 @@
                     <div class="terminal-header">
                         <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
                         <span class="terminal-title">Examples</span>
-                        <button class="terminal-copy" onclick="copyTerminal(this)">
+                        <button class="terminal-copy" onclick="copyTerminal(this)" aria-label="Copy to clipboard" title="Copy to clipboard">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -318,7 +343,7 @@
                         <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme date=2026-01-01</span></div>
                         <div class="terminal-line"></div>
                         <div class="terminal-line"><span class="comment"># Restore with custom target name</span></div>
-                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme --custom-target=myprojectdev</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme target=myprojectdev</span></div>
                         <div class="terminal-line"></div>
                         <div class="terminal-line"><span class="comment"># Restore with suffix for multiple copies</span></div>
                         <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme suffix=dev</span></div>
@@ -327,7 +352,7 @@
                         <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme overwrite</span></div>
                         <div class="terminal-line"></div>
                         <div class="terminal-line"><span class="comment"># Admin: restore on behalf of another user</span></div>
-                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme --on-behalf-of=jsmith</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme user=jsmith</span></div>
                     </div>
                 </div>
             </section>
@@ -345,6 +370,9 @@
                     
                     <h3>Arguments &amp; Options</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Argument/Option</th><th scope="col">Required</th><th scope="col">Default</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td>job_id</td>
@@ -362,7 +390,7 @@
                                 <td>--history</td>
                                 <td>Optional</td>
                                 <td>false</td>
-                                <td>Show historical jobs (completed/failed/canceled)</td>
+                                <td>Show historical jobs (complete/failed/canceled)</td>
                             </tr>
                             <tr>
                                 <td>--status</td>
@@ -423,17 +451,17 @@
                 <h3>Job States</h3>
                 <p>Jobs can be in one of 11 possible states:</p>
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px;">
-                    <span class="status-badge queued">QUEUED</span>
-                    <span class="status-badge running">RUNNING</span>
-                    <span class="status-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">CANCELING</span>
-                    <span class="status-badge complete">COMPLETE</span>
-                    <span class="status-badge" style="background: var(--color-primary-bg); color: var(--color-primary);">DEPLOYED</span>
-                    <span class="status-badge" style="background: var(--color-bg-secondary); color: var(--color-text-muted);">EXPIRED</span>
-                    <span class="status-badge" style="background: var(--color-bg-secondary); color: var(--color-text-muted);">SUPERSEDED</span>
-                    <span class="status-badge failed">FAILED</span>
-                    <span class="status-badge canceled">CANCELED</span>
-                    <span class="status-badge" style="background: var(--color-danger-bg); color: var(--color-danger);">DELETING</span>
-                    <span class="status-badge" style="background: var(--color-bg-secondary); color: var(--color-text-muted);">DELETED</span>
+                    <span class="status-badge queued">queued</span>
+                    <span class="status-badge running">running</span>
+                    <span class="status-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">canceling</span>
+                    <span class="status-badge complete">complete</span>
+                    <span class="status-badge" style="background: var(--color-primary-bg); color: var(--color-primary);">deployed</span>
+                    <span class="status-badge" style="background: var(--color-bg-secondary); color: var(--color-text-muted);">expired</span>
+                    <span class="status-badge" style="background: var(--color-bg-secondary); color: var(--color-text-muted);">superseded</span>
+                    <span class="status-badge failed">failed</span>
+                    <span class="status-badge canceled">canceled</span>
+                    <span class="status-badge" style="background: var(--color-danger-bg); color: var(--color-danger);">deleting</span>
+                    <span class="status-badge" style="background: var(--color-bg-secondary); color: var(--color-text-muted);">deleted</span>
                 </div>
                 <p class="mt-4">See <a href="../concepts/job-lifecycle.html" style="color: var(--color-primary);">Job Lifecycle</a> for detailed state descriptions.</p>
             </section>
@@ -451,6 +479,9 @@
                     
                     <h3>Options</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Required</th><th scope="col">Default</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td>-f, --follow</td>
@@ -537,6 +568,9 @@
                     
                     <h3>Options</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Required</th><th scope="col">Default</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td>-f, --force</td>
@@ -555,17 +589,21 @@
                     <li>S3 download is aborted (if in progress)</li>
                 </ul>
                 
-                <h3>Cancellation Window</h3>
-                <p>Jobs can only be canceled <strong>before</strong> the myloader restore process begins. Once myloader starts loading data into the database, cancellation is blocked to prevent database corruption.</p>
-                <p>If you attempt to cancel during the loading phase, you'll receive: <code>"Cannot cancel: job has entered loading phase. Myloader cannot be safely interrupted."</code></p>
+                <h3>Cancellation Behavior</h3>
+                <p>Both queued and running jobs can be canceled. The behavior depends on the current job state:</p>
+                <ul>
+                    <li><strong>Queued jobs:</strong> Canceled immediately.</li>
+                    <li><strong>Running jobs:</strong> The job transitions to <code>canceling</code> state. The worker stops at its next checkpoint (after the current myloader phase completes), then moves the job to <code>canceled</code> and cleans up resources.</li>
+                </ul>
+                <p>Cancellation is not blocked once myloader starts — it is deferred until the checkpoint. Cleanup (staging database drop, work file removal) happens after the checkpoint is reached.</p>
                 
-                <p class="mt-4"><strong>Note:</strong> Completed jobs cannot be canceled. The database will remain until overwritten by a new restore with <code>overwrite</code> flag.</p>
+                <p class="mt-4"><strong>Note:</strong> Jobs in terminal states (complete, deployed, expired, failed) cannot be canceled. The database will remain until overwritten by a new restore with the <code>overwrite</code> flag.</p>
             </section>
             
             <!-- History Command -->
             <section class="content-section" id="history">
                 <h2>pulldb history</h2>
-                <p>Show job history (completed/failed/canceled jobs).</p>
+                <p>Show job history (complete/failed/canceled jobs).</p>
                 
                 <div class="command-card">
                     <div class="command-header">
@@ -575,6 +613,9 @@
                     
                     <h3>Options</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Required</th><th scope="col">Default</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td>--days</td>
@@ -642,6 +683,9 @@
                     
                     <h3>Parameters</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Required</th><th scope="col">Default</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td>limit=N</td>
@@ -697,6 +741,9 @@
                     
                     <h3>Parameters</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Required</th><th scope="col">Default</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td>date=YYYYMMDD</td>
@@ -751,7 +798,7 @@
             </section>
             <section class="content-section" id="profile">
                 <h2>pulldb profile</h2>
-                <p>View performance breakdown for a completed job.</p>
+                <p>View performance breakdown for a complete or deployed job.</p>
                 
                 <div class="command-card">
                     <div class="command-header">
@@ -761,6 +808,9 @@
                     
                     <h3>Options</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Required</th><th scope="col">Default</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td>--json</td>
@@ -774,7 +824,7 @@
                 
                 <h3>Example Output</h3>
                 <div class="code-block">
-                    <pre><code>Performance Profile: abc12345-678...
+                    <pre><code class="language-plaintext">Performance Profile: abc12345-678...
 ============================================================
 Status: Complete
 Total Duration: 3m 42s
@@ -812,6 +862,9 @@ atomic_rename            12ms     0.0%            -
                     
                     <h3>Options</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Required</th><th scope="col">Default</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td>--json</td>
@@ -825,7 +878,7 @@ atomic_rename            12ms     0.0%            -
                 
                 <h3>Example Output</h3>
                 <div class="code-block">
-                    <pre><code>Available Database Hosts
+                    <pre><code class="language-plaintext">Available Database Hosts
 ==================================================
 ALIAS            HOSTNAME
 ---------------- --------------------------------
@@ -853,6 +906,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h3>Options</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Required</th><th scope="col">Default</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td>--password</td>
@@ -956,6 +1012,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h3>Options</h3>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Required</th><th scope="col">Default</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr>
                                 <td>--current-password</td>
@@ -1007,6 +1066,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">Actions</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Action</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>list</td><td colspan="3">List all settings with their current values</td></tr>
                             <tr><td>get &lt;key&gt;</td><td colspan="3">Get the value of a specific setting</td></tr>
@@ -1032,6 +1094,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">Actions</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Action</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>list [--active]</td><td colspan="3">List jobs, optionally only active (queued/running)</td></tr>
                             <tr><td>cancel &lt;job_id&gt;</td><td colspan="3">Cancel any user's job</td></tr>
@@ -1040,12 +1105,15 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">List Options</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>--active</td><td colspan="3">Show only queued/running jobs</td></tr>
                             <tr><td>--limit</td><td colspan="3">Number of jobs to show (default: 20)</td></tr>
                             <tr><td>--user</td><td colspan="3">Filter by username or user_code</td></tr>
                             <tr><td>--dbhost</td><td colspan="3">Filter by target database host</td></tr>
-                            <tr><td>--status</td><td colspan="3">Filter by status (queued|running|deployed|complete|failed|canceled)</td></tr>
+                            <tr><td>--status</td><td colspan="3">Filter by status (queued|running|canceling|deployed|complete|failed|canceled|expired|superseded|deleting|deleted)</td></tr>
                             <tr><td>--json</td><td colspan="3">Output JSON instead of table</td></tr>
                         </tbody>
                     </table>
@@ -1064,6 +1132,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">Options</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>--dry-run</td><td colspan="3">Preview what would be cleaned (no changes made)</td></tr>
                             <tr><td>--execute</td><td colspan="3">Actually perform the cleanup</td></tr>
@@ -1085,11 +1156,15 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">Actions</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Action</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>list</td><td colspan="3">List all users</td></tr>
                             <tr><td>show &lt;username&gt;</td><td colspan="3">Show user details</td></tr>
                             <tr><td>enable &lt;username&gt;</td><td colspan="3">Enable a user</td></tr>
                             <tr><td>disable &lt;username&gt;</td><td colspan="3">Disable a user</td></tr>
+                            <tr><td>reset-password &lt;username&gt;</td><td colspan="3">Reset a user's password (generates temporary password)</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -1107,6 +1182,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">Actions</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Action</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>pending</td><td colspan="3">List API keys awaiting approval</td></tr>
                             <tr><td>approve &lt;key_id&gt;</td><td colspan="3">Approve a pending key</td></tr>
@@ -1165,6 +1243,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">Actions</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Action</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>list</td><td colspan="3">List all registered database hosts</td></tr>
                             <tr><td>add &lt;hostname&gt;</td><td colspan="3">Add a new database host (simple registration)</td></tr>
@@ -1191,6 +1272,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">Actions</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Action</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>list</td><td colspan="3">List customers with aggregated backup statistics</td></tr>
                             <tr><td>search &lt;pattern&gt;</td><td colspan="3">Search backups by customer pattern</td></tr>
@@ -1199,6 +1283,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">Options</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>--env</td><td colspan="3">Environment to search (staging|prod|both, default: prod)</td></tr>
                             <tr><td>-v, --verbose</td><td colspan="3">Show detailed progress</td></tr>
@@ -1219,6 +1306,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">Actions</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Action</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>list</td><td colspan="3">List all disallowed usernames</td></tr>
                             <tr><td>add &lt;username&gt;</td><td colspan="3">Add a username to the disallowed list</td></tr>
@@ -1240,6 +1330,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">Actions</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Action</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>list</td><td colspan="3">List all secrets with the given prefix</td></tr>
                             <tr><td>get &lt;name&gt;</td><td colspan="3">Get a secret's value</td></tr>
@@ -1265,6 +1358,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">Global Options</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>--profile</td><td colspan="3">AWS profile to use</td></tr>
                             <tr><td>--region</td><td colspan="3">AWS region</td></tr>
@@ -1285,6 +1381,9 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     
                     <h4 style="margin-top: 16px;">Options</h4>
                     <table class="param-table">
+                            <thead>
+                                <tr><th scope="col">Option</th><th scope="col">Description</th></tr>
+                            </thead>
                         <tbody>
                             <tr><td>--dry-run</td><td colspan="3">Preview what would be cleaned (no changes made)</td></tr>
                             <tr><td>--json</td><td colspan="3">Output JSON instead of human-readable text</td></tr>
@@ -1318,5 +1417,22 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
             sections.forEach(section => observer.observe(section));
         });
     </script>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="shortcuts-modal" x-show="shortcutsOpen" x-transition @click.self="closeShortcuts()" @keydown="handleShortcutsKeydown($event)" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="shortcuts-container">
+            <div class="shortcuts-header">
+                <h2 style="margin:0;font-size:1.1rem;">Keyboard Shortcuts</h2>
+                <button @click="closeShortcuts()" aria-label="Close shortcuts" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text);">&#x2715;</button>
+            </div>
+            <dl class="shortcuts-list">
+                <div><dt><kbd>/</kbd></dt><dd>Open search</dd></div>
+                <div><dt><kbd>Esc</kbd></dt><dd>Close modal</dd></div>
+                <div><dt><kbd>?</kbd></dt><dd>Show shortcuts</dd></div>
+                <div><dt><kbd>Tab</kbd></dt><dd>Navigate within modal</dd></div>
+            </dl>
+            <p style="font-size:0.8rem;color:var(--color-text-muted);margin-top:1rem;">Press <kbd>Esc</kbd> to close</p>
+        </div>
+    </div>
 </body>
 </html>

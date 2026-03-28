@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="pullDB troubleshooting guide — fix authentication errors, failed restores, service issues, and common problems.">
     <title>Troubleshooting - pullDB Help</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../../css/help.css">
     <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="../../js/alpine.min.js"></script>
 </head>
-<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
-    
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch(); closeShortcuts()" @keydown.window="if($event.key==='?' && !searchOpen) { shortcutsOpen ? closeShortcuts() : openShortcuts() }">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <div class="bg-gradient"></div>
     <div class="bg-grid"></div>
     
@@ -38,14 +37,21 @@
             </div>
             
             <div class="nav-actions">
-                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                <button class="mobile-menu-btn" @click="openMobileNav()" :aria-expanded="mobileNavOpen" aria-controls="mobile-nav-drawer" aria-label="Open navigation menu" title="Menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <button class="search-trigger" @click="openSearch()" :aria-expanded="searchOpen" aria-label="Search documentation" title="Search (/)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="M21 21l-4.35-4.35"/>
                     </svg>
                     <span class="search-hint">/</span>
                 </button>
-                <button class="theme-toggle" @click="toggleTheme()">
+                <button class="theme-toggle" @click="toggleTheme()" :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
                     <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
@@ -57,27 +63,51 @@
             </div>
         </div>
     </nav>
+
+    <!-- Mobile Nav Overlay -->
+    <div class="mobile-nav-overlay" :class="{ 'open': mobileNavOpen }" @click="closeMobileNav()"></div>
+    <div class="mobile-nav-drawer" id="mobile-nav-drawer" :class="{ 'open': mobileNavOpen }">
+        <div class="mobile-nav-header">
+            <span style="font-weight:700;font-size:1rem;">Navigation</span>
+            <button class="mobile-nav-close" @click="closeMobileNav()" aria-label="Close menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <a href="../getting-started.html" class="mobile-nav-link" @click="closeMobileNav()">Getting Started</a>
+        <a href="../cli/index.html" class="mobile-nav-link" @click="closeMobileNav()">CLI</a>
+        <a href="../api/index.html" class="mobile-nav-link" @click="closeMobileNav()">API</a>
+        <a href="../concepts/job-lifecycle.html" class="mobile-nav-link" @click="closeMobileNav()">Concepts</a>
+        <a href="../web-ui/index.html" class="mobile-nav-link" @click="closeMobileNav()">Web UI</a>
+    </div>
     
     <!-- Search Modal -->
-    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+    <div class="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" x-show="searchOpen" x-transition @click.self="closeSearch()" @keydown="handleSearchKeydown($event)">
         <div class="search-container" @click.stop>
             <div class="search-input-wrapper">
                 <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8"/>
                     <path d="M21 21l-4.35-4.35"/>
                 </svg>
-                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <label for="help-search-input" class="sr-only">Search documentation</label>
+                <input id="help-search-input" type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()" :aria-activedescendant="selectedIndex >= 0 && searchResults.length > 0 ? 'search-result-' + selectedIndex : undefined">
                 <kbd class="search-kbd">ESC</kbd>
             </div>
-            <div class="search-results" x-show="searchQuery.length > 0">
+            <div class="search-results" aria-live="polite" aria-atomic="false" x-show="searchQuery.length > 0">
+                <ul role="listbox" aria-label="Search results">
                 <template x-for="(result, index) in searchResults" :key="result.id">
+                    <li role="option" :id="'search-result-' + index" :aria-selected="index === selectedIndex">
                     <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
                         <div class="result-content">
                             <div class="result-title" x-html="result.title"></div>
                             <div class="result-preview" x-html="result.preview"></div>
                         </div>
                     </a>
+                    </li>
                 </template>
+                </ul>
             </div>
         </div>
     </div>
@@ -98,11 +128,14 @@
                     <a href="#job-stuck" class="sidebar-link">Job Stuck</a>
                     <a href="#slow-restore" class="sidebar-link">Slow Restore</a>
                     <a href="#disk-space" class="sidebar-link">Disk Space</a>
+                    <a href="#auth-errors" class="sidebar-link">Authentication Errors</a>
+                    <a href="#service-issues" class="sidebar-link">Service / Container</a>
+                    <a href="#htmx-csp" class="sidebar-link">Backup Picker Stuck</a>
                 </div>
             </nav>
         </aside>
         
-        <main class="page-content">
+        <main id="main-content" class="page-content">
             <div class="breadcrumbs">
                 <a href="../../index.html">Help</a>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
@@ -148,6 +181,27 @@
                         <div>
                             <h3>Permission Denied</h3>
                             <p>Access or authentication issues</p>
+                        </div>
+                    </a>
+                    <a href="#auth-errors" class="diagnostic-card">
+                        <div class="diagnostic-icon error">🔑</div>
+                        <div>
+                            <h3>Auth / Login Error</h3>
+                            <p>Session expired, 401, invalid credentials</p>
+                        </div>
+                    </a>
+                    <a href="#htmx-csp" class="diagnostic-card">
+                        <div class="diagnostic-icon warning">🔄</div>
+                        <div>
+                            <h3>Backup Picker Stuck</h3>
+                            <p>"Loading backups..." never resolves</p>
+                        </div>
+                    </a>
+                    <a href="#service-issues" class="diagnostic-card">
+                        <div class="diagnostic-icon warning">🐳</div>
+                        <div>
+                            <h3>Service Down</h3>
+                            <p>Container or supervisord process crashed</p>
                         </div>
                     </a>
                 </div>
@@ -343,6 +397,7 @@
             </section>
             
             <!-- Permission Issues -->
+            <span id="permission-denied" style="display:none;"></span>
             <section class="content-section" id="permission-issues">
                 <h2>Permission Issues</h2>
                 
@@ -443,11 +498,11 @@
                 <div class="accordion" x-data="{ open: null }">
                     <div class="accordion-item">
                         <button class="accordion-trigger" @click="open = open === 1 ? null : 1" :class="{ 'active': open === 1 }">
-                            <span>⏳ Job stuck in QUEUED state</span>
+                            <span>⏳ Job stuck in <code>queued</code> state</span>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
                         </button>
                         <div class="accordion-content" x-show="open === 1" x-transition>
-                            <p><strong>Symptoms:</strong> Job stays in QUEUED for more than a few minutes.</p>
+                            <p><strong>Symptoms:</strong> Job stays in <code>queued</code> for more than a few minutes.</p>
                             
                             <p><strong>Causes:</strong></p>
                             <ul>
@@ -472,11 +527,11 @@
                     
                     <div class="accordion-item">
                         <button class="accordion-trigger" @click="open = open === 2 ? null : 2" :class="{ 'active': open === 2 }">
-                            <span>⏳ Job stuck in RUNNING state</span>
+                            <span>⏳ Job stuck in <code>running</code> state</span>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
                         </button>
                         <div class="accordion-content" x-show="open === 2" x-transition>
-                            <p><strong>Symptoms:</strong> Job shows RUNNING but no progress for a long time.</p>
+                            <p><strong>Symptoms:</strong> Job shows <code>running</code> but no progress for a long time.</p>
                             
                             <p><strong>Solutions:</strong></p>
                             <ol>
@@ -497,11 +552,20 @@
                                     </div>
                                 </li>
                             </ol>
+                            <div class="info-callout" style="margin-top: 16px;">
+                                <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="M12 16v-4M12 8h.01"/>
+                                </svg>
+                                <div>
+                                    <strong>Cancellation is not instantaneous.</strong> When a job is in <code>running</code> state, canceling it transitions the job to <code>canceling</code> first. The worker will finish the current checkpoint operation (for example, a myloader import in progress), then stop cleanly. This can take up to 30 seconds. Do not force-kill the container while canceling.
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </section>
-            
+
             <!-- Slow Restore -->
             <section class="content-section" id="slow-restore">
                 <h2>Slow Restore</h2>
@@ -550,21 +614,205 @@
                             
                             <p><strong>Solutions:</strong></p>
                             <ol>
-                                <li>Check available space:
+                                <li>Check available space on the pullDB work volume:
                                     <div class="terminal-window" style="transform: none; margin: 12px 0;">
                                         <div class="terminal-body">
-                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">df -h</span></div>
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">df -h /mnt/data</span></div>
                                         </div>
                                     </div>
                                 </li>
-                                <li>Clean up old files or contact admin</li>
-                                <li>Request admin run cleanup for orphaned files</li>
+                                <li>Backup archives and extracted files accumulate in <code>/mnt/data/pulldb/work/</code>. Completed jobs clean up automatically, but failed or orphaned jobs may leave artifacts behind.</li>
+                                <li>Ask your admin to run staging cleanup to reclaim orphaned directories:
+                                    <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                        <div class="terminal-body">
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb-admin cleanup --dry-run</span></div>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li>If the volume is consistently full, contact your administrator to expand the <code>/mnt/data</code> storage allocation.</li>
                             </ol>
                         </div>
                     </div>
                 </div>
             </section>
             
+            <!-- Authentication Errors -->
+            <section class="content-section" id="auth-errors">
+                <h2>Authentication Errors</h2>
+
+                <div class="accordion" x-data="{ open: null }">
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 1 ? null : 1" :class="{ 'active': open === 1 }">
+                            <span>❌ "Session Expired" — redirected to login</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 1" x-transition>
+                            <p><strong>Symptom:</strong> You are redirected to the login page with a "Session expired" message.</p>
+                            <p><strong>Cause:</strong> Session tokens expire after 24 hours by default.</p>
+                            <p><strong>Fix:</strong> Log in again. If your team needs longer sessions, ask your administrator to increase <code>PULLDB_SESSION_TTL_HOURS</code> in the server configuration.</p>
+                        </div>
+                    </div>
+
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 2 ? null : 2" :class="{ 'active': open === 2 }">
+                            <span>❌ "Invalid username or password"</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 2" x-transition>
+                            <p><strong>Checklist:</strong></p>
+                            <ul>
+                                <li>Username is case-sensitive — verify the exact spelling</li>
+                                <li>Your account may have been disabled by an admin</li>
+                                <li>An admin may have force-reset your password — check with them for your temporary credentials</li>
+                            </ul>
+                            <p>If your credentials are correct and the error persists, contact your pullDB administrator to verify your account status.</p>
+                        </div>
+                    </div>
+
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 3 ? null : 3" :class="{ 'active': open === 3 }">
+                            <span>❌ CLI: "401 Unauthorized"</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 3" x-transition>
+                            <p><strong>Symptoms:</strong> CLI commands fail with <code>401 Unauthorized — Authentication required</code>.</p>
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>Credentials file missing or corrupted (<code>~/.pulldb/credentials</code>)</li>
+                                <li>You have not logged in yet on this machine</li>
+                            </ul>
+                            <p><strong>Fix:</strong></p>
+                            <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                <div class="terminal-body">
+                                    <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb login</span></div>
+                                </div>
+                            </div>
+                            <p>If you are a new user who hasn't registered yet:</p>
+                            <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                <div class="terminal-body">
+                                    <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb register</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 4 ? null : 4" :class="{ 'active': open === 4 }">
+                            <span>⏳ API key not working yet</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 4" x-transition>
+                            <p><strong>Symptom:</strong> You generated an API key from your profile page but requests using it return 401 or 403.</p>
+                            <p><strong>Cause:</strong> API keys require administrator approval before they become active. New keys are in <em>pending</em> state until an admin reviews them.</p>
+                            <p><strong>Fix:</strong> Contact your pullDB administrator and ask them to approve your API key. Admins can do this from <strong>Admin → API Keys</strong> in the web UI.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Service / Container Issues -->
+            <section class="content-section" id="service-issues">
+                <h2>Service / Container Issues</h2>
+
+                <div class="accordion" x-data="{ open: null }">
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 1 ? null : 1" :class="{ 'active': open === 1 }">
+                            <span>❌ Container won't start (exits immediately)</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 1" x-transition>
+                            <p><strong>Symptom:</strong> <code>docker ps -a</code> shows the container with status <code>Exited (1)</code>.</p>
+                            <p><strong>Check the startup logs:</strong></p>
+                            <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                <div class="terminal-body">
+                                    <div class="terminal-line"><span class="prompt">$</span> <span class="command">docker logs --tail 100 pulldb</span></div>
+                                </div>
+                            </div>
+                            <p>Look for a line beginning with <code>[entrypoint] FATAL:</code> to identify the failure point. Common causes: missing required environment variables, TLS certificate issues, or a bad volume mount.</p>
+                        </div>
+                    </div>
+
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 2 ? null : 2" :class="{ 'active': open === 2 }">
+                            <span>❌ Supervisord process crashed — service is down inside the container</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 2" x-transition>
+                            <p><strong>Symptom:</strong> The container is running but the web UI or API is unreachable. pullDB runs its internal services (API, web, worker, MySQL) via <strong>supervisord</strong>.</p>
+                            <p><strong>Check service status:</strong></p>
+                            <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                <div class="terminal-body">
+                                    <div class="terminal-line"><span class="prompt">$</span> <span class="command">docker exec pulldb supervisorctl status</span></div>
+                                </div>
+                            </div>
+                            <p>If a service shows <code>FATAL</code> or <code>BACKOFF</code>, check its log:</p>
+                            <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                <div class="terminal-body">
+                                    <div class="terminal-line"><span class="prompt">$</span> <span class="command">docker exec pulldb cat /mnt/data/logs/pulldb/pulldb-api.log</span></div>
+                                    <div class="terminal-line"><span class="prompt">$</span> <span class="command">docker exec pulldb cat /mnt/data/logs/pulldb/pulldb-web.log</span></div>
+                                    <div class="terminal-line"><span class="prompt">$</span> <span class="command">docker exec pulldb cat /mnt/data/logs/pulldb/pulldb-worker.log</span></div>
+                                </div>
+                            </div>
+                            <p>Restart an individual service:</p>
+                            <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                <div class="terminal-body">
+                                    <div class="terminal-line"><span class="prompt">$</span> <span class="command">docker exec pulldb supervisorctl restart pulldb-api</span></div>
+                                </div>
+                            </div>
+                            <p>Contact your administrator if the service continues to crash — the log output will identify the root cause.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- HTMX / CSP: Backup Picker Stuck -->
+            <section class="content-section" id="htmx-csp">
+                <h2>Backup Picker Shows "Loading backups..." Forever</h2>
+
+                <div class="info-callout warning">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>1.3.0 known issue (cached pages):</strong> If you upgraded to 1.3.0 but your browser has cached the old restore page, you may still see this symptom. A hard refresh resolves it immediately.
+                    </div>
+                </div>
+
+                <div class="accordion" x-data="{ open: null }">
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 1 ? null : 1" :class="{ 'active': open === 1 }">
+                            <span>⏳ After selecting a customer, the backup list never loads</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 1" x-transition>
+                            <p><strong>Symptom:</strong> After selecting a customer in the restore form, the backup list shows "Loading backups..." indefinitely. No results appear and no error is shown.</p>
+
+                            <p><strong>Cause:</strong> The browser cached the restore page from before the 1.3.0 update. The old page loaded HTMX from an external CDN (<code>unpkg.com</code>), which the server's Content Security Policy now blocks. Without HTMX, the backup search request is never issued and the UI hangs silently.</p>
+
+                            <p><strong>Fix — hard refresh the page:</strong></p>
+                            <ul>
+                                <li><strong>Windows / Linux:</strong> <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></li>
+                                <li><strong>macOS:</strong> <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></li>
+                            </ul>
+
+                            <p>A hard refresh bypasses the browser cache and loads the updated page that serves HTMX locally. The backup picker will work normally after one hard refresh.</p>
+
+                            <div class="info-callout" style="margin-top: 16px;">
+                                <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="M12 16v-4M12 8h.01"/>
+                                </svg>
+                                <div>
+                                    <strong>Verify the fix:</strong> Open the browser developer console (F12 → Network tab), reload, and confirm no requests go to <code>unpkg.com</code>. HTMX should load from <code>/static/js/vendor/htmx.min.js</code>.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Still Need Help -->
             <section class="help-footer">
                 <div class="help-card">
@@ -602,5 +850,22 @@
             sections.forEach(section => observer.observe(section));
         });
     </script>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="shortcuts-modal" x-show="shortcutsOpen" x-transition @click.self="closeShortcuts()" @keydown="handleShortcutsKeydown($event)" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="shortcuts-container">
+            <div class="shortcuts-header">
+                <h2 style="margin:0;font-size:1.1rem;">Keyboard Shortcuts</h2>
+                <button @click="closeShortcuts()" aria-label="Close shortcuts" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text);">&#x2715;</button>
+            </div>
+            <dl class="shortcuts-list">
+                <div><dt><kbd>/</kbd></dt><dd>Open search</dd></div>
+                <div><dt><kbd>Esc</kbd></dt><dd>Close modal</dd></div>
+                <div><dt><kbd>?</kbd></dt><dd>Show shortcuts</dd></div>
+                <div><dt><kbd>Tab</kbd></dt><dd>Navigate within modal</dd></div>
+            </dl>
+            <p style="font-size:0.8rem;color:var(--color-text-muted);margin-top:1rem;">Press <kbd>Esc</kbd> to close</p>
+        </div>
+    </div>
 </body>
 </html>

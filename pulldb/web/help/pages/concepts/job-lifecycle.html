@@ -3,43 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="pullDB job lifecycle — understand all 11 job states from queued to deleted with transition rules.">
     <title>Job Lifecycle - pullDB Help</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../../css/help.css">
     <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script type="module">
-        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-        mermaid.initialize({ 
+    <script defer src="../../js/alpine.min.js"></script>
+    <script src="../../js/mermaid.min.js"></script>
+    <script>
+        // Store diagram sources before Mermaid processes them
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.mermaid').forEach(el => {
+                el.dataset.src = el.textContent.trim();
+            });
+        });
+        mermaid.initialize({
             startOnLoad: true,
-            theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default',
+            theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'neutral',
+            securityLevel: 'loose',
             flowchart: {
                 curve: 'basis',
                 padding: 20
             }
         });
-        // Re-render on theme change
+        // Re-render on theme change, restoring diagram source text first
         window.updateMermaidTheme = (isDark) => {
-            mermaid.initialize({ 
-                theme: isDark ? 'dark' : 'default',
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: isDark ? 'dark' : 'neutral',
+                securityLevel: 'loose',
                 flowchart: { curve: 'basis', padding: 20 }
             });
             document.querySelectorAll('.mermaid').forEach(el => {
-                const code = el.getAttribute('data-mermaid');
-                if (code) {
-                    el.innerHTML = code;
+                if (el.dataset.src) {
+                    el.innerHTML = el.dataset.src;
                     el.removeAttribute('data-processed');
                 }
             });
-            mermaid.init();
+            mermaid.run({ querySelector: '.mermaid' });
         };
     </script>
 </head>
-<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
-    
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch(); closeShortcuts()" @keydown.window="if($event.key==='?' && !searchOpen) { shortcutsOpen ? closeShortcuts() : openShortcuts() }">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <div class="bg-gradient"></div>
     <div class="bg-grid"></div>
     
@@ -64,14 +71,21 @@
             </div>
             
             <div class="nav-actions">
-                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                <button class="mobile-menu-btn" @click="openMobileNav()" :aria-expanded="mobileNavOpen" aria-controls="mobile-nav-drawer" aria-label="Open navigation menu" title="Menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <button class="search-trigger" @click="openSearch()" :aria-expanded="searchOpen" aria-label="Search documentation" title="Search (/)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="M21 21l-4.35-4.35"/>
                     </svg>
                     <span class="search-hint">/</span>
                 </button>
-                <button class="theme-toggle" @click="toggleTheme(); window.updateMermaidTheme && window.updateMermaidTheme(theme === 'dark')">
+                <button class="theme-toggle" @click="toggleTheme(); window.updateMermaidTheme && window.updateMermaidTheme(theme === 'dark')" :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
                     <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
@@ -83,27 +97,51 @@
             </div>
         </div>
     </nav>
+
+    <!-- Mobile Nav Overlay -->
+    <div class="mobile-nav-overlay" :class="{ 'open': mobileNavOpen }" @click="closeMobileNav()"></div>
+    <div class="mobile-nav-drawer" id="mobile-nav-drawer" :class="{ 'open': mobileNavOpen }">
+        <div class="mobile-nav-header">
+            <span style="font-weight:700;font-size:1rem;">Navigation</span>
+            <button class="mobile-nav-close" @click="closeMobileNav()" aria-label="Close menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <a href="../getting-started.html" class="mobile-nav-link" @click="closeMobileNav()">Getting Started</a>
+        <a href="../cli/index.html" class="mobile-nav-link" @click="closeMobileNav()">CLI</a>
+        <a href="../api/index.html" class="mobile-nav-link" @click="closeMobileNav()">API</a>
+        <a href="job-lifecycle.html" class="mobile-nav-link active" @click="closeMobileNav()">Concepts</a>
+        <a href="../web-ui/index.html" class="mobile-nav-link" @click="closeMobileNav()">Web UI</a>
+    </div>
     
     <!-- Search Modal -->
-    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+    <div class="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" x-show="searchOpen" x-transition @click.self="closeSearch()" @keydown="handleSearchKeydown($event)">
         <div class="search-container" @click.stop>
             <div class="search-input-wrapper">
                 <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8"/>
                     <path d="M21 21l-4.35-4.35"/>
                 </svg>
-                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <label for="help-search-input" class="sr-only">Search documentation</label>
+                <input id="help-search-input" type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()" :aria-activedescendant="selectedIndex >= 0 && searchResults.length > 0 ? 'search-result-' + selectedIndex : undefined">
                 <kbd class="search-kbd">ESC</kbd>
             </div>
-            <div class="search-results" x-show="searchQuery.length > 0">
+            <div class="search-results" aria-live="polite" aria-atomic="false" x-show="searchQuery.length > 0">
+                <ul role="listbox" aria-label="Search results">
                 <template x-for="(result, index) in searchResults" :key="result.id">
+                    <li role="option" :id="'search-result-' + index" :aria-selected="index === selectedIndex">
                     <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
                         <div class="result-content">
                             <div class="result-title" x-html="result.title"></div>
                             <div class="result-preview" x-html="result.preview"></div>
                         </div>
                     </a>
+                    </li>
                 </template>
+                </ul>
             </div>
         </div>
     </div>
@@ -128,7 +166,7 @@
             </nav>
         </aside>
         
-        <main class="page-content">
+        <main id="main-content" class="page-content">
             <div class="breadcrumbs">
                 <a href="../../index.html">Help</a>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
@@ -154,6 +192,17 @@
                 
                 <div class="diagram-container">
                     <div class="mermaid" data-mermaid="stateDiagram-v2
+    state &quot;queued&quot; as QUEUED
+    state &quot;running&quot; as RUNNING
+    state &quot;deployed&quot; as DEPLOYED
+    state &quot;failed&quot; as FAILED
+    state &quot;canceled&quot; as CANCELED
+    state &quot;canceling&quot; as CANCELING
+    state &quot;expired&quot; as EXPIRED
+    state &quot;superseded&quot; as SUPERSEDED
+    state &quot;complete&quot; as COMPLETE
+    state &quot;deleting&quot; as DELETING
+    state &quot;deleted&quot; as DELETED
     [*] --> QUEUED: Submit job
     QUEUED --> RUNNING: Worker picks up
     RUNNING --> DEPLOYED: Success
@@ -172,6 +221,17 @@
     FAILED --> [*]
     CANCELED --> [*]">
 stateDiagram-v2
+    state "queued" as QUEUED
+    state "running" as RUNNING
+    state "deployed" as DEPLOYED
+    state "failed" as FAILED
+    state "canceled" as CANCELED
+    state "canceling" as CANCELING
+    state "expired" as EXPIRED
+    state "superseded" as SUPERSEDED
+    state "complete" as COMPLETE
+    state "deleting" as DELETING
+    state "deleted" as DELETED
     [*] --> QUEUED: Submit job
     QUEUED --> RUNNING: Worker picks up
     RUNNING --> DEPLOYED: Success
@@ -201,7 +261,7 @@ stateDiagram-v2
                 <div class="state-cards">
                     <div class="state-card queued">
                         <div class="state-header">
-                            <span class="state-badge queued">QUEUED</span>
+                            <span class="state-badge queued">queued</span>
                             <span class="state-emoji">⏳</span>
                         </div>
                         <p>Job is waiting for a worker to pick it up. Jobs are processed in FIFO order.</p>
@@ -212,7 +272,7 @@ stateDiagram-v2
                     
                     <div class="state-card running">
                         <div class="state-header">
-                            <span class="state-badge running">RUNNING</span>
+                            <span class="state-badge running">running</span>
                             <span class="state-emoji">⚙️</span>
                         </div>
                         <p>A worker is actively processing this job. See <a href="#phases">phases</a> for what happens during this state.</p>
@@ -223,7 +283,7 @@ stateDiagram-v2
                     
                     <div class="state-card" style="border-left-color: #f59e0b;">
                         <div class="state-header">
-                            <span class="state-badge" style="background: #fef3c7; color: #92400e;">CANCELING</span>
+                            <span class="state-badge" style="background: #fef3c7; color: #92400e;">canceling</span>
                             <span class="state-emoji">🛑</span>
                         </div>
                         <p>User requested cancellation. Worker is cleaning up resources before marking canceled.</p>
@@ -234,7 +294,7 @@ stateDiagram-v2
                     
                     <div class="state-card" style="border-left-color: #10b981;">
                         <div class="state-header">
-                            <span class="state-badge" style="background: #d1fae5; color: #065f46;">DEPLOYED</span>
+                            <span class="state-badge" style="background: #d1fae5; color: #065f46;">deployed</span>
                             <span class="state-emoji">🚀</span>
                         </div>
                         <p>Database is live and ready for use. This is the primary working state.</p>
@@ -244,44 +304,23 @@ stateDiagram-v2
                     </div>
                 </div>
                 
-                <h3 style="margin-top: 32px; margin-bottom: 16px; font-size: 16px; color: var(--color-text-secondary);">Terminal States</h3>
+                <h3 style="margin-top: 32px; margin-bottom: 8px; font-size: 16px; color: var(--color-text-secondary);">Terminal States</h3>
+                <p style="margin: 0 0 16px; font-size: 13px; color: var(--color-text-muted);">No further transitions possible. The job record is retained for history.</p>
                 <div class="state-cards">
                     <div class="state-card complete">
                         <div class="state-header">
-                            <span class="state-badge complete">COMPLETE</span>
+                            <span class="state-badge complete">complete</span>
                             <span class="state-emoji">✅</span>
                         </div>
-                        <p>User marked database as done. Ready for cleanup.</p>
+                        <p>User clicked "Mark Done" in the Web UI. The job moves to History and the database is queued for deletion (<code>deleting</code> → <code>deleted</code>). The database is <strong>not immediately dropped</strong> — deletion is processed asynchronously.</p>
                         <div class="state-meta">
-                            <span><strong>Next step:</strong> Database will be deleted</span>
+                            <span><strong>Next step:</strong> Database queued for deletion</span>
                         </div>
                     </div>
-                    
-                    <div class="state-card" style="border-left-color: #f97316;">
-                        <div class="state-header">
-                            <span class="state-badge" style="background: #ffedd5; color: #9a3412;">EXPIRED</span>
-                            <span class="state-emoji">⏰</span>
-                        </div>
-                        <p>Retention period exceeded. Database will be automatically deleted.</p>
-                        <div class="state-meta">
-                            <span><strong>Prevention:</strong> Lock database or extend retention</span>
-                        </div>
-                    </div>
-                    
-                    <div class="state-card" style="border-left-color: #8b5cf6;">
-                        <div class="state-header">
-                            <span class="state-badge" style="background: #ede9fe; color: #5b21b6;">SUPERSEDED</span>
-                            <span class="state-emoji">🔄</span>
-                        </div>
-                        <p>A newer restore of the same database replaced this one.</p>
-                        <div class="state-meta">
-                            <span><strong>Automatic:</strong> Old database cleaned up</span>
-                        </div>
-                    </div>
-                    
+
                     <div class="state-card failed">
                         <div class="state-header">
-                            <span class="state-badge failed">FAILED</span>
+                            <span class="state-badge failed">failed</span>
                             <span class="state-emoji">❌</span>
                         </div>
                         <p>Something went wrong. Check events for details and see <a href="#failure-modes">failure modes</a>.</p>
@@ -289,10 +328,10 @@ stateDiagram-v2
                             <span><strong>Next step:</strong> Review error, then <strong>resubmit</strong> from History view</span>
                         </div>
                     </div>
-                    
+
                     <div class="state-card canceled">
                         <div class="state-header">
-                            <span class="state-badge canceled">CANCELED</span>
+                            <span class="state-badge canceled">canceled</span>
                             <span class="state-emoji">🚫</span>
                         </div>
                         <p>User canceled the job. Resources have been cleaned up.</p>
@@ -300,26 +339,52 @@ stateDiagram-v2
                             <span><strong>Next step:</strong> Submit a new job if needed</span>
                         </div>
                     </div>
-                    
-                    <div class="state-card" style="border-left-color: #64748b;">
-                        <div class="state-header">
-                            <span class="state-badge" style="background: #f1f5f9; color: #475569;">DELETING</span>
-                            <span class="state-emoji">🗑️</span>
-                        </div>
-                        <p>Database is being dropped. Brief transitional state.</p>
-                        <div class="state-meta">
-                            <span><strong>Duration:</strong> Seconds</span>
-                        </div>
-                    </div>
-                    
+
                     <div class="state-card" style="border-left-color: #94a3b8;">
                         <div class="state-header">
-                            <span class="state-badge" style="background: #e2e8f0; color: #334155;">DELETED</span>
+                            <span class="state-badge" style="background: #e2e8f0; color: #334155;">deleted</span>
                             <span class="state-emoji">🪦</span>
                         </div>
                         <p>Database has been dropped. Job record retained for history.</p>
                         <div class="state-meta">
                             <span><strong>Final:</strong> No further actions possible</span>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 style="margin-top: 32px; margin-bottom: 8px; font-size: 16px; color: var(--color-text-secondary);">Cleanup States</h3>
+                <p style="margin: 0 0 16px; font-size: 13px; color: var(--color-text-muted);">Intermediate states that eventually transition to <code>deleting</code> → <code>deleted</code>. These are not final — the job still has pending transitions.</p>
+                <div class="state-cards">
+                    <div class="state-card" style="border-left-color: #f97316;">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: #ffedd5; color: #9a3412;">expired</span>
+                            <span class="state-emoji">⏰</span>
+                        </div>
+                        <p>Retention period exceeded. After the cleanup grace period elapses, the database is automatically dropped (<code>expired</code> → <code>deleting</code> → <code>deleted</code>).</p>
+                        <div class="state-meta">
+                            <span><strong>Prevention:</strong> Lock database or extend retention</span>
+                        </div>
+                    </div>
+
+                    <div class="state-card" style="border-left-color: #8b5cf6;">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: #ede9fe; color: #5b21b6;">superseded</span>
+                            <span class="state-emoji">🔄</span>
+                        </div>
+                        <p>A newer restore to the same target replaced this database. The target was overwritten in place by the new restore; <code>db_dropped_at</code> is stamped immediately. The record is retained in history.</p>
+                        <div class="state-meta">
+                            <span><strong>Automatic:</strong> Triggered when a new restore deploys to the same target</span>
+                        </div>
+                    </div>
+
+                    <div class="state-card" style="border-left-color: #64748b;">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: #f1f5f9; color: #475569;">deleting</span>
+                            <span class="state-emoji">🗑️</span>
+                        </div>
+                        <p>Database DROP is in progress. Brief transitional state — transitions to <code>deleted</code> when the drop completes.</p>
+                        <div class="state-meta">
+                            <span><strong>Duration:</strong> Seconds</span>
                         </div>
                     </div>
                 </div>
@@ -329,29 +394,29 @@ stateDiagram-v2
             <section class="content-section" id="phases">
                 <h2>Processing Phases</h2>
                 <p>
-                    While a job is in the <code>RUNNING</code> state, the worker progresses through several phases.
+                    While a job is in the <code>running</code> state, the worker progresses through several phases.
                     Each phase performs a specific task in the restore pipeline.
                 </p>
                 
                 <div class="diagram-container">
                     <div class="mermaid" data-mermaid="flowchart LR
-    subgraph RUNNING
+    subgraph running
     A[discovery] --> B[download]
     B --> C[extraction]
     C --> D[myloader]
     D --> E[post_sql]
     E --> F[atomic_rename]
     end
-    F --> G((DEPLOYED))">
+    F --> G((deployed))">
 flowchart LR
-    subgraph RUNNING
+    subgraph running
     A[discovery] --> B[download]
     B --> C[extraction]
     C --> D[myloader]
     D --> E[post_sql]
     E --> F[atomic_rename]
     end
-    F --> G((DEPLOYED))
+    F --> G((deployed))
                     </div>
                 </div>
                 
@@ -449,75 +514,75 @@ flowchart LR
                 <table class="param-table">
                     <thead>
                         <tr>
-                            <th>From</th>
-                            <th>To</th>
-                            <th>Trigger</th>
+                            <th scope="col">From</th>
+                            <th scope="col">To</th>
+                            <th scope="col">Trigger</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td><span class="state-badge queued" style="font-size: 11px;">QUEUED</span></td>
-                            <td><span class="state-badge running" style="font-size: 11px;">RUNNING</span></td>
+                            <td><span class="state-badge queued" style="font-size: 11px;">queued</span></td>
+                            <td><span class="state-badge running" style="font-size: 11px;">running</span></td>
                             <td>Worker claims job from queue</td>
                         </tr>
                         <tr>
-                            <td><span class="state-badge running" style="font-size: 11px;">RUNNING</span></td>
-                            <td><span class="state-badge" style="font-size: 11px; background: #d1fae5; color: #065f46;">DEPLOYED</span></td>
+                            <td><span class="state-badge running" style="font-size: 11px;">running</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #d1fae5; color: #065f46;">deployed</span></td>
                             <td>All phases finish successfully</td>
                         </tr>
                         <tr>
-                            <td><span class="state-badge running" style="font-size: 11px;">RUNNING</span></td>
-                            <td><span class="state-badge failed" style="font-size: 11px;">FAILED</span></td>
+                            <td><span class="state-badge running" style="font-size: 11px;">running</span></td>
+                            <td><span class="state-badge failed" style="font-size: 11px;">failed</span></td>
                             <td>Unrecoverable error in any phase</td>
                         </tr>
                         <tr>
-                            <td><span class="state-badge queued" style="font-size: 11px;">QUEUED</span></td>
-                            <td><span class="state-badge canceled" style="font-size: 11px;">CANCELED</span></td>
+                            <td><span class="state-badge queued" style="font-size: 11px;">queued</span></td>
+                            <td><span class="state-badge canceled" style="font-size: 11px;">canceled</span></td>
                             <td>User runs <code>pulldb cancel</code></td>
                         </tr>
                         <tr>
-                            <td><span class="state-badge running" style="font-size: 11px;">RUNNING</span></td>
-                            <td><span class="state-badge" style="font-size: 11px; background: #fef3c7; color: #92400e;">CANCELING</span></td>
+                            <td><span class="state-badge running" style="font-size: 11px;">running</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #fef3c7; color: #92400e;">canceling</span></td>
                             <td>User runs <code>pulldb cancel</code></td>
                         </tr>
                         <tr>
-                            <td><span class="state-badge" style="font-size: 11px; background: #fef3c7; color: #92400e;">CANCELING</span></td>
-                            <td><span class="state-badge canceled" style="font-size: 11px;">CANCELED</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #fef3c7; color: #92400e;">canceling</span></td>
+                            <td><span class="state-badge canceled" style="font-size: 11px;">canceled</span></td>
                             <td>Worker finishes cleanup</td>
                         </tr>
                         <tr>
-                            <td><span class="state-badge" style="font-size: 11px; background: #d1fae5; color: #065f46;">DEPLOYED</span></td>
-                            <td><span class="state-badge" style="font-size: 11px; background: #ffedd5; color: #9a3412;">EXPIRED</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #d1fae5; color: #065f46;">deployed</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #ffedd5; color: #9a3412;">expired</span></td>
                             <td>Retention period exceeded (if not locked)</td>
                         </tr>
                         <tr>
-                            <td><span class="state-badge" style="font-size: 11px; background: #d1fae5; color: #065f46;">DEPLOYED</span></td>
-                            <td><span class="state-badge complete" style="font-size: 11px;">COMPLETE</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #d1fae5; color: #065f46;">deployed</span></td>
+                            <td><span class="state-badge complete" style="font-size: 11px;">complete</span></td>
                             <td>User marks "done" in Web UI</td>
                         </tr>
                         <tr>
-                            <td><span class="state-badge" style="font-size: 11px; background: #d1fae5; color: #065f46;">DEPLOYED</span></td>
-                            <td><span class="state-badge" style="font-size: 11px; background: #ede9fe; color: #5b21b6;">SUPERSEDED</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #d1fae5; color: #065f46;">deployed</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #ede9fe; color: #5b21b6;">superseded</span></td>
                             <td>User restores same database again</td>
                         </tr>
                         <tr>
-                            <td><span class="state-badge" style="font-size: 11px; background: #ffedd5; color: #9a3412;">EXPIRED</span></td>
-                            <td><span class="state-badge" style="font-size: 11px; background: #f1f5f9; color: #475569;">DELETING</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #ffedd5; color: #9a3412;">expired</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #f1f5f9; color: #475569;">deleting</span></td>
                             <td>Retention cleanup job runs</td>
                         </tr>
                         <tr>
-                            <td><span class="state-badge" style="font-size: 11px; background: #ede9fe; color: #5b21b6;">SUPERSEDED</span></td>
-                            <td><span class="state-badge" style="font-size: 11px; background: #f1f5f9; color: #475569;">DELETING</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #ede9fe; color: #5b21b6;">superseded</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #f1f5f9; color: #475569;">deleting</span></td>
                             <td>Automatic cleanup after supersession</td>
                         </tr>
                         <tr>
-                            <td><span class="state-badge complete" style="font-size: 11px;">COMPLETE</span></td>
-                            <td><span class="state-badge" style="font-size: 11px; background: #f1f5f9; color: #475569;">DELETING</span></td>
+                            <td><span class="state-badge complete" style="font-size: 11px;">complete</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #f1f5f9; color: #475569;">deleting</span></td>
                             <td>User requests deletion</td>
                         </tr>
                         <tr>
-                            <td><span class="state-badge" style="font-size: 11px; background: #f1f5f9; color: #475569;">DELETING</span></td>
-                            <td><span class="state-badge" style="font-size: 11px; background: #e2e8f0; color: #334155;">DELETED</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #f1f5f9; color: #475569;">deleting</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #e2e8f0; color: #334155;">deleted</span></td>
                             <td>Database DROP completes</td>
                         </tr>
                     </tbody>
@@ -530,7 +595,7 @@ flowchart LR
                     </svg>
                     <div>
                         <strong>Terminal states are final</strong><br>
-                        Once a job reaches DELETED, FAILED, or CANCELED, it cannot be modified.
+                        Once a job reaches <code>deleted</code>, <code>failed</code>, or <code>canceled</code>, it cannot be modified.
                         However, <strong>failed jobs can be resubmitted</strong> from the History view—this creates a new job with the same backup and settings.
                     </div>
                 </div>
@@ -550,7 +615,7 @@ flowchart LR
             <section class="content-section" id="lifecycle">
                 <h2>Database Lifecycle</h2>
                 <p>
-                    Once a restore completes, the database enters the <strong>DEPLOYED</strong> state and has its own lifecycle
+                    Once a restore completes, the database enters the <strong><code>deployed</code></strong> state and has its own lifecycle
                     managed by retention policies, user actions, and automatic cleanup.
                 </p>
                 
@@ -583,7 +648,7 @@ flowchart LR
                 <h3 style="margin-top: 24px; font-size: 15px;">Supersession</h3>
                 <p>
                     When you restore the <strong>same database</strong> while you already have a deployed version,
-                    the old one is automatically marked <code>SUPERSEDED</code> and queued for deletion.
+                    the old one is automatically marked <code>superseded</code> and queued for deletion.
                     This prevents accumulation of stale databases.
                 </p>
                 
@@ -740,5 +805,22 @@ flowchart LR
             sections.forEach(section => observer.observe(section));
         });
     </script>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="shortcuts-modal" x-show="shortcutsOpen" x-transition @click.self="closeShortcuts()" @keydown="handleShortcutsKeydown($event)" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="shortcuts-container">
+            <div class="shortcuts-header">
+                <h2 style="margin:0;font-size:1.1rem;">Keyboard Shortcuts</h2>
+                <button @click="closeShortcuts()" aria-label="Close shortcuts" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text);">&#x2715;</button>
+            </div>
+            <dl class="shortcuts-list">
+                <div><dt><kbd>/</kbd></dt><dd>Open search</dd></div>
+                <div><dt><kbd>Esc</kbd></dt><dd>Close modal</dd></div>
+                <div><dt><kbd>?</kbd></dt><dd>Show shortcuts</dd></div>
+                <div><dt><kbd>Tab</kbd></dt><dd>Navigate within modal</dd></div>
+            </dl>
+            <p style="font-size:0.8rem;color:var(--color-text-muted);margin-top:1rem;">Press <kbd>Esc</kbd> to close</p>
+        </div>
+    </div>
 </body>
 </html>

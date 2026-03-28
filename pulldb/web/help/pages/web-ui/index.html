@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="pullDB Web UI guide — navigate the dashboard, jobs, restore form, admin panel, and user profile.">
     <title>Web UI Overview - pullDB Help</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../../css/help.css">
     <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="../../js/alpine.min.js"></script>
 </head>
-<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
-    
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch(); closeShortcuts()" @keydown.window="if($event.key==='?' && !searchOpen) { shortcutsOpen ? closeShortcuts() : openShortcuts() }">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <div class="bg-gradient"></div>
     <div class="bg-grid"></div>
     
@@ -38,14 +37,21 @@
             </div>
             
             <div class="nav-actions">
-                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                <button class="mobile-menu-btn" @click="openMobileNav()" :aria-expanded="mobileNavOpen" aria-controls="mobile-nav-drawer" aria-label="Open navigation menu" title="Menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <button class="search-trigger" @click="openSearch()" :aria-expanded="searchOpen" aria-label="Search documentation" title="Search (/)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="M21 21l-4.35-4.35"/>
                     </svg>
                     <span class="search-hint">/</span>
                 </button>
-                <button class="theme-toggle" @click="toggleTheme()">
+                <button class="theme-toggle" @click="toggleTheme()" :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
                     <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
@@ -57,27 +63,51 @@
             </div>
         </div>
     </nav>
+
+    <!-- Mobile Nav Overlay -->
+    <div class="mobile-nav-overlay" :class="{ 'open': mobileNavOpen }" @click="closeMobileNav()"></div>
+    <div class="mobile-nav-drawer" id="mobile-nav-drawer" :class="{ 'open': mobileNavOpen }">
+        <div class="mobile-nav-header">
+            <span style="font-weight:700;font-size:1rem;">Navigation</span>
+            <button class="mobile-nav-close" @click="closeMobileNav()" aria-label="Close menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <a href="../getting-started.html" class="mobile-nav-link" @click="closeMobileNav()">Getting Started</a>
+        <a href="../cli/index.html" class="mobile-nav-link" @click="closeMobileNav()">CLI</a>
+        <a href="../api/index.html" class="mobile-nav-link" @click="closeMobileNav()">API</a>
+        <a href="../concepts/job-lifecycle.html" class="mobile-nav-link" @click="closeMobileNav()">Concepts</a>
+        <a href="index.html" class="mobile-nav-link active" @click="closeMobileNav()">Web UI</a>
+    </div>
     
     <!-- Search Modal -->
-    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+    <div class="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" x-show="searchOpen" x-transition @click.self="closeSearch()" @keydown="handleSearchKeydown($event)">
         <div class="search-container" @click.stop>
             <div class="search-input-wrapper">
                 <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8"/>
                     <path d="M21 21l-4.35-4.35"/>
                 </svg>
-                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <label for="help-search-input" class="sr-only">Search documentation</label>
+                <input id="help-search-input" type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()" :aria-activedescendant="selectedIndex >= 0 && searchResults.length > 0 ? 'search-result-' + selectedIndex : undefined">
                 <kbd class="search-kbd">ESC</kbd>
             </div>
-            <div class="search-results" x-show="searchQuery.length > 0">
+            <div class="search-results" aria-live="polite" aria-atomic="false" x-show="searchQuery.length > 0">
+                <ul role="listbox" aria-label="Search results">
                 <template x-for="(result, index) in searchResults" :key="result.id">
+                    <li role="option" :id="'search-result-' + index" :aria-selected="index === selectedIndex">
                     <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
                         <div class="result-content">
                             <div class="result-title" x-html="result.title"></div>
                             <div class="result-preview" x-html="result.preview"></div>
                         </div>
                     </a>
+                    </li>
                 </template>
+                </ul>
             </div>
         </div>
     </div>
@@ -110,7 +140,7 @@
             </nav>
         </aside>
         
-        <main class="page-content">
+        <main id="main-content" class="page-content">
             <div class="breadcrumbs">
                 <a href="../../index.html">Help</a>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
@@ -195,16 +225,22 @@
                 </div>
                 
                 <h3>Authentication</h3>
-                <p>The Web UI supports two authentication methods:</p>
-                
+                <p>The Web UI uses <strong>session cookie authentication only</strong>. Log in with your username and password to receive a session cookie valid for 24 hours.</p>
+
                 <div class="method-cards">
                     <div class="method-card">
                         <h4>Username & Password</h4>
-                        <p>Log in with your pullDB username and password. This creates a session cookie valid for 24 hours.</p>
+                        <p>Log in with your pullDB username and password. This creates a session cookie valid for 24 hours. All subsequent page requests use this cookie automatically.</p>
                     </div>
-                    <div class="method-card">
-                        <h4>API Key</h4>
-                        <p>Use an API key in the Authorization header for programmatic access or when integrating with other tools.</p>
+                </div>
+
+                <div class="info-callout" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>API keys are not for the web UI.</strong> API keys are used with the REST API and CLI only (via the <code>Authorization</code> header or <code>~/.pulldb/credentials</code> file). They cannot be used to log in to the web UI.
                     </div>
                 </div>
                 
@@ -260,9 +296,9 @@
                             <span class="state-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">MANAGER</span>
                             <span class="state-emoji">📋</span>
                         </div>
-                        <p>Can view all jobs across the system and access the Manager view. Cannot modify system settings or manage users.</p>
+                        <p>Can view all jobs for their team, access the Manager view, cancel team member jobs, submit jobs on behalf of managed users, and reset team members' passwords. Cannot modify system settings or manage users outside their team.</p>
                         <div class="state-meta">
-                            <span><strong>Access:</strong> Dashboard, Jobs, Manager View, Profile</span>
+                            <span><strong>Access:</strong> Dashboard, Jobs (team), Manager View, Profile</span>
                         </div>
                     </div>
                     
@@ -295,11 +331,12 @@
                 </p>
                 
                 <table class="param-table">
+                    <caption class="sr-only">Web UI navigation menu items and the roles that can access them</caption>
                     <thead>
                         <tr>
-                            <th>Menu Item</th>
-                            <th>Description</th>
-                            <th>Roles</th>
+                            <th scope="col">Menu Item</th>
+                            <th scope="col">Description</th>
+                            <th scope="col">Roles</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -314,19 +351,29 @@
                             <td>All</td>
                         </tr>
                         <tr>
-                            <td><code>Jobs</code></td>
-                            <td>View and manage restore jobs</td>
+                            <td><code>Jobs</code> (My Jobs)</td>
+                            <td>View and manage your own restore jobs</td>
                             <td>All</td>
+                        </tr>
+                        <tr>
+                            <td><code>Jobs</code> (All Jobs)</td>
+                            <td>System-wide job view with full filtering</td>
+                            <td>manager, admin</td>
                         </tr>
                         <tr>
                             <td><code>Manager</code></td>
                             <td>Overview of all system jobs</td>
-                            <td>Manager, Admin</td>
+                            <td>manager, admin</td>
                         </tr>
                         <tr>
                             <td><code>Admin</code></td>
                             <td>System administration panel</td>
-                            <td>Admin only</td>
+                            <td>admin only</td>
+                        </tr>
+                        <tr>
+                            <td><code>Requests</code></td>
+                            <td>Feature request board at <code>/web/requests</code></td>
+                            <td>All</td>
                         </tr>
                         <tr>
                             <td><code>Profile</code></td>
@@ -478,5 +525,22 @@
     
     <script src="../../js/help.js"></script>
     <script src="../../js/search.js"></script>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="shortcuts-modal" x-show="shortcutsOpen" x-transition @click.self="closeShortcuts()" @keydown="handleShortcutsKeydown($event)" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="shortcuts-container">
+            <div class="shortcuts-header">
+                <h2 style="margin:0;font-size:1.1rem;">Keyboard Shortcuts</h2>
+                <button @click="closeShortcuts()" aria-label="Close shortcuts" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text);">&#x2715;</button>
+            </div>
+            <dl class="shortcuts-list">
+                <div><dt><kbd>/</kbd></dt><dd>Open search</dd></div>
+                <div><dt><kbd>Esc</kbd></dt><dd>Close modal</dd></div>
+                <div><dt><kbd>?</kbd></dt><dd>Show shortcuts</dd></div>
+                <div><dt><kbd>Tab</kbd></dt><dd>Navigate within modal</dd></div>
+            </dl>
+            <p style="font-size:0.8rem;color:var(--color-text-muted);margin-top:1rem;">Press <kbd>Esc</kbd> to close</p>
+        </div>
+    </div>
 </body>
 </html>

@@ -14,8 +14,14 @@ function helpApp() {
         searchOpen: false,
         searchQuery: '',
         searchResults: [],
-        selectedIndex: 0,
+        selectedIndex: -1,
         searchIndex: [],
+
+        // Keyboard shortcuts overlay
+        shortcutsOpen: false,
+
+        // Mobile nav
+        mobileNavOpen: false,
         
         // Initialize
         init() {
@@ -41,22 +47,38 @@ function helpApp() {
         toggleTheme() {
             this.theme = this.theme === 'light' ? 'dark' : 'light';
         },
+
+        // Mobile nav
+        openMobileNav() {
+            this.mobileNavOpen = true;
+            document.body.style.overflow = 'hidden';
+        },
+
+        closeMobileNav() {
+            this.mobileNavOpen = false;
+            document.body.style.overflow = '';
+        },
         
         // Search methods
         openSearch() {
             this.searchOpen = true;
             this.searchQuery = '';
             this.searchResults = [];
-            this.selectedIndex = 0;
+            this.selectedIndex = -1;
             this.$nextTick(() => {
-                this.$refs.searchInput?.focus();
+                const input = document.getElementById('help-search-input');
+                if (input) input.focus();
             });
         },
-        
+
         closeSearch() {
             this.searchOpen = false;
             this.searchQuery = '';
             this.searchResults = [];
+            this.$nextTick(() => {
+                const btn = document.querySelector('.search-trigger');
+                if (btn) btn.focus();
+            });
         },
         
         focusSearch() {
@@ -67,58 +89,69 @@ function helpApp() {
         
         async loadSearchIndex() {
             try {
-                const response = await fetch('search-index.json');
+                const response = await fetch('/web/help/search-index.json');
                 if (response.ok) {
                     this.searchIndex = await response.json();
+                } else {
+                    // Non-200 (e.g. 404) — fall back to inline data
+                    this.searchIndex = getDefaultSearchIndex();
                 }
             } catch (e) {
-                console.log('Search index not yet generated');
-                // Fallback: use inline search data
+                // Network error — fall back to inline data
                 this.searchIndex = getDefaultSearchIndex();
             }
         },
         
+        openShortcuts() { this.shortcutsOpen = true; },
+        closeShortcuts() { this.shortcutsOpen = false; },
+
+        handleShortcutsKeydown(event) {
+            if (!this.shortcutsOpen) return;
+            if (event.key === 'Escape') {
+                this.closeShortcuts();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const modal = document.querySelector('.shortcuts-modal');
+            if (!modal) return;
+            const focusable = modal.querySelectorAll(
+                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            );
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey) {
+                if (document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                }
+            } else {
+                if (document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            }
+        },
+
         performSearch() {
-            if (this.searchQuery.length < 2) {
+            if (!this.searchQuery || this.searchQuery.trim().length < 2) {
                 this.searchResults = [];
                 return;
             }
-            
-            const query = this.searchQuery.toLowerCase();
-            const results = [];
-            
-            for (const item of this.searchIndex) {
-                const titleMatch = item.title.toLowerCase().includes(query);
-                const contentMatch = item.content.toLowerCase().includes(query);
-                const keywordsMatch = item.keywords?.some(k => k.toLowerCase().includes(query));
-                
-                if (titleMatch || contentMatch || keywordsMatch) {
-                    // Calculate relevance score
-                    let score = 0;
-                    if (titleMatch) score += 10;
-                    if (keywordsMatch) score += 5;
-                    if (contentMatch) score += 1;
-                    
-                    // Highlight matching text in title
-                    const highlightedTitle = this.highlightMatch(item.title, query);
-                    
-                    // Get preview with context
-                    const preview = this.getPreview(item.content, query);
-                    
-                    results.push({
-                        ...item,
-                        title: highlightedTitle,
-                        preview: preview,
-                        score: score
-                    });
-                }
-            }
-            
-            // Sort by relevance
-            results.sort((a, b) => b.score - a.score);
-            
-            this.searchResults = results.slice(0, 8);
-            this.selectedIndex = 0;
+
+            // Guard: skip if index hasn't loaded yet
+            if (!Array.isArray(this.searchIndex) || this.searchIndex.length === 0) return;
+
+            // Use the fuzzy search engine from search.js (window.searchDocs)
+            const rawResults = window.searchDocs
+                ? window.searchDocs(this.searchIndex, this.searchQuery)
+                : [];
+
+            // Map highlightedTitle → title so the template (x-html="result.title") renders highlights
+            this.searchResults = rawResults.map(r => ({
+                ...r,
+                title: r.highlightedTitle || r.title
+            }));
+            this.selectedIndex = -1;
         },
         
         highlightMatch(text, query) {
@@ -156,6 +189,36 @@ function helpApp() {
         selectResult() {
             if (this.searchResults[this.selectedIndex]) {
                 window.location.href = this.searchResults[this.selectedIndex].url;
+            }
+        },
+
+        handleSearchKeydown(event) {
+            if (!this.searchOpen) return;
+            if (event.key === 'Escape') {
+                this.closeSearch();
+                return;
+            }
+            // ArrowDown, ArrowUp, Enter are handled on the input element directly.
+            // Only Tab (focus trap) needs modal-level handling.
+            if (event.key !== 'Tab') return;
+            // Find all focusable elements within the modal
+            const modal = document.querySelector('.search-modal');
+            if (!modal) return;
+            const focusable = modal.querySelectorAll(
+                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            );
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey) {
+                if (document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                }
+            } else {
+                if (document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
             }
         }
     };

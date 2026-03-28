@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="pullDB Dashboard — view active jobs, recent activity, team statistics, and system status.">
     <title>Dashboard - pullDB Help</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../../css/help.css">
     <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="../../js/alpine.min.js"></script>
 </head>
-<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
-    
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch(); closeShortcuts()" @keydown.window="if($event.key==='?' && !searchOpen) { shortcutsOpen ? closeShortcuts() : openShortcuts() }">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <div class="bg-gradient"></div>
     <div class="bg-grid"></div>
     
@@ -38,14 +37,21 @@
             </div>
             
             <div class="nav-actions">
-                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                <button class="mobile-menu-btn" @click="openMobileNav()" :aria-expanded="mobileNavOpen" aria-controls="mobile-nav-drawer" aria-label="Open navigation menu" title="Menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <button class="search-trigger" @click="openSearch()" :aria-expanded="searchOpen" aria-label="Search documentation" title="Search (/)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="M21 21l-4.35-4.35"/>
                     </svg>
                     <span class="search-hint">/</span>
                 </button>
-                <button class="theme-toggle" @click="toggleTheme()">
+                <button class="theme-toggle" @click="toggleTheme()" :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
                     <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
@@ -57,27 +63,51 @@
             </div>
         </div>
     </nav>
+
+    <!-- Mobile Nav Overlay -->
+    <div class="mobile-nav-overlay" :class="{ 'open': mobileNavOpen }" @click="closeMobileNav()"></div>
+    <div class="mobile-nav-drawer" id="mobile-nav-drawer" :class="{ 'open': mobileNavOpen }">
+        <div class="mobile-nav-header">
+            <span style="font-weight:700;font-size:1rem;">Navigation</span>
+            <button class="mobile-nav-close" @click="closeMobileNav()" aria-label="Close menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <a href="../getting-started.html" class="mobile-nav-link" @click="closeMobileNav()">Getting Started</a>
+        <a href="../cli/index.html" class="mobile-nav-link" @click="closeMobileNav()">CLI</a>
+        <a href="../api/index.html" class="mobile-nav-link" @click="closeMobileNav()">API</a>
+        <a href="../concepts/job-lifecycle.html" class="mobile-nav-link" @click="closeMobileNav()">Concepts</a>
+        <a href="index.html" class="mobile-nav-link active" @click="closeMobileNav()">Web UI</a>
+    </div>
     
     <!-- Search Modal -->
-    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+    <div class="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" x-show="searchOpen" x-transition @click.self="closeSearch()" @keydown="handleSearchKeydown($event)">
         <div class="search-container" @click.stop>
             <div class="search-input-wrapper">
                 <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8"/>
                     <path d="M21 21l-4.35-4.35"/>
                 </svg>
-                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <label for="help-search-input" class="sr-only">Search documentation</label>
+                <input id="help-search-input" type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()" :aria-activedescendant="selectedIndex >= 0 && searchResults.length > 0 ? 'search-result-' + selectedIndex : undefined">
                 <kbd class="search-kbd">ESC</kbd>
             </div>
-            <div class="search-results" x-show="searchQuery.length > 0">
+            <div class="search-results" aria-live="polite" aria-atomic="false" x-show="searchQuery.length > 0">
+                <ul role="listbox" aria-label="Search results">
                 <template x-for="(result, index) in searchResults" :key="result.id">
+                    <li role="option" :id="'search-result-' + index" :aria-selected="index === selectedIndex">
                     <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
                         <div class="result-content">
                             <div class="result-title" x-html="result.title"></div>
                             <div class="result-preview" x-html="result.preview"></div>
                         </div>
                     </a>
+                    </li>
                 </template>
+                </ul>
             </div>
         </div>
     </div>
@@ -109,7 +139,7 @@
             </nav>
         </aside>
         
-        <main class="page-content">
+        <main id="main-content" class="page-content">
             <div class="breadcrumbs">
                 <a href="../../index.html">Help</a>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
@@ -128,29 +158,30 @@
             <section class="content-section" id="overview">
                 <h2>Overview</h2>
                 <p>
-                    What you see on the Dashboard depends on your role. Users see their own job activity,
-                    Managers see system-wide metrics, and Admins get full access to administration panels.
+                    What you see on the Dashboard depends on your role. Users with the <code>user</code> role see their own job activity,
+                    <code>manager</code> users see system-wide metrics, and <code>admin</code> users get full access to administration panels.
                 </p>
                 
                 <table class="param-table">
+                    <caption class="sr-only">Dashboard features available by user role</caption>
                     <thead>
                         <tr>
-                            <th>Role</th>
-                            <th>Dashboard Features</th>
+                            <th scope="col">Role</th>
+                            <th scope="col">Dashboard Features</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td><code>User</code></td>
+                            <td><code>user</code></td>
                             <td>Recent jobs, quick restore, job stats for your account</td>
                         </tr>
                         <tr>
-                            <td><code>Manager</code></td>
+                            <td><code>manager</code></td>
                             <td>All user features + system-wide job overview, Manager View link</td>
                         </tr>
                         <tr>
-                            <td><code>Admin</code></td>
-                            <td>All Manager features + admin panel, system health, user management</td>
+                            <td><code>admin</code></td>
+                            <td>All manager features + admin panel, system health, user management</td>
                         </tr>
                     </tbody>
                 </table>
@@ -164,33 +195,27 @@
                     to common actions.
                 </p>
                 
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/dashboard/user-view.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/dashboard/user-view.png" alt="User dashboard with recent jobs and quick actions" loading="lazy">
-                    </picture>
-                    <figcaption>1. Stats cards — 2. Recent jobs panel — 3. Quick actions</figcaption>
-                </figure>
-                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>User dashboard layout</strong><br>
+                        The user dashboard shows stats cards at the top (active jobs, last job status), followed by the Recent Jobs panel, and Quick Action buttons below.
+                    </div>
+                </div>
+
                 <h3>Recent Jobs Panel</h3>
                 <p>
                     Shows your 5 most recent restore jobs with current status. Each job row displays:
                 </p>
                 <ul class="feature-list">
-                    <li><strong>Customer ID</strong> — The target customer database</li>
+                    <li><strong>Target Database</strong> — The restored database name</li>
                     <li><strong>Status Badge</strong> — Current job state (Queued, Running, Complete, Failed)</li>
                     <li><strong>Submitted Time</strong> — When you submitted the job</li>
-                    <li><strong>Duration</strong> — How long the job took (or is taking)</li>
                     <li><strong>Actions</strong> — View details, cancel (if applicable)</li>
                 </ul>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/dashboard/recent-jobs.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/dashboard/recent-jobs.png" alt="Recent jobs table with status and actions" loading="lazy">
-                    </picture>
-                    <figcaption>1. Customer ID — 2. Status badge — 3. Submitted time — 4. Actions</figcaption>
-                </figure>
                 
                 <div class="info-callout">
                     <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -218,32 +243,33 @@
                     This provides a comprehensive overview of all jobs across the system.
                 </p>
                 
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/dashboard/manager-view.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/dashboard/manager-view.png" alt="Manager dashboard showing team activity" loading="lazy">
-                    </picture>
-                    <figcaption>1. All jobs table — 2. User filter — 3. Status filter — 4. Export button</figcaption>
-                </figure>
-                
-                <h3>Features</h3>
-                <ul class="feature-list">
-                    <li><strong>All Jobs Table</strong> — View jobs from all users with filtering and search</li>
-                    <li><strong>User Filter</strong> — Filter jobs by submitting user</li>
-                    <li><strong>Status Filter</strong> — Filter by job state</li>
-                    <li><strong>Date Range</strong> — Filter jobs by submission date</li>
-                    <li><strong>Export</strong> — Export job data to CSV</li>
-                </ul>
-                
-                <div class="warning-callout">
+                <div class="info-callout">
                     <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                        <line x1="12" y1="9" x2="12" y2="13"/>
-                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
                     </svg>
                     <div>
-                        <strong>Read-only access</strong><br>
-                        Managers can view all jobs but cannot cancel or modify jobs belonging to other users.
+                        <strong>Manager dashboard layout</strong><br>
+                        The manager dashboard extends the user view with a Team Members table and team-wide statistics below the standard panels.
+                    </div>
+                </div>
+
+                <h3>Features</h3>
+                <ul class="feature-list">
+                    <li><strong>Team Members Table</strong> — Lists each managed user with their active job count and recent job status</li>
+                    <li><strong>Team Statistics</strong> — Total active jobs across the team, total databases currently in use</li>
+                    <li><strong>Team Recent Jobs</strong> — Last 5 jobs across the whole team</li>
+                    <li><strong>View Team Member Jobs</strong> — Click a team member row to see their individual job list</li>
+                </ul>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Manager permissions</strong><br>
+                        Managers can view all team member jobs and can cancel jobs belonging to users they manage. They can also submit restore jobs on behalf of managed users.
                     </div>
                 </div>
             </section>
@@ -255,14 +281,17 @@
                     Admins see additional panels and have quick access to administrative functions.
                 </p>
                 
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/dashboard/admin-view.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/dashboard/admin-view.png" alt="Admin dashboard with system health overview" loading="lazy">
-                    </picture>
-                    <figcaption>1. System health panel — 2. Admin quick links — 3. User management</figcaption>
-                </figure>
-                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Admin dashboard layout</strong><br>
+                        The admin dashboard extends the user view with system-wide statistics, a Host Health table showing active restore counts per host, and the last 10 jobs across the whole system.
+                    </div>
+                </div>
+
                 <h3>System Health Panel</h3>
                 <p>
                     Real-time system status including:
@@ -333,20 +362,12 @@
                     The top of the dashboard displays summary statistics in card format.
                 </p>
                 
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/dashboard/stats-cards.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/dashboard/stats-cards.png" alt="Dashboard stats showing active, queued, and completed jobs" loading="lazy">
-                    </picture>
-                    <figcaption>1. Total jobs — 2. In progress — 3. Completed — 4. Failed</figcaption>
-                </figure>
-                
                 <div class="state-cards">
                     <div class="state-card" style="border-left-color: var(--color-primary);">
                         <div class="state-header">
                             <span class="state-badge" style="background: var(--color-primary-bg); color: var(--color-primary);">Total Jobs</span>
                         </div>
-                        <p>Total number of jobs you've submitted (or system-wide for Managers/Admins).</p>
+                        <p>Total number of jobs you've submitted (or system-wide for managers/admins).</p>
                     </div>
                     
                     <div class="state-card" style="border-left-color: var(--color-warning);">
@@ -358,14 +379,14 @@
                     
                     <div class="state-card" style="border-left-color: var(--color-success);">
                         <div class="state-header">
-                            <span class="state-badge" style="background: var(--color-success-bg); color: var(--color-success);">Completed</span>
+                            <span class="state-badge" style="background: var(--color-success-bg); color: var(--color-success);">Complete</span>
                         </div>
-                        <p>Successfully completed restore jobs.</p>
+                        <p>Successfully restored databases (deployed, complete, expired).</p>
                     </div>
                     
-                    <div class="state-card" style="border-left-color: var(--color-error);">
+                    <div class="state-card" style="border-left-color: var(--color-danger);">
                         <div class="state-header">
-                            <span class="state-badge" style="background: var(--color-error-bg); color: var(--color-error);">Failed</span>
+                            <span class="state-badge" style="background: var(--color-danger-bg); color: var(--color-danger);">Failed</span>
                         </div>
                         <p>Jobs that encountered errors.</p>
                     </div>
@@ -382,9 +403,9 @@
                 <table class="param-table">
                     <thead>
                         <tr>
-                            <th>Action</th>
-                            <th>Description</th>
-                            <th>Roles</th>
+                            <th scope="col">Action</th>
+                            <th scope="col">Description</th>
+                            <th scope="col">Roles</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -404,9 +425,9 @@
                             <td>All</td>
                         </tr>
                         <tr>
-                            <td><code>Export Report</code></td>
-                            <td>Download job history as CSV</td>
-                            <td>Manager, Admin</td>
+                            <td><code>View History</code></td>
+                            <td>Navigate to job history (terminal-state jobs)</td>
+                            <td>All</td>
                         </tr>
                     </tbody>
                 </table>
@@ -466,5 +487,22 @@
     
     <script src="../../js/help.js"></script>
     <script src="../../js/search.js"></script>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="shortcuts-modal" x-show="shortcutsOpen" x-transition @click.self="closeShortcuts()" @keydown="handleShortcutsKeydown($event)" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="shortcuts-container">
+            <div class="shortcuts-header">
+                <h2 style="margin:0;font-size:1.1rem;">Keyboard Shortcuts</h2>
+                <button @click="closeShortcuts()" aria-label="Close shortcuts" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text);">&#x2715;</button>
+            </div>
+            <dl class="shortcuts-list">
+                <div><dt><kbd>/</kbd></dt><dd>Open search</dd></div>
+                <div><dt><kbd>Esc</kbd></dt><dd>Close modal</dd></div>
+                <div><dt><kbd>?</kbd></dt><dd>Show shortcuts</dd></div>
+                <div><dt><kbd>Tab</kbd></dt><dd>Navigate within modal</dd></div>
+            </dl>
+            <p style="font-size:0.8rem;color:var(--color-text-muted);margin-top:1rem;">Press <kbd>Esc</kbd> to close</p>
+        </div>
+    </div>
 </body>
 </html>

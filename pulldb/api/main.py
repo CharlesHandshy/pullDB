@@ -79,6 +79,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     - X-XSS-Protection: 0              — disables legacy XSS filter (CSP is preferred)
     - Referrer-Policy: strict-origin-when-cross-origin
     - Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+    CSP CONSTRAINT: script-src and other directives are 'self' only — no external
+    CDNs are permitted. All JS/CSS/font assets must be served from /static/.
+    Vendor libraries (htmx, etc.) must be copied into pulldb/web/static/js/vendor/.
+    DO NOT add CDN URLs to templates; the browser will silently block them.
+    See tests/unit/test_csp_template_compliance.py for the regression test.
     """
 
     async def dispatch(self, request: Request, call_next: Callable[..., Any]) -> Response:
@@ -89,15 +95,27 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "0"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        # Help pages use Alpine.js which requires 'unsafe-eval' to evaluate x-data/x-on
+        # expressions at runtime.  All other routes keep the strict 'self'-only policy.
+        if request.url.path.startswith("/web/help"):
+            script_src = "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+        else:
+            script_src = "script-src 'self' 'unsafe-inline'"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
+            f"{script_src}; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; "
             "font-src 'self'; "
             "connect-src 'self'; "
             "frame-ancestors 'none'"
         )
+        # Prevent HTML pages from being cached so that deployments (e.g. changes
+        # to base.html) take effect immediately without requiring a hard refresh.
+        # Static assets (/static/) keep their own caching via StaticFiles.
+        content_type = response.headers.get("content-type", "")
+        if "text/html" in content_type:
+            response.headers["Cache-Control"] = "no-store"
         return response
 
 

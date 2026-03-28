@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Get started with pullDB in minutes — install the CLI, authenticate, and run your first database restore.">
     <title>Getting Started - pullDB Help</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../css/help.css">
     <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="../js/alpine.min.js"></script>
 </head>
-<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
-    
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch(); closeShortcuts()" @keydown.window="if($event.key==='?' && !searchOpen) { shortcutsOpen ? closeShortcuts() : openShortcuts() }">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <div class="bg-gradient"></div>
     <div class="bg-grid"></div>
     
@@ -38,14 +37,21 @@
             </div>
             
             <div class="nav-actions">
-                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                <button class="mobile-menu-btn" @click="openMobileNav()" :aria-expanded="mobileNavOpen" aria-controls="mobile-nav-drawer" aria-label="Open navigation menu" title="Menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <button class="search-trigger" @click="openSearch()" :aria-expanded="searchOpen" aria-label="Search documentation" title="Search (/)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="M21 21l-4.35-4.35"/>
                     </svg>
                     <span class="search-hint">/</span>
                 </button>
-                <button class="theme-toggle" @click="toggleTheme()">
+                <button class="theme-toggle" @click="toggleTheme()" :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
                     <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
@@ -57,33 +63,57 @@
             </div>
         </div>
     </nav>
+
+    <!-- Mobile Nav Overlay -->
+    <div class="mobile-nav-overlay" :class="{ 'open': mobileNavOpen }" @click="closeMobileNav()"></div>
+    <div class="mobile-nav-drawer" id="mobile-nav-drawer" :class="{ 'open': mobileNavOpen }">
+        <div class="mobile-nav-header">
+            <span style="font-weight:700;font-size:1rem;">Navigation</span>
+            <button class="mobile-nav-close" @click="closeMobileNav()" aria-label="Close menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <a href="getting-started.html" class="mobile-nav-link active" @click="closeMobileNav()">Getting Started</a>
+        <a href="cli/index.html" class="mobile-nav-link" @click="closeMobileNav()">CLI</a>
+        <a href="api/index.html" class="mobile-nav-link" @click="closeMobileNav()">API</a>
+        <a href="concepts/job-lifecycle.html" class="mobile-nav-link" @click="closeMobileNav()">Concepts</a>
+        <a href="web-ui/index.html" class="mobile-nav-link" @click="closeMobileNav()">Web UI</a>
+    </div>
     
     <!-- Search Modal -->
-    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+    <div class="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" x-show="searchOpen" x-transition @click.self="closeSearch()" @keydown="handleSearchKeydown($event)">
         <div class="search-container" @click.stop>
             <div class="search-input-wrapper">
                 <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8"/>
                     <path d="M21 21l-4.35-4.35"/>
                 </svg>
-                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <label for="help-search-input" class="sr-only">Search documentation</label>
+                <input id="help-search-input" type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()" :aria-activedescendant="selectedIndex >= 0 && searchResults.length > 0 ? 'search-result-' + selectedIndex : undefined">
                 <kbd class="search-kbd">ESC</kbd>
             </div>
-            <div class="search-results" x-show="searchQuery.length > 0">
+            <div class="search-results" aria-live="polite" aria-atomic="false" x-show="searchQuery.length > 0">
+                <ul role="listbox" aria-label="Search results">
                 <template x-for="(result, index) in searchResults" :key="result.id">
+                    <li role="option" :id="'search-result-' + index" :aria-selected="index === selectedIndex">
                     <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
                         <div class="result-content">
                             <div class="result-title" x-html="result.title"></div>
                             <div class="result-preview" x-html="result.preview"></div>
                         </div>
                     </a>
+                    </li>
                 </template>
+                </ul>
             </div>
         </div>
     </div>
     
     <!-- Main Content -->
-    <main class="page-content-full">
+    <main id="main-content" class="page-content-full">
         <div class="breadcrumbs">
             <a href="../index.html">Help</a>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
@@ -146,6 +176,20 @@
                             Contact your team admin or check with whoever manages your pullDB installation.
                         </div>
                     </div>
+
+                    <div class="warning-callout">
+                        <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        <div>
+                            <strong>New accounts require admin approval</strong><br>
+                            After running <code>pulldb register</code>, your account and API key start in a pending state.
+                            You will see <code>API key pending approval</code> when trying to run commands. Contact your
+                            administrator to enable your account before proceeding.
+                        </div>
+                    </div>
                 </div>
             </section>
             
@@ -153,14 +197,38 @@
             <section class="step-section">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h2>List Available Backups</h2>
-                    <p>List backups for a customer to see what's available:</p>
-                    
+                    <h2>Find Your Customer and List Backups</h2>
+                    <p>If you don't know the exact customer identifier, search for it first:</p>
+
+                    <div class="terminal-window" style="transform: none;">
+                        <div class="terminal-header">
+                            <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                            <span class="terminal-title">Search Customers</span>
+                            <button class="terminal-copy" onclick="copyTerminal(this)" aria-label="Copy to clipboard" title="Copy to clipboard">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="terminal-body">
+                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb search acme</span></div>
+                            <div class="terminal-line output"></div>
+                            <div class="terminal-line output">Customers matching 'acme':</div>
+                            <div class="terminal-line output">  acme</div>
+                            <div class="terminal-line output">  acme-west</div>
+                            <div class="terminal-line output"></div>
+                            <div class="terminal-line output">2 result(s).</div>
+                        </div>
+                    </div>
+
+                    <p>Once you know the exact identifier, list its available backups:</p>
+
                     <div class="terminal-window" style="transform: none;">
                         <div class="terminal-header">
                             <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
                             <span class="terminal-title">List Backups</span>
-                            <button class="terminal-copy" onclick="copyTerminal(this)">
+                            <button class="terminal-copy" onclick="copyTerminal(this)" aria-label="Copy to clipboard" title="Copy to clipboard">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -183,7 +251,7 @@
                             <div class="terminal-line output">Restore with: pulldb restore acme</div>
                         </div>
                     </div>
-                    
+
                     <p class="tip">
                         <strong>Tip:</strong> The highlighted date is the most recent backup. Use <code>date=YYYY-MM-DD</code> to restore a specific version.
                     </p>
@@ -201,7 +269,7 @@
                         <div class="terminal-header">
                             <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
                             <span class="terminal-title">Submit Restore</span>
-                            <button class="terminal-copy" onclick="copyTerminal(this)">
+                            <button class="terminal-copy" onclick="copyTerminal(this)" aria-label="Copy to clipboard" title="Copy to clipboard">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -213,7 +281,7 @@
                             <div class="terminal-line output">Job queued successfully!</div>
                             <div class="terminal-line output">  customer:     acme</div>
                             <div class="terminal-line output">  target:       <span class="highlight">chrlesacme</span></div>
-                            <div class="terminal-line output">  staging_name: chrlesacme7f3a2b1c</div>
+                            <div class="terminal-line output">  staging_name: chrlesacme_7f3a2b1c85a1</div>
                             <div class="terminal-line output">  job_id:       <span class="highlight">7f3a2b1c-85a1-4da2-9e3f-...</span></div>
                             <div class="terminal-line output">  status:       queued</div>
                             <div class="terminal-line output">  user:         charles (chrles)</div>
@@ -222,6 +290,21 @@
                         </div>
                     </div>
                     
+                    <div class="info-callout">
+                        <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 16v-4M12 8h.01"/>
+                        </svg>
+                        <div>
+                            <strong>How the database name is built</strong><br>
+                            The <code>target</code> name is your 6-character user code followed by the customer name with all
+                            non-letter characters stripped — no separator. For example, user <code>chrles</code> restoring
+                            customer <code>acme</code> gets database <code>chrlesacme</code>. A customer like <code>acme-corp</code>
+                            would become <code>chrlesacmecorp</code> (hyphen removed). You can override this with
+                            <code>target=myname</code> or append a short suffix with <code>suffix=dev</code>.
+                        </div>
+                    </div>
+
                     <div class="info-callout success">
                         <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M20 6L9 17l-5-5"/>
@@ -251,7 +334,7 @@
                             <div class="terminal-line output">Streaming events for active job 7f3a2b1c...</div>
                             <div class="terminal-line output">(Ctrl+C to stop)</div>
                             <div class="terminal-line output">[10:42:36] queued: Job submitted</div>
-                            <div class="terminal-line output">[10:42:56] running: Job started by worker (target: chrlesacme)</div>
+                            <div class="terminal-line output">[10:42:56] running: Job started by worker (target: chrlesacme_7f3a2b1c85a1)</div>
                             <div class="terminal-line output">[10:42:56] download_started: {"bucket":"pestroutes-rds-backup...}</div>
                             <div class="terminal-line output">[10:43:27] download_complete: 2.3 GB downloaded</div>
                             <div class="terminal-line output">[10:43:29] extraction_complete: Backup extracted</div>
@@ -259,15 +342,28 @@
                             <div class="terminal-line output">[10:45:30] restore_complete: myloader finished</div>
                             <div class="terminal-line output">[10:45:31] post_sql_started: Running post-SQL scripts</div>
                             <div class="terminal-line output">[10:45:33] post_sql_complete: 12 scripts executed</div>
-                            <div class="terminal-line output">[10:45:34] complete: Job finished successfully</div>
+                            <div class="terminal-line output">[10:45:34] deployed: Database chrlesacme is live</div>
                             <div class="terminal-line output"></div>
                             <div class="terminal-line output">Job 7f3a2b1c finished with status: deployed</div>
                         </div>
                     </div>
                     
+                    <div class="info-callout">
+                        <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 16v-4M12 8h.01"/>
+                        </svg>
+                        <div>
+                            <strong>What does "deployed" mean?</strong><br>
+                            <code>deployed</code> is the final success state — your database is live and ready to connect to.
+                            It will remain available until its retention period expires (typically 7 days) or you release it manually.
+                            You can extend the expiry or lock the database to prevent automatic cleanup.
+                        </div>
+                    </div>
+
                     <p class="mt-4">
-                        <strong>What just happened?</strong> pullDB downloaded your backup from S3, extracted it, loaded it 
-                        into a staging database using <code>myloader</code>, ran post-SQL scripts to anonymize data, and 
+                        <strong>What just happened?</strong> pullDB downloaded your backup from S3, extracted it, loaded it
+                        into a staging database using <code>myloader</code>, ran post-SQL scripts to anonymize data, and
                         then atomically renamed it to your final target database.
                     </p>
                 </div>
@@ -284,7 +380,7 @@
                         <div class="terminal-header">
                             <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
                             <span class="terminal-title">Connect</span>
-                            <button class="terminal-copy" onclick="copyTerminal(this)">
+                            <button class="terminal-copy" onclick="copyTerminal(this)" aria-label="Copy to clipboard" title="Copy to clipboard">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -359,5 +455,22 @@
     <script src="../js/help.js"></script>
     <script src="../js/terminal.js"></script>
     <script src="../js/search.js"></script>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="shortcuts-modal" x-show="shortcutsOpen" x-transition @click.self="closeShortcuts()" @keydown="handleShortcutsKeydown($event)" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="shortcuts-container">
+            <div class="shortcuts-header">
+                <h2 style="margin:0;font-size:1.1rem;">Keyboard Shortcuts</h2>
+                <button @click="closeShortcuts()" aria-label="Close shortcuts" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text);">&#x2715;</button>
+            </div>
+            <dl class="shortcuts-list">
+                <div><dt><kbd>/</kbd></dt><dd>Open search</dd></div>
+                <div><dt><kbd>Esc</kbd></dt><dd>Close modal</dd></div>
+                <div><dt><kbd>?</kbd></dt><dd>Show shortcuts</dd></div>
+                <div><dt><kbd>Tab</kbd></dt><dd>Navigate within modal</dd></div>
+            </dl>
+            <p style="font-size:0.8rem;color:var(--color-text-muted);margin-top:1rem;">Press <kbd>Esc</kbd> to close</p>
+        </div>
+    </div>
 </body>
 </html>

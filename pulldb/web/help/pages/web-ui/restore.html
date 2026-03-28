@@ -3,20 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="pullDB Restore form — select a customer database, configure target settings, and start a restore job.">
     <title>Restore Workflow - pullDB Help</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../../css/help.css">
     <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="../../js/alpine.min.js"></script>
 </head>
-<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
-    
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch(); closeShortcuts()" @keydown.window="if($event.key==='?' && !searchOpen) { shortcutsOpen ? closeShortcuts() : openShortcuts() }">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <div class="bg-gradient"></div>
     <div class="bg-grid"></div>
-    
+
     <!-- Navigation -->
     <nav class="nav-glass">
         <div class="nav-container">
@@ -28,7 +27,7 @@
                 </svg>
                 <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
             </a>
-            
+
             <div class="nav-links">
                 <a href="../getting-started.html" class="nav-link">Getting Started</a>
                 <a href="../cli/index.html" class="nav-link">CLI</a>
@@ -36,16 +35,23 @@
                 <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
                 <a href="index.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">Web UI</a>
             </div>
-            
+
             <div class="nav-actions">
-                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                <button class="mobile-menu-btn" @click="openMobileNav()" :aria-expanded="mobileNavOpen" aria-controls="mobile-nav-drawer" aria-label="Open navigation menu" title="Menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <button class="search-trigger" @click="openSearch()" :aria-expanded="searchOpen" aria-label="Search documentation" title="Search (/)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="M21 21l-4.35-4.35"/>
                     </svg>
                     <span class="search-hint">/</span>
                 </button>
-                <button class="theme-toggle" @click="toggleTheme()">
+                <button class="theme-toggle" @click="toggleTheme()" :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
                     <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
@@ -57,31 +63,55 @@
             </div>
         </div>
     </nav>
-    
+
+    <!-- Mobile Nav Overlay -->
+    <div class="mobile-nav-overlay" :class="{ 'open': mobileNavOpen }" @click="closeMobileNav()"></div>
+    <div class="mobile-nav-drawer" id="mobile-nav-drawer" :class="{ 'open': mobileNavOpen }">
+        <div class="mobile-nav-header">
+            <span style="font-weight:700;font-size:1rem;">Navigation</span>
+            <button class="mobile-nav-close" @click="closeMobileNav()" aria-label="Close menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <a href="../getting-started.html" class="mobile-nav-link" @click="closeMobileNav()">Getting Started</a>
+        <a href="../cli/index.html" class="mobile-nav-link" @click="closeMobileNav()">CLI</a>
+        <a href="../api/index.html" class="mobile-nav-link" @click="closeMobileNav()">API</a>
+        <a href="../concepts/job-lifecycle.html" class="mobile-nav-link" @click="closeMobileNav()">Concepts</a>
+        <a href="index.html" class="mobile-nav-link active" @click="closeMobileNav()">Web UI</a>
+    </div>
+
     <!-- Search Modal -->
-    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+    <div class="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" x-show="searchOpen" x-transition @click.self="closeSearch()" @keydown="handleSearchKeydown($event)">
         <div class="search-container" @click.stop>
             <div class="search-input-wrapper">
                 <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8"/>
                     <path d="M21 21l-4.35-4.35"/>
                 </svg>
-                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <label for="help-search-input" class="sr-only">Search documentation</label>
+                <input id="help-search-input" type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()" :aria-activedescendant="selectedIndex >= 0 && searchResults.length > 0 ? 'search-result-' + selectedIndex : undefined">
                 <kbd class="search-kbd">ESC</kbd>
             </div>
-            <div class="search-results" x-show="searchQuery.length > 0">
+            <div class="search-results" aria-live="polite" aria-atomic="false" x-show="searchQuery.length > 0">
+                <ul role="listbox" aria-label="Search results">
                 <template x-for="(result, index) in searchResults" :key="result.id">
+                    <li role="option" :id="'search-result-' + index" :aria-selected="index === selectedIndex">
                     <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
                         <div class="result-content">
                             <div class="result-title" x-html="result.title"></div>
                             <div class="result-preview" x-html="result.preview"></div>
                         </div>
                     </a>
+                    </li>
                 </template>
+                </ul>
             </div>
         </div>
     </div>
-    
+
     <!-- Page Layout with Sidebar -->
     <div class="page-layout">
         <aside class="page-sidebar">
@@ -92,7 +122,7 @@
                     <a href="dashboard.html" class="sidebar-link">Dashboard</a>
                     <a href="restore.html" class="sidebar-link active">Restore Workflow</a>
                     <a href="jobs.html" class="sidebar-link">Jobs Management</a>
-                    <a href="profile.html" class="sidebar-link">Profile & API Keys</a>
+                    <a href="profile.html" class="sidebar-link">Profile &amp; API Keys</a>
                     <a href="requests.html" class="sidebar-link">Feature Requests</a>
                     <a href="manager.html" class="sidebar-link">Manager Interface</a>
                     <a href="admin.html" class="sidebar-link">Admin Panel</a>
@@ -100,16 +130,19 @@
                 <div class="sidebar-section">
                     <div class="sidebar-heading">On This Page</div>
                     <a href="#overview" class="sidebar-link">Overview</a>
-                    <a href="#step1" class="sidebar-link">Step 1: Source</a>
-                    <a href="#step2" class="sidebar-link">Step 2: Backup</a>
-                    <a href="#step3" class="sidebar-link">Step 3: Options</a>
-                    <a href="#step4" class="sidebar-link">Step 4: Confirm</a>
+                    <a href="#section1" class="sidebar-link">Section 1: Source Selection</a>
+                    <a href="#customer-search" class="sidebar-link">— Customer Search</a>
+                    <a href="#backup-picker" class="sidebar-link">— Backup Picker</a>
+                    <a href="#qa-template" class="sidebar-link">— QA Template Tab</a>
+                    <a href="#section2" class="sidebar-link">Section 2: Target Config</a>
+                    <a href="#target-naming" class="sidebar-link">— Target Naming</a>
                     <a href="#after-submit" class="sidebar-link">After Submission</a>
+                    <a href="#common-mistakes" class="sidebar-link">Common Mistakes</a>
                 </div>
             </nav>
         </aside>
-        
-        <main class="page-content">
+
+        <main id="main-content" class="page-content">
             <div class="breadcrumbs">
                 <a href="../../index.html">Help</a>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
@@ -117,148 +150,132 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
                 <span>Restore Workflow</span>
             </div>
-            
+
             <h1 class="page-title">Restore Workflow</h1>
             <p class="page-description">
-                The restore page provides a guided wizard for submitting database restore jobs.
-                Follow the steps to select a customer, choose a backup, configure options, and submit.
+                The restore page is a single-page form at <code>/web/restore</code>. It has two numbered sections:
+                Source Selection and Target Configuration. Fill them in order and click
+                <strong>Queue Restore</strong> to submit the job.
             </p>
-            
+
             <!-- Time Badge -->
             <div class="time-badge">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"/>
                     <path d="M12 6v6l4 2"/>
                 </svg>
-                <span>~2 minutes to submit</span>
+                <span>~1 minute to submit</span>
             </div>
-            
+
             <!-- Overview Section -->
             <section class="content-section" id="overview">
                 <h2>Overview</h2>
                 <p>
-                    The restore workflow is a 4-step wizard that guides you through submitting a restore job.
-                    Each step validates your input before allowing you to proceed.
+                    Click <strong>New Restore</strong> in the sidebar to open the form. The page is divided
+                    into two sections that you complete from top to bottom. There is no multi-step wizard
+                    and no separate confirmation screen — everything is on one page.
                 </p>
-                
-                <div class="steps-visual">
-                    <div class="step-item">
-                        <div class="step-number">1</div>
-                        <div class="step-label">Source</div>
-                    </div>
-                    <div class="step-connector"></div>
-                    <div class="step-item">
-                        <div class="step-number">2</div>
-                        <div class="step-label">Backup</div>
-                    </div>
-                    <div class="step-connector"></div>
-                    <div class="step-item">
-                        <div class="step-number">3</div>
-                        <div class="step-label">Options</div>
-                    </div>
-                    <div class="step-connector"></div>
-                    <div class="step-item">
-                        <div class="step-number">4</div>
-                        <div class="step-label">Confirm</div>
-                    </div>
-                </div>
-            </section>
-            
-            <!-- Step 1 Section -->
-            <section class="content-section" id="step1">
-                <h2>Step 1: Select Source</h2>
-                <p>
-                    Choose what to restore: a customer database or the QA template. Use the tabs 
-                    at the top of the form to switch between modes.
-                </p>
-                
-                <h3>Restore Mode Tabs</h3>
-                <div class="state-cards" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div class="state-card">
-                        <div class="state-header">
-                            <span class="state-badge complete">Customer</span>
-                        </div>
-                        <p>Restore a specific customer's database from their backup.</p>
-                    </div>
-                    <div class="state-card">
-                        <div class="state-header">
-                            <span class="state-badge queued">QA Template</span>
-                        </div>
-                        <p>Restore the shared QA template database for testing.</p>
-                    </div>
-                </div>
-                
-                <h3>Customer Mode</h3>
-                <p>Enter the customer ID whose database you want to restore:</p>
-                <ul class="feature-list">
-                    <li><strong>Auto-complete</strong> — Start typing to see matching customer IDs</li>
-                    <li><strong>Validation</strong> — The system checks if backups exist before proceeding</li>
-                    <li><strong>Recent Customers</strong> — Quick links to customers you've restored recently</li>
-                </ul>
-                
+
                 <div class="info-callout">
                     <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/>
                         <path d="M12 16v-4M12 8h.01"/>
                     </svg>
                     <div>
-                        <strong>Case Sensitivity</strong><br>
-                        Customer IDs are case-sensitive. Make sure to enter them exactly as they appear in your backup system.
+                        <strong>What the form looks like</strong><br>
+                        <pre style="margin: 0.5rem 0 0; font-size: 0.8rem; line-height: 1.5; overflow-x: auto;">New Restore Job
+────────────────────────────────────────────────────
+ 1  Source Selection
+ ┌──────────────────────────────────────────────────┐
+ │ [Customer Database]  [QA Template]  ← tabs       │
+ │                                                  │
+ │  Backups                                         │
+ │  [On or After ▼] [ date picker ] [↺ reset]       │
+ │                                                  │
+ │  Customer                                        │
+ │  [ Search customers...                  ]        │
+ │    ┌─────────────────────────────────────┐       │
+ │    │ acme_pest                           │       │
+ │    │ acme_plumbing                       │       │
+ │    └─────────────────────────────────────┘       │
+ │                                                  │
+ │  Backup                              3 results   │
+ │  ┌─────────────────────────────────────┐         │
+ │  │ ○ 2026-03-25 · 1.2 GB · prod       │         │
+ │  │ ○ 2026-03-24 · 1.1 GB · prod       │         │
+ │  └─────────────────────────────────────┘         │
+ └──────────────────────────────────────────────────┘
+
+ 2  Target Configuration
+ ┌──────────────────────────────────────────────────┐
+ │  Database Host *       Suffix (optional)         │
+ │  [ Select a host... ▼] [ abc ]                  │
+ │                                                  │
+ │  This backup will restore to:                    │
+ │  jsmith_acmepest  [ Custom ]  [ Overwrite ]      │
+ └──────────────────────────────────────────────────┘
+
+ [  Queue Restore  ]</pre>
                     </div>
                 </div>
-                
-                <h3>QA Template Mode</h3>
-                <p>
-                    The QA template is a pre-sanitized database for testing and development. It contains 
-                    representative data without sensitive customer information.
-                </p>
-                <ul class="feature-list">
-                    <li><strong>No Customer Selection</strong> — Skip straight to backup selection</li>
-                    <li><strong>Pre-Sanitized Data</strong> — No post-restore scripts needed</li>
-                    <li><strong>Target Name</strong> — Always restores to <code>{user_code}qatemplate</code></li>
-                </ul>
-                
-                <h3>What Happens</h3>
-                <p>
-                    When you enter a customer ID and click "Next", the system queries S3 for available backups.
-                    If no backups are found, you'll see an error message and won't be able to proceed.
-                </p>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/restore/step1-customer.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/restore/step1-customer.png" alt="Customer search with autocomplete results" loading="lazy">
-                    </picture>
-                    <figcaption>1. Customer ID input — 2. Autocomplete dropdown — 3. Recent customers</figcaption>
-                </figure>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/restore/step1-no-results.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/restore/step1-no-results.png" alt="Customer search showing no results state" loading="lazy">
-                    </picture>
-                    <figcaption>No results state when customer has no backups</figcaption>
-                </figure>
             </section>
-            
-            <!-- Step 2 Section -->
-            <section class="content-section" id="step2">
-                <h2>Step 2: Choose Backup</h2>
+
+            <!-- Section 1 -->
+            <section class="content-section" id="section1">
+                <h2>Section 1: Source Selection</h2>
                 <p>
-                    Select which backup to restore from the list of available backups.
+                    The Source Selection section has two tabs: <strong>Customer Database</strong> (the default)
+                    and <strong>QA Template</strong>. The Customer Database tab is described below; the
+                    QA Template tab is covered in its <a href="#qa-template">own subsection</a>.
                 </p>
-                
-                <h3>Backup List</h3>
+
+                <h3 id="customer-search">Customer Search</h3>
                 <p>
-                    The backup list shows all available backups for the selected customer, with the most recent first.
-                    Each backup entry displays:
+                    Before searching for a customer, you can optionally filter which backup dates will be
+                    shown. The date filter defaults to the last 7 days. Use the mode selector to switch
+                    between <em>On or After</em>, <em>On or Before</em>, <em>On Date</em>, and
+                    <em>Between</em>. Click the reset button (↺) to return to the 7-day default.
                 </p>
-                
+                <p>
+                    Type at least <strong>3 characters</strong> into the Customer search box. Results
+                    appear as you type — the search is case-insensitive and backed by a live JSON endpoint
+                    at <code>/web/restore/search-customers</code>. Wildcard characters
+                    (<code>*</code> and <code>?</code>) are supported for flexible matching.
+                    Click a result row to select that customer.
+                </p>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Search is case-insensitive</strong><br>
+                        Customer identifiers are normalized to lowercase internally. You can type in any
+                        case — the search will match regardless. For example, typing
+                        <code>ACME</code> will find <code>acme_pest</code> and <code>acmeplumbing</code>.
+                    </div>
+                </div>
+
+                <p>
+                    Once a customer is selected, the field collapses to show the selected name with a
+                    <strong>Change</strong> link. If the customer name is very long (over 42 characters),
+                    a normalization notice appears explaining the truncated name that will be used in the
+                    target database name.
+                </p>
+
+                <h3 id="backup-picker">Backup Picker</h3>
+                <p>
+                    After a customer is selected, the Backup list loads automatically via HTMX from
+                    <code>/web/restore/search-backups</code>. The list shows available backups within
+                    your chosen date range, with the most recent listed first. Each entry shows:
+                </p>
+
                 <table class="param-table">
                     <thead>
                         <tr>
-                            <th>Column</th>
-                            <th>Description</th>
+                            <th scope="col">Column</th>
+                            <th scope="col">Description</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -267,12 +284,8 @@
                             <td>Backup date (YYYY-MM-DD)</td>
                         </tr>
                         <tr>
-                            <td><code>Time</code></td>
-                            <td>Backup time in UTC</td>
-                        </tr>
-                        <tr>
                             <td><code>Size</code></td>
-                            <td>Compressed backup size</td>
+                            <td>Compressed backup size (e.g., 1.2 GB)</td>
                         </tr>
                         <tr>
                             <td><code>Environment</code></td>
@@ -280,125 +293,154 @@
                         </tr>
                     </tbody>
                 </table>
-                
+
+                <p>
+                    Click a row to select a backup. The row highlights and the backup field collapses to a
+                    summary with a <strong>Change</strong> link. Selecting a backup also causes the
+                    Target Configuration section to display the auto-generated target database name
+                    preview.
+                </p>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+                        <path d="M12 8v4M12 16h.01"/>
+                    </svg>
+                    <div>
+                        <strong>No backups shown?</strong><br>
+                        Widen the date filter or click the reset button to return to the last 7 days.
+                        If the list is still empty, the customer may have no backups in S3 for that period.
+                        Check with your administrator that the S3 bucket is correctly configured.
+                    </div>
+                </div>
+
+                <h3 id="qa-template">QA Template Tab</h3>
+                <p>
+                    The QA Template tab is used to restore the shared QA template database — a
+                    pre-sanitized dataset for testing and development purposes. Switching to this tab
+                    skips the customer search entirely and shows only the backup list for the QA template
+                    dataset.
+                </p>
+                <p>
+                    The date filter works identically to the Customer tab. Select a QA template backup
+                    from the list to proceed.
+                </p>
+
                 <div class="info-callout">
                     <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/>
                         <path d="M12 16v-4M12 8h.01"/>
                     </svg>
                     <div>
-                        <strong>Default Selection</strong><br>
-                        The most recent backup is pre-selected. Click on any row to select a different backup.
+                        <strong>QA Template target name</strong><br>
+                        When using the QA Template tab, the target database name is auto-generated as
+                        <code>{user_code}qatemplate</code>. For example, if your user code is
+                        <code>ab1234</code>, the target will be <code>ab1234qatemplate</code>.
+                        The Suffix field is hidden; the Overwrite toggle remains available.
                     </div>
                 </div>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/restore/step2-backups.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/restore/step2-backups.png" alt="Backup list showing available restore points" loading="lazy">
-                    </picture>
-                    <figcaption>1. Backup date/time — 2. Size — 3. Environment — 4. Selection indicator</figcaption>
-                </figure>
             </section>
-            
-            <!-- Step 3 Section -->
-            <section class="content-section" id="step3">
-                <h2>Step 3: Configure Options</h2>
+
+            <!-- Section 2 -->
+            <section class="content-section" id="section2">
+                <h2>Section 2: Target Configuration</h2>
                 <p>
-                    Configure advanced options for the restore job. All options have sensible defaults,
-                    so you can skip this step for standard restores.
+                    The Target Configuration section controls where the restore lands and what the
+                    target database will be named. It becomes fully visible once a backup is selected
+                    in Section 1.
                 </p>
-                
-                <h3>Target Database Name</h3>
-                <p>
-                    The target database name is displayed in the preview callout once you select a backup.
-                    By default, names are auto-generated:
-                </p>
-                
+
                 <table class="param-table">
+                    <caption class="sr-only">Target configuration fields for the restore form</caption>
                     <thead>
                         <tr>
-                            <th>Mode</th>
-                            <th>Format</th>
-                            <th>Example</th>
+                            <th scope="col">Field</th>
+                            <th scope="col">Required</th>
+                            <th scope="col">Description</th>
+                            <th scope="col">Default</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td>Customer (no suffix)</td>
-                            <td><code>{user_code}{customer}</code></td>
-                            <td><code>jsmithacmecorp</code></td>
+                            <td><strong>Database Host</strong></td>
+                            <td>Yes</td>
+                            <td>Target MySQL server. Dropdown shows only hosts assigned to your account.</td>
+                            <td>Your default host (if set in profile)</td>
                         </tr>
                         <tr>
-                            <td>Customer (with suffix)</td>
-                            <td><code>{user_code}{customer}{suffix}</code></td>
-                            <td><code>jsmithacmecorpdev</code></td>
-                        </tr>
-                        <tr>
-                            <td>QA Template</td>
-                            <td><code>{user_code}qatemplate</code></td>
-                            <td><code>jsmithqatemplate</code></td>
-                        </tr>
-                    </tbody>
-                </table>
-                
-                <h3>Custom Target Name</h3>
-                <p>
-                    Click the <strong>"Custom"</strong> checkbox to override the auto-generated name with your own:
-                </p>
-                <ul class="feature-list">
-                    <li><strong>Pattern</strong> — Lowercase letters only (a-z)</li>
-                    <li><strong>Length</strong> — 1 to 51 characters maximum</li>
-                    <li><strong>Validation</strong> — Real-time feedback on invalid characters</li>
-                </ul>
-                
-                <div class="warning-callout">
-                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                        <line x1="12" y1="9" x2="12" y2="13"/>
-                        <line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
-                    <div>
-                        <strong>No Suffix with Custom Target</strong><br>
-                        When using a custom target name, the suffix field is hidden. Include any suffix 
-                        directly in your custom name (e.g., <code>myprojectdev</code>).
-                    </div>
-                </div>
-                
-                <h3>Available Options</h3>
-                
-                <table class="param-table">
-                    <thead>
-                        <tr>
-                            <th>Option</th>
-                            <th>Description</th>
-                            <th>Default</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><code>Target Host</code></td>
-                            <td>MySQL server to restore to</td>
-                            <td>Default configured host</td>
-                        </tr>
-                        <tr>
-                            <td><code>Suffix</code></td>
-                            <td>1-3 letter suffix appended to database name</td>
+                            <td><strong>Suffix</strong></td>
+                            <td>No</td>
+                            <td>1–3 lowercase letters appended to the auto-generated database name (e.g., <code>dev</code>).</td>
                             <td><em>None</em></td>
                         </tr>
                         <tr>
-                            <td><code>Custom</code></td>
-                            <td>Toggle custom target name input</td>
+                            <td><strong>Custom</strong> toggle</td>
+                            <td>No</td>
+                            <td>Override the auto-generated name with a custom name (lowercase letters only, 1–51 characters). Mutually exclusive with Suffix.</td>
                             <td>Off (auto-generated)</td>
                         </tr>
                         <tr>
-                            <td><code>Overwrite</code></td>
-                            <td>Drop database if it already exists</td>
+                            <td><strong>Overwrite</strong> toggle</td>
+                            <td>No</td>
+                            <td>If a database with the target name already exists, delete it and restore fresh. A warning appears when enabled.</td>
                             <td>Off</td>
                         </tr>
                     </tbody>
                 </table>
-                
+
+                <h3 id="target-naming">Target Database Naming</h3>
+                <p>
+                    The target name preview updates live as you make selections. The auto-generated
+                    name follows this pattern:
+                </p>
+
+                <table class="param-table">
+                    <caption class="sr-only">Auto-generated target database name formats by scenario</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Scenario</th>
+                            <th scope="col">Format</th>
+                            <th scope="col">Example</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Customer, no suffix</td>
+                            <td><code>{user_code}_{customer}</code></td>
+                            <td><code>ab1234_acmepest</code></td>
+                        </tr>
+                        <tr>
+                            <td>Customer, with suffix</td>
+                            <td><code>{user_code}_{customer}{suffix}</code></td>
+                            <td><code>ab1234_acmepestdev</code></td>
+                        </tr>
+                        <tr>
+                            <td>QA Template</td>
+                            <td><code>{user_code}qatemplate</code></td>
+                            <td><code>ab1234qatemplate</code></td>
+                        </tr>
+                        <tr>
+                            <td>Custom name</td>
+                            <td><em>your input</em></td>
+                            <td><code>myprojectdb</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Long customer names are normalized</strong><br>
+                        Customer names longer than 42 characters are truncated to 38 characters and
+                        a 4-letter deterministic hash suffix is appended. The normalization notice
+                        in Section 1 shows you the result before you submit. The same long customer
+                        name always produces the same normalized form.
+                    </div>
+                </div>
+
                 <div class="warning-callout">
                     <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
@@ -406,123 +448,173 @@
                         <line x1="12" y1="17" x2="12.01" y2="17"/>
                     </svg>
                     <div>
-                        <strong>Overwrite Warning</strong><br>
-                        When "Overwrite" is enabled, any existing database with the target name will be 
-                        permanently deleted. Make sure you don't have important data in the target database.
+                        <strong>Overwrite permanently deletes the existing database</strong><br>
+                        When the Overwrite toggle is enabled, any database currently at the target name
+                        will be dropped before the restore runs. This cannot be undone.
+                        Do not enable Overwrite unless you are certain you no longer need the existing data.
                     </div>
                 </div>
-                
-                <h3>Target Host Selection</h3>
+
+                <h3>Host Selector</h3>
                 <p>
-                    The target host dropdown shows all hosts you're authorized to restore to.
-                    If you only have access to one host, it will be pre-selected and the dropdown disabled.
+                    The Database Host dropdown shows only the MySQL servers your account is authorized
+                    to use. If your administrator has set a default host on your profile, it will be
+                    pre-selected. If no hosts are shown, contact your manager or administrator to
+                    request access.
                 </p>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/restore/step3-options.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/restore/step3-options.png" alt="Restore options including target host and retention" loading="lazy">
-                    </picture>
-                    <figcaption>1. Target host selector — 2. Database name — 3. Options toggles — 4. Priority (admin only)</figcaption>
-                </figure>
-            </section>
-            
-            <!-- Step 4 Section -->
-            <section class="content-section" id="step4">
-                <h2>Step 4: Review & Confirm</h2>
-                <p>
-                    Review all your selections before submitting the job. This step shows a summary
-                    of what will happen when you click "Submit".
-                </p>
-                
-                <h3>Summary Panel</h3>
-                <p>
-                    The confirmation page displays:
-                </p>
-                <ul class="feature-list">
-                    <li><strong>Customer ID</strong> — The customer being restored</li>
-                    <li><strong>Backup Date</strong> — Which backup will be used</li>
-                    <li><strong>Target Database</strong> — Where the data will be restored</li>
-                    <li><strong>Options Summary</strong> — All configured options</li>
-                    <li><strong>Estimated Time</strong> — Approximate duration based on backup size</li>
-                </ul>
-                
-                <h3>Submit Button</h3>
-                <p>
-                    Click <strong>Submit Restore Job</strong> to queue the job. You'll be redirected
-                    to the job details page where you can monitor progress.
-                </p>
-                
+
                 <div class="info-callout">
                     <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/>
                         <path d="M12 16v-4M12 8h.01"/>
                     </svg>
                     <div>
-                        <strong>Go Back</strong><br>
-                        Use the "Back" button or click on any completed step number to go back and change your selections.
+                        <strong>Submitting on behalf of another user (Managers and Admins)</strong><br>
+                        Navigate to <code>/web/restore?for_user=true</code> to see an additional
+                        <em>Submit as User</em> section. Choose a managed user from the dropdown;
+                        the job will appear in their job list and use their user code for target naming.
                     </div>
                 </div>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/restore/step4-confirm.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/restore/step4-confirm.png" alt="Restore confirmation summary" loading="lazy">
-                    </picture>
-                    <figcaption>1. Selection summary — 2. Options review — 3. Estimated time — 4. Submit button</figcaption>
-                </figure>
             </section>
-            
+
             <!-- After Submit Section -->
             <section class="content-section" id="after-submit">
                 <h2>After Submission</h2>
                 <p>
-                    Once you submit the job, you'll be taken to the job details page. Here's what to expect:
+                    Click <strong>Queue Restore</strong> to submit the form. On success, you are
+                    redirected to the Jobs page (<code>/web/jobs</code>) where your new job appears
+                    at the top. From there you can click the job row to open the detail page and watch
+                    progress in real time.
                 </p>
-                
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Override acknowledgment</strong><br>
+                        If the target name matches a known customer name, or if the target database is
+                        currently owned by another user, the form will not submit immediately. Instead,
+                        it shows a <em>Please Confirm</em> panel with checkboxes you must tick before
+                        re-submitting. Read each acknowledgment carefully — confirming an ownership
+                        transfer supersedes the other user's job and creates an audit record.
+                    </div>
+                </div>
+
+                <h3>Job Phases</h3>
+                <p>
+                    Once queued, a restore moves through these phases. The job detail page at
+                    <code>/web/jobs/{job_id}</code> shows a phase stepper that updates every 2 seconds
+                    while the job is active:
+                </p>
+
                 <div class="state-cards">
                     <div class="state-card queued">
                         <div class="state-header">
-                            <span class="state-badge queued">1. QUEUED</span>
+                            <span class="state-badge queued">1. queued</span>
                         </div>
-                        <p>Job is waiting for a worker. Usually takes only a few seconds.</p>
+                        <p>Job is waiting for a worker. Usually only a few seconds.</p>
                     </div>
-                    
+
                     <div class="state-card running">
                         <div class="state-header">
-                            <span class="state-badge running">2. RUNNING</span>
+                            <span class="state-badge running">2–7. running</span>
                         </div>
-                        <p>Worker is processing. Progress bar shows current phase (Download → Restore → Post-SQL).</p>
+                        <p>Worker progresses through: Discovery → Download → Extraction → Loading → Post-SQL → Rename.</p>
                     </div>
-                    
+
                     <div class="state-card complete">
                         <div class="state-header">
-                            <span class="state-badge complete">3. COMPLETE</span>
+                            <span class="state-badge complete">8. deployed</span>
                         </div>
-                        <p>Database is ready! Connection details shown on completion.</p>
+                        <p>Restore complete. The database is live; connection details appear on the job page.</p>
                     </div>
                 </div>
-                
-                <h3>Real-Time Updates</h3>
-                <p>
-                    The job details page polls for updates automatically. You'll see:
-                </p>
+
+                <h3>What to Expect on the Job Detail Page</h3>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Job detail page layout</strong><br>
+                        <pre style="margin: 0.5rem 0 0; font-size: 0.8rem; line-height: 1.5; overflow-x: auto;">Job 8b4c4a3a
+──────────────────────────────────────────────────────
+ Phase Stepper:
+ ✓ Queued → ✓ Discovery → ✓ Download → ✓ Extraction
+          → ⟳ Loading → … Post-SQL → … Rename → … Complete
+──────────────────────────────────────────────────────
+ Status: Running   Owner: jsmith   Submitted: Mar 25
+──────────────────────────────────────────────────────
+ Job ID:   8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f
+ Database: ab1234_acmepest
+ Host:     dev-mysql-01
+──────────────────────────────────────────────────────
+ Execution Log
+ 15:30:00  queued            Job submitted by jsmith
+ 15:30:05  running           Worker claimed job
+ 15:30:06  download_started  Downloading from s3://...
+ 15:30:51  download_complete Downloaded 1.2 GB in 45s
+ 15:34:32  complete          Restore successful</pre>
+                    </div>
+                </div>
+
                 <ul class="feature-list">
-                    <li><strong>Progress Bar</strong> — Visual progress through phases</li>
-                    <li><strong>Phase Indicator</strong> — Current processing phase name</li>
-                    <li><strong>Time Elapsed</strong> — How long the job has been running</li>
-                    <li><strong>Log Stream</strong> — Live log output (expandable)</li>
+                    <li><strong>Phase stepper</strong> — eight phases shown in order; completed phases show a checkmark, the current phase shows a spinner</li>
+                    <li><strong>Auto-refresh</strong> — the status header and phase stepper poll every 2 seconds; no manual page reload needed</li>
+                    <li><strong>Execution log</strong> — timestamped events with virtual scrolling for large logs; new entries appear at the top while running</li>
+                    <li><strong>Pause/resume</strong> — a toggle button stops or restarts auto-polling if you want to read the log without it jumping</li>
+                    <li><strong>Completion</strong> — when the job reaches the <code>complete</code> event, the page reloads automatically to show connection details (hostname, database name, port)</li>
                 </ul>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/restore/success-toast.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/restore/success-toast.png" alt="Success notification with link to new job" loading="lazy">
-                    </picture>
-                    <figcaption>Success toast notification with direct link to job details</figcaption>
-                </figure>
+
+                <p>
+                    Restore duration depends on backup size and host load. A 1 GB backup typically
+                    completes in 3–10 minutes. Larger backups can take longer — the log shows
+                    per-phase timing once the job finishes.
+                </p>
             </section>
-            
+
+            <!-- Common Mistakes -->
+            <section class="content-section" id="common-mistakes">
+                <h2>Common Mistakes</h2>
+
+                <h3>Leaving the target as auto-generated when you need a specific name</h3>
+                <p>
+                    The auto-generated name is predictable: <code>{user_code}_{customer}</code>. If
+                    two restores of the same customer are submitted without a suffix or custom name,
+                    the second job will supersede the first and you will lose the first database.
+                    Use the <strong>Suffix</strong> field (e.g., <code>v2</code>) or enable
+                    <strong>Custom</strong> to give each restore a distinct name when you need both.
+                </p>
+
+                <h3>Enabling Overwrite on a database you are still using</h3>
+                <p>
+                    The Overwrite toggle drops the existing database before the restore starts.
+                    If the database is connected to an active service or another user is relying on it,
+                    it will be gone with no recovery path from pullDB. Disable Overwrite (the default)
+                    unless you are certain the existing database can be deleted.
+                </p>
+
+                <h3>No database hosts available</h3>
+                <p>
+                    If the Database Host dropdown is empty, your account has not been assigned any
+                    target hosts. Contact your manager or an administrator to request access. You cannot
+                    submit a restore until at least one host is assigned to your account.
+                </p>
+
+                <h3>Backup list is empty after selecting a customer</h3>
+                <p>
+                    The default date filter covers the last 7 days. Click the reset button (↺) to
+                    confirm you are using the default range, then try widening it with a broader
+                    <em>On or After</em> date. If backups still do not appear, the customer may have
+                    no backups in S3, or there may be a connectivity issue with the backup bucket.
+                    Check with your administrator.
+                </p>
+            </section>
+
             <!-- Next Steps -->
             <section class="content-section">
                 <h2>Next Steps</h2>
@@ -536,7 +628,7 @@
                         </div>
                         <div class="category-content">
                             <h3>Jobs Management</h3>
-                            <p>Learn how to monitor and manage your restore jobs.</p>
+                            <p>Learn how to monitor, cancel, and manage your restore jobs.</p>
                         </div>
                         <svg class="category-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -560,10 +652,10 @@
                     </a>
                 </div>
             </section>
-            
+
         </main>
     </div>
-    
+
     <!-- Footer -->
     <footer class="help-footer">
         <div class="footer-content">
@@ -574,66 +666,25 @@
             </div>
         </div>
     </footer>
-    
-    <style>
-        /* Steps Visual */
-        .steps-visual {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0;
-            padding: 2rem;
-            background: var(--color-bg-secondary);
-            border-radius: 12px;
-            margin: 1.5rem 0;
-        }
-        
-        .step-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .step-item .step-number {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: var(--color-primary);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 600;
-            font-size: 1.1rem;
-        }
-        
-        .step-item .step-label {
-            font-size: 0.85rem;
-            color: var(--color-text-secondary);
-            font-weight: 500;
-        }
-        
-        .step-connector {
-            width: 60px;
-            height: 2px;
-            background: var(--color-border);
-            margin: 0 0.5rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        @media (max-width: 600px) {
-            .steps-visual {
-                flex-wrap: wrap;
-                gap: 1rem;
-            }
-            .step-connector {
-                display: none;
-            }
-        }
-    </style>
-    
+
     <script src="../../js/help.js"></script>
     <script src="../../js/search.js"></script>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="shortcuts-modal" x-show="shortcutsOpen" x-transition @click.self="closeShortcuts()" @keydown="handleShortcutsKeydown($event)" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="shortcuts-container">
+            <div class="shortcuts-header">
+                <h2 style="margin:0;font-size:1.1rem;">Keyboard Shortcuts</h2>
+                <button @click="closeShortcuts()" aria-label="Close shortcuts" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text);">&#x2715;</button>
+            </div>
+            <dl class="shortcuts-list">
+                <div><dt><kbd>/</kbd></dt><dd>Open search</dd></div>
+                <div><dt><kbd>Esc</kbd></dt><dd>Close modal</dd></div>
+                <div><dt><kbd>?</kbd></dt><dd>Show shortcuts</dd></div>
+                <div><dt><kbd>Tab</kbd></dt><dd>Navigate within modal</dd></div>
+            </dl>
+            <p style="font-size:0.8rem;color:var(--color-text-muted);margin-top:1rem;">Press <kbd>Esc</kbd> to close</p>
+        </div>
+    </div>
 </body>
 </html>

@@ -673,9 +673,23 @@ class LazyTable {
             }
             
             try {
-                // Fetch page 0 without clearing cache - will update cache entry
+                // Invalidate the pages we are about to re-fetch so fetchPage
+                // actually hits the server (it is a no-op for cached pages).
+                // We selectively delete only what we will re-fetch to keep the
+                // rest of the cache intact so the overlay is not needed.
+                this.cache.delete(0);
+                const visiblePage = Math.floor(
+                    Math.floor(this.scrollTop / this.rowHeight) / this.pageSize
+                );
+                if (visiblePage !== 0) this.cache.delete(visiblePage);
+
                 await this.fetchPage(0);
+                if (visiblePage !== 0) await this.fetchPage(visiblePage);
+
                 this.hideFooterLoading();
+                // Force render so row-level data changes (status, badge, etc.) paint
+                // even when the visible row range hasn't changed.
+                this._forceRender = true;
                 this.render();
             } catch (error) {
                 this.hideFooterLoading();
@@ -696,6 +710,11 @@ class LazyTable {
             try {
                 await this.fetchPage(0);
                 this.hideLoading();
+                // Re-assert _forceRender: a concurrent clearSelection() or other
+                // synchronous render() call during the await may have consumed
+                // the _forceRender flag set by clearCache(), causing the post-fetch
+                // render() to be skipped when renderStart/End happen to match.
+                this._forceRender = true;
                 this.render();
                 this.checkFetchNeeded();
             } catch (error) {

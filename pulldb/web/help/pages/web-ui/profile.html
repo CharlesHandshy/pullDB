@@ -3,20 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="pullDB User Profile — manage API keys, change password, and control your deployed databases.">
     <title>Profile & API Keys - pullDB Help</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../../css/help.css">
     <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="../../js/alpine.min.js"></script>
 </head>
-<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
-    
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch(); closeShortcuts()" @keydown.window="if($event.key==='?' && !searchOpen) { shortcutsOpen ? closeShortcuts() : openShortcuts() }">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <div class="bg-gradient"></div>
     <div class="bg-grid"></div>
-    
+
     <!-- Navigation -->
     <nav class="nav-glass">
         <div class="nav-container">
@@ -28,7 +27,7 @@
                 </svg>
                 <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
             </a>
-            
+
             <div class="nav-links">
                 <a href="../getting-started.html" class="nav-link">Getting Started</a>
                 <a href="../cli/index.html" class="nav-link">CLI</a>
@@ -36,16 +35,23 @@
                 <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
                 <a href="index.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">Web UI</a>
             </div>
-            
+
             <div class="nav-actions">
-                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                <button class="mobile-menu-btn" @click="openMobileNav()" :aria-expanded="mobileNavOpen" aria-controls="mobile-nav-drawer" aria-label="Open navigation menu" title="Menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <button class="search-trigger" @click="openSearch()" :aria-expanded="searchOpen" aria-label="Search documentation" title="Search (/)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="M21 21l-4.35-4.35"/>
                     </svg>
                     <span class="search-hint">/</span>
                 </button>
-                <button class="theme-toggle" @click="toggleTheme()">
+                <button class="theme-toggle" @click="toggleTheme()" :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
                     <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
@@ -57,31 +63,55 @@
             </div>
         </div>
     </nav>
-    
+
+    <!-- Mobile Nav Overlay -->
+    <div class="mobile-nav-overlay" :class="{ 'open': mobileNavOpen }" @click="closeMobileNav()"></div>
+    <div class="mobile-nav-drawer" id="mobile-nav-drawer" :class="{ 'open': mobileNavOpen }">
+        <div class="mobile-nav-header">
+            <span style="font-weight:700;font-size:1rem;">Navigation</span>
+            <button class="mobile-nav-close" @click="closeMobileNav()" aria-label="Close menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <a href="../getting-started.html" class="mobile-nav-link" @click="closeMobileNav()">Getting Started</a>
+        <a href="../cli/index.html" class="mobile-nav-link" @click="closeMobileNav()">CLI</a>
+        <a href="../api/index.html" class="mobile-nav-link" @click="closeMobileNav()">API</a>
+        <a href="../concepts/job-lifecycle.html" class="mobile-nav-link" @click="closeMobileNav()">Concepts</a>
+        <a href="index.html" class="mobile-nav-link active" @click="closeMobileNav()">Web UI</a>
+    </div>
+
     <!-- Search Modal -->
-    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+    <div class="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" x-show="searchOpen" x-transition @click.self="closeSearch()" @keydown="handleSearchKeydown($event)">
         <div class="search-container" @click.stop>
             <div class="search-input-wrapper">
                 <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8"/>
                     <path d="M21 21l-4.35-4.35"/>
                 </svg>
-                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <label for="help-search-input" class="sr-only">Search documentation</label>
+                <input id="help-search-input" type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()" :aria-activedescendant="selectedIndex >= 0 && searchResults.length > 0 ? 'search-result-' + selectedIndex : undefined">
                 <kbd class="search-kbd">ESC</kbd>
             </div>
-            <div class="search-results" x-show="searchQuery.length > 0">
+            <div class="search-results" aria-live="polite" aria-atomic="false" x-show="searchQuery.length > 0">
+                <ul role="listbox" aria-label="Search results">
                 <template x-for="(result, index) in searchResults" :key="result.id">
+                    <li role="option" :id="'search-result-' + index" :aria-selected="index === selectedIndex">
                     <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
                         <div class="result-content">
                             <div class="result-title" x-html="result.title"></div>
                             <div class="result-preview" x-html="result.preview"></div>
                         </div>
                     </a>
+                    </li>
                 </template>
+                </ul>
             </div>
         </div>
     </div>
-    
+
     <!-- Page Layout with Sidebar -->
     <div class="page-layout">
         <aside class="page-sidebar">
@@ -106,12 +136,12 @@
                     <a href="#api-keys" class="sidebar-link">API Keys</a>
                     <a href="#create-key" class="sidebar-link">Creating Keys</a>
                     <a href="#using-keys" class="sidebar-link">Using API Keys</a>
-                    <a href="#maintenance" class="sidebar-link">Database Maintenance</a>
+                    <a href="#maintenance" class="sidebar-link">Database Lifecycle</a>
                 </div>
             </nav>
         </aside>
-        
-        <main class="page-content">
+
+        <main id="main-content" class="page-content">
             <div class="breadcrumbs">
                 <a href="../../index.html">Help</a>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
@@ -119,21 +149,21 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
                 <span>Profile & API Keys</span>
             </div>
-            
+
             <h1 class="page-title">Profile & API Keys</h1>
             <p class="page-description">
-                Manage your account settings, change your password, and create API keys for 
+                Manage your account settings, change your password, and create API keys for
                 programmatic access to pullDB from scripts and automation tools.
             </p>
-            
+
             <!-- Overview Section -->
             <section class="content-section" id="overview">
                 <h2>Overview</h2>
                 <p>
-                    The Profile page is your personal settings area. Here you can view your account 
-                    information, change your password, and manage API keys for each host you have access to.
+                    The Profile page (<code>/web/auth/profile</code>) is your personal settings area. Here you can view your account
+                    information, change your password, set your default host, and manage API keys for each host you have access to.
                 </p>
-                
+
                 <div class="feature-grid">
                     <div class="feature-card">
                         <div class="feature-icon">
@@ -143,7 +173,7 @@
                             </svg>
                         </div>
                         <h3>Account Info</h3>
-                        <p>View your username, role, and account status.</p>
+                        <p>View your username, role, manager, and member-since date.</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">
@@ -153,7 +183,7 @@
                             </svg>
                         </div>
                         <h3>Password</h3>
-                        <p>Change your password securely.</p>
+                        <p>Change your password securely at any time.</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">
@@ -162,31 +192,35 @@
                             </svg>
                         </div>
                         <h3>API Keys</h3>
-                        <p>Create and manage per-host API keys.</p>
+                        <p>Create and manage per-host API keys for CLI and script access.</p>
                     </div>
                 </div>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/profile/overview.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/profile/overview.png" alt="User profile showing account details and role" loading="lazy">
-                    </picture>
-                    <figcaption>1. Account info card — 2. Role badge — 3. Authorized hosts</figcaption>
-                </figure>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Accessing Your Profile</strong><br>
+                        Click your username in the sidebar footer to navigate to your profile page at
+                        <code>/web/auth/profile</code>.
+                    </div>
+                </div>
             </section>
-            
+
             <!-- Profile Section -->
             <section class="content-section" id="profile">
                 <h2>Profile Settings</h2>
                 <p>
-                    The profile card shows your current account information.
+                    The profile card shows your current account information and preferences.
                 </p>
-                
+
                 <table class="param-table">
                     <thead>
                         <tr>
-                            <th>Field</th>
-                            <th>Description</th>
+                            <th scope="col">Field</th>
+                            <th scope="col">Description</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -196,59 +230,86 @@
                         </tr>
                         <tr>
                             <td><code>Role</code></td>
-                            <td>Your permission level: User, Manager, or Admin</td>
+                            <td>Your permission level: <code>user</code>, <code>manager</code>, or <code>admin</code></td>
                         </tr>
                         <tr>
-                            <td><code>Status</code></td>
-                            <td>Account status: Active or Disabled</td>
+                            <td><code>Manager</code></td>
+                            <td>The manager assigned to your account</td>
                         </tr>
                         <tr>
-                            <td><code>Created</code></td>
+                            <td><code>Member Since</code></td>
                             <td>When your account was created</td>
                         </tr>
                         <tr>
-                            <td><code>Last Login</code></td>
-                            <td>Your most recent login timestamp</td>
-                        </tr>
-                        <tr>
-                            <td><code>Authorized Hosts</code></td>
-                            <td>List of hosts you can restore to</td>
+                            <td><code>Default Host</code></td>
+                            <td>Your preferred target host, auto-selected on the restore form</td>
                         </tr>
                     </tbody>
                 </table>
             </section>
-            
+
             <!-- Forced Password Change Section -->
             <section class="content-section" id="force-password">
                 <h2>Forced Password Change</h2>
                 <p>
-                    When an administrator resets your password or creates your account with a temporary password,
-                    you'll be required to change it on your next login. This ensures account security.
+                    When an administrator resets your password, your account is flagged for a mandatory password change.
+                    This is <strong>not</strong> handled on the profile page — it is a separate, standalone flow.
                 </p>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/profile/force-password-change.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/profile/force-password-change.png" alt="Forced password change page for account security" loading="lazy">
-                    </picture>
-                    <figcaption>1. Security notice — 2. New password field — 3. Confirm password</figcaption>
-                </figure>
+
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Standalone Redirect — Not the Profile Page</strong><br>
+                        If your account requires a password change, you will be redirected automatically to
+                        <code>/web/change-password</code> immediately after login. You cannot navigate
+                        elsewhere in the application until you set a new password that meets the configured
+                        password policy.
+                    </div>
+                </div>
+
+                <h3>How It Works</h3>
+                <ol class="feature-list">
+                    <li>An administrator resets your password (from the admin user management page)</li>
+                    <li>You log in with the temporary credentials provided by your administrator</li>
+                    <li>The system redirects you to <code>/web/change-password</code> before loading any other page</li>
+                    <li>You set a new permanent password and confirm it</li>
+                    <li>On success, you are redirected to the dashboard as normal</li>
+                </ol>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Voluntary vs. Forced</strong><br>
+                        Voluntary password changes (initiated by you at any time) are performed from the
+                        profile page at <code>/web/auth/profile</code>. The forced change flow at
+                        <code>/web/change-password</code> is only triggered when an admin has flagged
+                        your account.
+                    </div>
+                </div>
             </section>
-            
+
             <!-- Password Section -->
             <section class="content-section" id="password">
                 <h2>Change Password</h2>
                 <p>
-                    To change your password, use the "Change Password" form in the profile page.
+                    To change your password voluntarily, use the "Change Password" form on your profile page
+                    at <code>/web/auth/profile</code>.
                 </p>
-                
+
                 <h3>Requirements</h3>
                 <ul class="feature-list">
                     <li><strong>Current Password</strong> — You must enter your current password to verify your identity</li>
-                    <li><strong>Minimum Length</strong> — New password must be at least 8 characters</li>
+                    <li><strong>Minimum Length</strong> — New password must meet the configured password policy</li>
                     <li><strong>Confirmation</strong> — Enter your new password twice to confirm</li>
                 </ul>
-                
+
                 <div class="info-callout">
                     <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/>
@@ -259,7 +320,7 @@
                         Changing your password does not log you out. Your current session remains valid.
                     </div>
                 </div>
-                
+
                 <div class="warning-callout">
                     <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
@@ -271,16 +332,20 @@
                         Changing your password does not invalidate your API keys. They continue to work independently.
                     </div>
                 </div>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/profile/password-form.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/profile/password-form.png" alt="Password change form with validation" loading="lazy">
-                    </picture>
-                    <figcaption>1. Current password — 2. New password — 3. Confirm password — 4. Submit button</figcaption>
-                </figure>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Profile Page Form</strong><br>
+                        The change password form on your profile page has three fields: Current Password,
+                        New Password, and Confirm New Password. All three are required. Submit to save.
+                    </div>
+                </div>
             </section>
-            
+
             <!-- API Keys Section -->
             <section class="content-section" id="api-keys">
                 <h2>API Keys</h2>
@@ -289,13 +354,13 @@
                     Each key is scoped to a specific host, so you can have fine-grained control
                     over what each key can access.
                 </p>
-                
+
                 <h3>Key Properties</h3>
                 <table class="param-table">
                     <thead>
                         <tr>
-                            <th>Property</th>
-                            <th>Description</th>
+                            <th scope="col">Property</th>
+                            <th scope="col">Description</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -321,7 +386,7 @@
                         </tr>
                     </tbody>
                 </table>
-                
+
                 <h3>Key Management Table</h3>
                 <p>
                     Your API keys are listed in a table showing all active keys. You can:
@@ -330,31 +395,36 @@
                     <li><strong>View</strong> — See key details and usage stats</li>
                     <li><strong>Delete</strong> — Revoke a key permanently (with confirmation)</li>
                     <li><strong>Create New</strong> — Generate a new key for a host</li>
+                    <li><strong>Download</strong> — Download a credentials file (<code>pulldb-credentials-{code}.txt</code>) for CLI configuration</li>
                 </ul>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/profile/api-keys.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/profile/api-keys.png" alt="API key list with creation dates and revoke options" loading="lazy">
-                    </picture>
-                    <figcaption>1. Key name — 2. Host scope — 3. Created date — 4. Last used — 5. Revoke button</figcaption>
-                </figure>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>API Keys Table</strong><br>
+                        The profile page lists all your API keys showing name, host scope, key prefix,
+                        creation date, last used timestamp, and a revoke button for each key.
+                    </div>
+                </div>
             </section>
-            
+
             <!-- Create Key Section -->
             <section class="content-section" id="create-key">
                 <h2>Creating API Keys</h2>
                 <p>
                     To create a new API key, click "Create API Key" and fill out the form.
                 </p>
-                
+
                 <h3>Creation Form</h3>
                 <table class="param-table">
                     <thead>
                         <tr>
-                            <th>Field</th>
-                            <th>Required</th>
-                            <th>Description</th>
+                            <th scope="col">Field</th>
+                            <th scope="col">Required</th>
+                            <th scope="col">Description</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -370,7 +440,7 @@
                         </tr>
                     </tbody>
                 </table>
-                
+
                 <div class="warning-callout">
                     <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
@@ -378,12 +448,12 @@
                         <line x1="12" y1="17" x2="12.01" y2="17"/>
                     </svg>
                     <div>
-                        <strong>Copy Your Key Immediately!</strong><br>
-                        The full API key is only shown once at creation. Copy it immediately and store it 
-                        securely. You cannot retrieve the full key later—only the prefix is stored.
+                        <strong>Copy Your Key Immediately</strong><br>
+                        The full API key is only shown once at creation. Copy it immediately and store it
+                        securely. You cannot retrieve the full key later — only the prefix is stored.
                     </div>
                 </div>
-                
+
                 <h3>Key Display</h3>
                 <p>
                     After creating a key, you'll see a dialog with the full key:
@@ -401,23 +471,28 @@
                     Click the copy button to copy to clipboard, then store it in a secure location like
                     a password manager or secrets vault.
                 </p>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/profile/create-key-modal.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/profile/create-key-modal.png" alt="API key creation modal with name and expiry fields" loading="lazy">
-                    </picture>
-                    <figcaption>1. Key name field — 2. Host selector — 3. Create button</figcaption>
-                </figure>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Creation Form Fields</strong><br>
+                        The creation modal has two fields: a Name field and a Host dropdown
+                        limited to your authorized hosts. After clicking Create, the full key
+                        is displayed once and a credentials file download link is provided.
+                    </div>
+                </div>
             </section>
-            
+
             <!-- Using Keys Section -->
             <section class="content-section" id="using-keys">
                 <h2>Using API Keys</h2>
                 <p>
                     API keys can be used with the CLI or for direct API access.
                 </p>
-                
+
                 <h3>CLI Usage</h3>
                 <p>
                     Configure the CLI to use your API key:
@@ -432,10 +507,10 @@
                         <div class="terminal-line output">API key configured successfully.</div>
                     </div>
                 </div>
-                
+
                 <h3>HTTP Header</h3>
                 <p>
-                    For direct API calls, include the key in the Authorization header:
+                    For direct API calls, include the key in the <code>X-API-Key</code> header along with the required HMAC signature headers:
                 </p>
                 <div class="terminal-window" style="transform: none;">
                     <div class="terminal-header">
@@ -443,11 +518,16 @@
                         <span class="terminal-title">API Request</span>
                     </div>
                     <div class="terminal-body">
-                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">curl -H "Authorization: Bearer YOUR_API_KEY" \</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">curl -H "X-API-Key: YOUR_API_KEY" \</span></div>
+                        <div class="terminal-line"><span class="command">     -H "X-Timestamp: $(date -u +%s)" \</span></div>
+                        <div class="terminal-line"><span class="command">     -H "X-Signature: ..." \</span></div>
                         <div class="terminal-line"><span class="command">     https://pulldb.example.com/api/v1/jobs</span></div>
                     </div>
                 </div>
-                
+                <p>
+                    See the <a href="../api/index.html">API Reference</a> for full details on HMAC signature generation.
+                </p>
+
                 <h3>Environment Variable</h3>
                 <p>
                     For scripts, use an environment variable:
@@ -462,7 +542,7 @@
                         <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme</span></div>
                     </div>
                 </div>
-                
+
                 <div class="info-callout">
                     <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/>
@@ -475,24 +555,90 @@
                     </div>
                 </div>
             </section>
-            
-            <!-- Database Maintenance Section -->
+
+            <!-- Database Lifecycle Section -->
             <section class="content-section" id="maintenance">
-                <h2>Database Maintenance</h2>
+                <h2>Database Lifecycle</h2>
                 <p>
-                    Before restoring databases, you may need to acknowledge database maintenance requirements.
-                    This ensures you understand the impact of the restore operation on your local database.
+                    Deployed databases have a retention period that determines when they are automatically
+                    cleaned up. You can extend retention, lock a database to prevent deletion, or mark it
+                    as done. These actions are taken from the <strong>Jobs page</strong>
+                    (<code>/web/jobs</code>), not the profile page.
                 </p>
-                
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/annotated/dark/profile/maintenance-modal.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/annotated/light/profile/maintenance-modal.png" alt="Database maintenance acknowledgment modal" loading="lazy">
-                    </picture>
-                    <figcaption>1. Maintenance notice — 2. Acknowledgment checkbox — 3. Proceed button</figcaption>
-                </figure>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Post-Login Maintenance Redirect</strong><br>
+                        If you have databases nearing or past their retention deadline, you will be
+                        redirected to <code>/web/maintenance</code> immediately after login to review
+                        and act on them before accessing the rest of the application.
+                    </div>
+                </div>
+
+                <h3>Extending Retention</h3>
+                <p>
+                    To give a deployed or complete database more time before automatic cleanup:
+                </p>
+                <ol class="feature-list">
+                    <li>Navigate to the Jobs page and find your deployed database</li>
+                    <li>Click <strong>Extend</strong> on the database row</li>
+                    <li>Select a new duration in <strong>days</strong> (up to the system maximum of 180 days)</li>
+                    <li>Confirm — the new <code>expires_at</code> is calculated from the current expiry date (or today if already past)</li>
+                </ol>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Extension Uses Days</strong><br>
+                        Retention extensions are specified in <strong>days</strong> (integer, 1–180).
+                        The API endpoint is <code>POST /api/jobs/{'{'}job_id{'}'}/extend</code> with body
+                        <code>{"{"}"days": 7{"}"}</code>.
+                    </div>
+                </div>
+
+                <h3>Locking a Database</h3>
+                <p>
+                    Locking prevents automatic deletion when retention expires. Use locking for databases
+                    needed beyond their retention period, such as databases under active investigation or
+                    long-running projects.
+                </p>
+                <ul class="feature-list">
+                    <li><strong>Lock</strong> — Click the lock icon on a deployed or complete database in the Jobs page. The lock icon toggles between locked and unlocked.</li>
+                    <li><strong>Unlock</strong> — Click the lock icon again to remove the lock. The database will resume normal retention cleanup.</li>
+                </ul>
+
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Lock is Web UI Only</strong><br>
+                        The lock toggle is only available in the web UI. There is no <code>pulldb lock</code>
+                        CLI command. The underlying API endpoints are
+                        <code>POST /api/jobs/{'{'}job_id{'}'}/lock</code> and
+                        <code>POST /api/jobs/{'{'}job_id{'}'}/unlock</code>.
+                    </div>
+                </div>
+
+                <h3>Releasing a Database</h3>
+                <p>
+                    When you are finished with a database, you can release it:
+                </p>
+                <ul class="feature-list">
+                    <li><strong>Mark Done</strong> — Transitions the job from <code>deployed</code> to <code>complete</code>, removing it from the Active view and moving it to History</li>
+                    <li><strong>Delete</strong> — Queues the database for deletion. The job transitions to <code>deleting</code> and then <code>deleted</code> once the worker drops the database</li>
+                </ul>
             </section>
-            
+
             <!-- Next Steps -->
             <section class="content-section">
                 <h2>Next Steps</h2>
@@ -528,10 +674,10 @@
                     </a>
                 </div>
             </section>
-            
+
         </main>
     </div>
-    
+
     <!-- Footer -->
     <footer class="help-footer">
         <div class="footer-content">
@@ -542,8 +688,25 @@
             </div>
         </div>
     </footer>
-    
+
     <script src="../../js/help.js"></script>
     <script src="../../js/search.js"></script>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="shortcuts-modal" x-show="shortcutsOpen" x-transition @click.self="closeShortcuts()" @keydown="handleShortcutsKeydown($event)" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="shortcuts-container">
+            <div class="shortcuts-header">
+                <h2 style="margin:0;font-size:1.1rem;">Keyboard Shortcuts</h2>
+                <button @click="closeShortcuts()" aria-label="Close shortcuts" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text);">&#x2715;</button>
+            </div>
+            <dl class="shortcuts-list">
+                <div><dt><kbd>/</kbd></dt><dd>Open search</dd></div>
+                <div><dt><kbd>Esc</kbd></dt><dd>Close modal</dd></div>
+                <div><dt><kbd>?</kbd></dt><dd>Show shortcuts</dd></div>
+                <div><dt><kbd>Tab</kbd></dt><dd>Navigate within modal</dd></div>
+            </dl>
+            <p style="font-size:0.8rem;color:var(--color-text-muted);margin-top:1rem;">Press <kbd>Esc</kbd> to close</p>
+        </div>
+    </div>
 </body>
 </html>

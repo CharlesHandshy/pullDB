@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="pullDB Requests board — submit, vote on, and track database restore feature requests.">
     <title>Feature Requests - pullDB Help</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../../css/help.css">
     <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="../../js/alpine.min.js"></script>
 </head>
-<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
-    
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch(); closeShortcuts()" @keydown.window="if($event.key==='?' && !searchOpen) { shortcutsOpen ? closeShortcuts() : openShortcuts() }">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <div class="bg-gradient"></div>
     <div class="bg-grid"></div>
     
@@ -38,14 +37,21 @@
             </div>
             
             <div class="nav-actions">
-                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                <button class="mobile-menu-btn" @click="openMobileNav()" :aria-expanded="mobileNavOpen" aria-controls="mobile-nav-drawer" aria-label="Open navigation menu" title="Menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <button class="search-trigger" @click="openSearch()" :aria-expanded="searchOpen" aria-label="Search documentation" title="Search (/)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="M21 21l-4.35-4.35"/>
                     </svg>
                     <span class="search-hint">/</span>
                 </button>
-                <button class="theme-toggle" @click="toggleTheme()">
+                <button class="theme-toggle" @click="toggleTheme()" :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
                     <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
@@ -57,27 +63,51 @@
             </div>
         </div>
     </nav>
+
+    <!-- Mobile Nav Overlay -->
+    <div class="mobile-nav-overlay" :class="{ 'open': mobileNavOpen }" @click="closeMobileNav()"></div>
+    <div class="mobile-nav-drawer" id="mobile-nav-drawer" :class="{ 'open': mobileNavOpen }">
+        <div class="mobile-nav-header">
+            <span style="font-weight:700;font-size:1rem;">Navigation</span>
+            <button class="mobile-nav-close" @click="closeMobileNav()" aria-label="Close menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <a href="../getting-started.html" class="mobile-nav-link" @click="closeMobileNav()">Getting Started</a>
+        <a href="../cli/index.html" class="mobile-nav-link" @click="closeMobileNav()">CLI</a>
+        <a href="../api/index.html" class="mobile-nav-link" @click="closeMobileNav()">API</a>
+        <a href="../concepts/job-lifecycle.html" class="mobile-nav-link" @click="closeMobileNav()">Concepts</a>
+        <a href="index.html" class="mobile-nav-link active" @click="closeMobileNav()">Web UI</a>
+    </div>
     
     <!-- Search Modal -->
-    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+    <div class="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" x-show="searchOpen" x-transition @click.self="closeSearch()" @keydown="handleSearchKeydown($event)">
         <div class="search-container" @click.stop>
             <div class="search-input-wrapper">
                 <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8"/>
                     <path d="M21 21l-4.35-4.35"/>
                 </svg>
-                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <label for="help-search-input" class="sr-only">Search documentation</label>
+                <input id="help-search-input" type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()" :aria-activedescendant="selectedIndex >= 0 && searchResults.length > 0 ? 'search-result-' + selectedIndex : undefined">
                 <kbd class="search-kbd">ESC</kbd>
             </div>
-            <div class="search-results" x-show="searchQuery.length > 0">
+            <div class="search-results" aria-live="polite" aria-atomic="false" x-show="searchQuery.length > 0">
+                <ul role="listbox" aria-label="Search results">
                 <template x-for="(result, index) in searchResults" :key="result.id">
+                    <li role="option" :id="'search-result-' + index" :aria-selected="index === selectedIndex">
                     <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
                         <div class="result-content">
                             <div class="result-title" x-html="result.title"></div>
                             <div class="result-preview" x-html="result.preview"></div>
                         </div>
                     </a>
+                    </li>
                 </template>
+                </ul>
             </div>
         </div>
     </div>
@@ -105,11 +135,12 @@
                     <a href="#voting" class="sidebar-link">Voting</a>
                     <a href="#status" class="sidebar-link">Request Status</a>
                     <a href="#notes" class="sidebar-link">Adding Notes</a>
+                    <a href="#export" class="sidebar-link">Export (Admin)</a>
                 </div>
             </nav>
         </aside>
         
-        <main class="page-content">
+        <main id="main-content" class="page-content">
             <div class="breadcrumbs">
                 <a href="../../index.html">Help</a>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
@@ -144,14 +175,19 @@
                     to users. By voting on requests, you help prioritize development efforts.
                 </p>
                 
-                <figure class="screenshot">
-                    <picture>
-                        <source srcset="/static/help/screenshots/dark/requests/feature-requests.png" media="(prefers-color-scheme: dark)">
-                        <img src="/static/help/screenshots/light/requests/feature-requests.png" alt="Feature Requests page showing list of requests with voting" loading="lazy">
-                    </picture>
-                    <figcaption>1. Statistics cards — 2. Submit new request button — 3. Request list with voting — 4. Status filters</figcaption>
-                </figure>
-                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Page Layout</strong><br>
+                        The Feature Requests page shows four statistics cards at the top (Open, In Progress, Complete, Declined counts),
+                        a <strong>+ New Request</strong> button, and a sortable/filterable request table below. Click any row to expand
+                        the full detail panel with voting controls, notes, and — if you are the primary admin — status management fields.
+                    </div>
+                </div>
+
                 <h3>Page Components</h3>
                 <ul class="feature-list">
                     <li><strong>Statistics Cards</strong> — Overview of request counts by status (Open, In Progress, Complete, Declined)</li>
@@ -173,8 +209,8 @@
                 <table class="param-table">
                     <thead>
                         <tr>
-                            <th>Column</th>
-                            <th>Description</th>
+                            <th scope="col">Column</th>
+                            <th scope="col">Description</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -242,9 +278,9 @@
                 <table class="param-table">
                     <thead>
                         <tr>
-                            <th>Element</th>
-                            <th>Good Example</th>
-                            <th>Poor Example</th>
+                            <th scope="col">Element</th>
+                            <th scope="col">Good Example</th>
+                            <th scope="col">Poor Example</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -266,65 +302,77 @@
             <section class="content-section" id="voting">
                 <h2>Voting</h2>
                 <p>
-                    Voting helps prioritize which features get implemented first. Each user gets 
-                    <strong>one vote total</strong> to use across all requests.
+                    Voting helps prioritize which features get implemented first. Each user can cast
+                    one vote per request — upvote, downvote, or no vote. The displayed score is
+                    <strong>upvotes minus downvotes</strong>.
                 </p>
-                
+
                 <h3>How Voting Works</h3>
                 <ul class="feature-list">
-                    <li><strong>Single Vote</strong> — You have one vote to allocate to any request</li>
-                    <li><strong>Upvote</strong> — Click the thumbs-up icon to cast your vote</li>
-                    <li><strong>Move Vote</strong> — Voting on a different request moves your vote there</li>
-                    <li><strong>Remove Vote</strong> — Click the same request again to remove your vote</li>
-                    <li><strong>Vote Indicator</strong> — Green icon shows which request has your vote</li>
+                    <li><strong>One vote per request</strong> — You can upvote or downvote each request independently</li>
+                    <li><strong>Upvote</strong> — Send <code>vote_value: 1</code> via the upvote button to support a request</li>
+                    <li><strong>Downvote</strong> — Send <code>vote_value: -1</code> via the downvote button if you disagree</li>
+                    <li><strong>Remove vote</strong> — Send <code>vote_value: 0</code> (click your active vote again) to retract it</li>
+                    <li><strong>Vote indicator</strong> — The UI highlights your current vote on each request</li>
                 </ul>
-                
-                <div class="warning-callout">
-                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                        <line x1="12" y1="9" x2="12" y2="13"/>
-                        <line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
-                    <div>
-                        <strong>One Vote Only</strong><br>
-                        You can only vote for one feature request at a time. If you vote for a new request,
-                        your vote is automatically moved from the previous request. Choose wisely!
-                    </div>
-                </div>
+
+                <h3>Vote API</h3>
+                <p>
+                    The voting API requires an explicit <code>vote_value</code> integer. There is no toggle — you must send
+                    the exact value you want:
+                </p>
+                <table class="param-table">
+                    <thead>
+                        <tr><th scope="col">vote_value</th><th scope="col">Effect</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>1</code></td><td>Upvote (adds 1 to score)</td></tr>
+                        <tr><td><code>-1</code></td><td>Downvote (subtracts 1 from score)</td></tr>
+                        <tr><td><code>0</code></td><td>Remove your existing vote</td></tr>
+                    </tbody>
+                </table>
+                <p>
+                    The response includes the updated <code>vote_score</code>, <code>upvote_count</code>,
+                    <code>downvote_count</code>, and your current <code>user_vote</code> (an integer:
+                    <code>1</code>, <code>-1</code>, or <code>null</code> when not voted).
+                </p>
             </section>
             
             <!-- Status Section -->
             <section class="content-section" id="status">
                 <h2>Request Status</h2>
                 <p>
-                    Each request progresses through a workflow managed by administrators.
+                    Each request progresses through a workflow. Only the
+                    <strong>primary administrator</strong> (the first installed admin account) can change status
+                    or set the official admin response — both via the web UI and via the API endpoint
+                    (<code>POST /web/requests/api/update/{request_id}</code>).
                 </p>
                 
                 <div class="state-cards">
                     <div class="state-card" style="border-left-color: var(--color-success);">
                         <div class="state-header">
-                            <span class="state-badge" style="background: var(--color-success-bg); color: var(--color-success);">OPEN</span>
+                            <span class="state-badge" style="background: var(--color-success-bg); color: var(--color-success);">open</span>
                         </div>
                         <p>New request awaiting review. Can receive votes.</p>
                     </div>
-                    
+
                     <div class="state-card" style="border-left-color: var(--color-primary);">
                         <div class="state-header">
-                            <span class="state-badge" style="background: var(--color-primary-bg); color: var(--color-primary);">IN PROGRESS</span>
+                            <span class="state-badge" style="background: var(--color-primary-bg); color: var(--color-primary);">in progress</span>
                         </div>
                         <p>Request approved and actively being worked on.</p>
                     </div>
-                    
+
                     <div class="state-card" style="border-left-color: var(--color-muted);">
                         <div class="state-header">
-                            <span class="state-badge" style="background: var(--color-muted-bg); color: var(--color-muted);">COMPLETE</span>
+                            <span class="state-badge" style="background: var(--color-muted-bg); color: var(--color-muted);">complete</span>
                         </div>
                         <p>Feature has been implemented and released.</p>
                     </div>
-                    
+
                     <div class="state-card" style="border-left-color: var(--color-danger);">
                         <div class="state-header">
-                            <span class="state-badge" style="background: var(--color-danger-bg); color: var(--color-danger);">DECLINED</span>
+                            <span class="state-badge" style="background: var(--color-danger-bg); color: var(--color-danger);">declined</span>
                         </div>
                         <p>Request was not approved. Admin response explains why.</p>
                     </div>
@@ -332,9 +380,15 @@
                 
                 <h3>Admin Response</h3>
                 <p>
-                    When administrators update a request's status, they may include a response explaining
-                    the decision. This is especially important for declined requests, where the response
-                    explains why the feature won't be implemented.
+                    When the primary administrator updates a request's status, they may set an official
+                    <strong>admin response</strong> — a single text field that appears prominently in the
+                    request detail panel. This is especially useful for declined requests, where the response
+                    explains why the feature will not be implemented, or for in-progress requests to reference
+                    a target release version.
+                </p>
+                <p>
+                    The <code>admin_response</code> field is separate from the notes thread. Notes can be
+                    added by any authenticated user; the admin response is set only by the primary administrator.
                 </p>
             </section>
             
@@ -343,16 +397,29 @@
                 <h2>Adding Notes</h2>
                 <p>
                     Click on any request to expand its details and view or add notes. Notes allow
-                    discussion about the request.
+                    any authenticated user to discuss or provide context on a request. Notes are separate
+                    from the official <strong>admin response</strong> field.
                 </p>
-                
+
                 <h3>Note Features</h3>
                 <ul class="feature-list">
                     <li><strong>View Notes</strong> — Click a request row to expand and see all notes</li>
-                    <li><strong>Add Note</strong> — Type in the note field and submit to add your thoughts</li>
-                    <li><strong>Delete Note</strong> — You can delete your own notes</li>
+                    <li><strong>Add Note</strong> — Any authenticated user can type in the note field and submit</li>
+                    <li><strong>Delete Note</strong> — You can delete your own notes; admins can delete any note</li>
                     <li><strong>Timestamps</strong> — Notes show when they were posted and by whom</li>
                 </ul>
+
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Cannot Edit Requests</strong><br>
+                        There is no edit endpoint for feature requests. If you need to correct a submitted request,
+                        add a clarifying note, or delete the original and resubmit with the corrected content.
+                    </div>
+                </div>
             </section>
             
             <!-- Withdrawing Requests Section -->
@@ -384,6 +451,21 @@
                 </div>
             </section>
             
+            <!-- Export Section -->
+            <section class="content-section" id="export">
+                <h2>Exporting Requests (Admin Only)</h2>
+                <p>
+                    Administrators can download a full JSON bundle of all feature requests, including votes and notes,
+                    using the export endpoint:
+                </p>
+                <pre><code class="language-http">GET /web/requests/api/export?status=open,in_progress</code></pre>
+                <p>
+                    The <code>status</code> query parameter is optional; omit it to export all requests regardless of status.
+                    The response is a downloadable JSON file containing requests with their complete vote counts and note threads.
+                    Admin role is required.
+                </p>
+            </section>
+
             <!-- Related Topics -->
             <section class="content-section">
                 <h2>Related Topics</h2>
@@ -441,5 +523,22 @@
     </footer>
     
     <script src="../../js/help.js"></script>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="shortcuts-modal" x-show="shortcutsOpen" x-transition @click.self="closeShortcuts()" @keydown="handleShortcutsKeydown($event)" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="shortcuts-container">
+            <div class="shortcuts-header">
+                <h2 style="margin:0;font-size:1.1rem;">Keyboard Shortcuts</h2>
+                <button @click="closeShortcuts()" aria-label="Close shortcuts" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text);">&#x2715;</button>
+            </div>
+            <dl class="shortcuts-list">
+                <div><dt><kbd>/</kbd></dt><dd>Open search</dd></div>
+                <div><dt><kbd>Esc</kbd></dt><dd>Close modal</dd></div>
+                <div><dt><kbd>?</kbd></dt><dd>Show shortcuts</dd></div>
+                <div><dt><kbd>Tab</kbd></dt><dd>Navigate within modal</dd></div>
+            </dl>
+            <p style="font-size:0.8rem;color:var(--color-text-muted);margin-top:1rem;">Press <kbd>Esc</kbd> to close</p>
+        </div>
+    </div>
 </body>
 </html>
