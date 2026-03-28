@@ -356,12 +356,18 @@
                 'superseded': 'badge-warning'
             };
             let cls = classes[val] || 'badge-neutral';
-            if (val === 'running' && row.cancel_requested_at) {
-                cls += ' badge-cancel-pending';
+            if (val === 'running') {
+                if (row.cancel_requested_at) {
+                    cls += ' badge-cancel-pending';
+                } else if (row.is_locked) {
+                    cls += ' badge-running-locked';
+                } else if (row.can_cancel) {
+                    cls += ' badge-running-cancellable';
+                }
             }
             return `<span class="badge ${cls}">${val}</span>`;
         },
-        
+
         // Status renderer for Active view - shows "Deployed" for deployed jobs
         activeStatus: (val, row) => {
             const classes = {
@@ -376,8 +382,14 @@
                 'deleted': 'badge-neutral badge-deleted'
             };
             let cls = classes[val] || 'badge-neutral';
-            if (val === 'running' && row.cancel_requested_at) {
-                cls += ' badge-cancel-pending';
+            if (val === 'running') {
+                if (row.cancel_requested_at) {
+                    cls += ' badge-cancel-pending';
+                } else if (row.is_locked) {
+                    cls += ' badge-running-locked';
+                } else if (row.can_cancel) {
+                    cls += ' badge-running-cancellable';
+                }
             }
             // Show "Claimed" or "Assigned" for non-restore deployed jobs, "Deployed" for normal deploys
             let label = val;

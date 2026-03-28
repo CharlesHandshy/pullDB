@@ -492,3 +492,62 @@
         opacity: 0.5;
     }
 }
+
+/* ===========================================
+   RUNNING - CANCELLABLE (can_cancel=true, no cancel request yet)
+   Attention flash to indicate the user can cancel the job.
+   =========================================== */
+
+.badge-running-cancellable {
+    animation: badge-running-cancellable-animation 0.9s ease-in-out infinite;
+}
+
+@keyframes badge-running-cancellable-animation {
+    0%, 100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 var(--primary-200);
+    }
+    50% {
+        opacity: 0.65;
+        box-shadow: 0 0 0 3px transparent;
+    }
+}
+
+/* ===========================================
+   RUNNING - LOCKED (is_locked=true, job is actively loading)
+   Slow shimmer sweep to indicate in-progress loading.
+   =========================================== */
+
+.badge-running-locked {
+    background: linear-gradient(
+        90deg,
+        var(--primary-50) 0%,
+        var(--primary-100) 40%,
+        var(--primary-300) 50%,
+        var(--primary-100) 60%,
+        var(--primary-50) 100%
+    );
+    background-size: 250% 100%;
+    animation: badge-running-locked-animation 2.5s linear infinite;
+    border-color: var(--primary-300);
+}
+
+@keyframes badge-running-locked-animation {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+[data-theme="dark"] .badge-running-locked {
+    background: linear-gradient(
+        90deg,
+        var(--color-info-bg) 0%,
+        var(--primary-900) 40%,
+        var(--primary-700) 50%,
+        var(--primary-900) 60%,
+        var(--color-info-bg) 100%
+    );
+    background-size: 250% 100%;
+    border-color: var(--primary-600);
+    color: var(--color-primary);
+    animation: badge-running-locked-animation 2.5s linear infinite;
+}
