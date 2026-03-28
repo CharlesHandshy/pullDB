@@ -132,6 +132,11 @@ class LazyTable {
         this.isLoading = false;
         this.hasError = false;
         this.pendingFetch = null;
+        this._pendingRefresh = false;   // queued refresh waiting for current to finish
+
+        // Filter popup concurrency guards
+        this._filterOpenToken = 0;           // incremented on every open; stale opens bail out
+        this._distinctFetchController = null; // AbortController for in-flight distinct fetch
         
         // Render optimization state
         this._lastRenderStart = -1;
@@ -162,6 +167,10 @@ class LazyTable {
         if (!this.config.deferInitialLoad) {
             this.fetchInitialData();
         }
+
+        // Preload distinct values for all filterable columns in the background.
+        // This fires once at init so filter dropdowns open instantly on first use.
+        this._preloadDistinctValues();
     }
 
     // =========================================================================
@@ -746,11 +755,13 @@ class LazyTable {
     async refresh(options = {}) {
         const { quiet = false } = options;
         
-        // Prevent concurrent refreshes
+        // Prevent concurrent refreshes; queue one retry so a filter/sort applied
+        // during a load isn't silently dropped.
         if (this.isLoading) {
-            console.debug('LazyTable: Refresh already in progress, skipping');
+            this._pendingRefresh = true;
             return;
         }
+        this._pendingRefresh = false;
         
         if (quiet) {
             // Quiet refresh: footer spinner, no cache clear, keep existing data visible
@@ -787,10 +798,16 @@ class LazyTable {
                 this.showFooterError('Refresh failed');
             } finally {
                 this.isLoading = false;
-                
+
                 // Notify loading state change
                 if (this.config.onLoadingChange) {
                     this.config.onLoadingChange(false);
+                }
+
+                // Fire any queued refresh (e.g. a sort/filter applied while loading)
+                if (this._pendingRefresh) {
+                    this._pendingRefresh = false;
+                    this.refresh(options);
                 }
             }
         } else {
@@ -811,6 +828,15 @@ class LazyTable {
             } catch (error) {
                 this.hideLoading();
                 // Error already shown by fetchPage
+            } finally {
+                // Ensure isLoading is always cleared and pending refresh is honoured
+                if (this.isLoading) {
+                    this.hideLoading();
+                }
+                if (this._pendingRefresh) {
+                    this._pendingRefresh = false;
+                    this.refresh();
+                }
             }
         }
     }
@@ -1225,13 +1251,18 @@ class LazyTable {
     handleHeaderClick(e) {
         const sortBtn = e.target.closest('.sort-btn');
         const filterBtn = e.target.closest('.filter-btn');
-        
+
         if (sortBtn) {
+            // Block sort clicks while a fetch is in flight — state would change but
+            // refresh() would be a no-op, leaving sort indicators out of sync.
+            if (this.isLoading) return;
             const column = sortBtn.dataset.column;
             this.toggleSort(column);
         }
-        
+
         if (filterBtn) {
+            // Ignore click on a button that is already loading its distinct values
+            if (filterBtn.classList.contains('filter-btn-loading')) return;
             const column = filterBtn.dataset.column;
             // Use .then() since this is a sync event handler calling an async method
             this.showFilterDropdown(column, filterBtn).catch(err => {
@@ -1365,36 +1396,72 @@ class LazyTable {
     }
 
     async showFilterDropdown(column, anchorElement) {
-        // Remove any existing dropdown
+        // Each open attempt gets a monotonically increasing token. If a newer
+        // open supersedes this one (rapid clicks, async fetch completes late)
+        // the stale path bails out before creating any DOM.
+        const token = ++this._filterOpenToken;
+
+        // Close any existing dropdown first (sync, instant)
         this.closeFilterDropdown();
-        
-        // Check column filter type
+
         const colDef = this.getColumnDef(column);
-        
-        // Date range filter - From/To date inputs
+
+        // Date range filter — sync, no fetch needed
         if (colDef && colDef.filterType === 'dateRange') {
-            this.showDateRangeFilterDropdown(column, anchorElement);
+            if (token !== this._filterOpenToken) return;
+            this.showDateRangeFilterDropdown(column, anchorElement, token);
             return;
         }
-        
-        // Text filter - single input with wildcard support
+
+        // Text filter — sync, no fetch needed
         if (colDef && colDef.filterType === 'text') {
-            this.showTextFilterDropdown(column, anchorElement, colDef.filterPlaceholder);
+            if (token !== this._filterOpenToken) return;
+            this.showTextFilterDropdown(column, anchorElement, colDef.filterPlaceholder, token);
             return;
         }
-        
-        // Fetch distinct values if not cached or cache is stale (filters changed)
-        if (!this.isDistinctCacheValid(column)) {
-            await this.fetchDistinctValues(column);
+
+        // Static options — seed the cache once so the distinct-values render
+        // path below picks them up without any network fetch.
+        if (colDef && colDef.filterOptions) {
+            if (!this.distinctValues[column]) {
+                this.distinctValues[column] = {
+                    values: colDef.filterOptions,
+                    filterSignature: '__static__'
+                };
+            }
         }
-        
+
+        // Distinct-values filter — may require a network fetch
+        if (!this.isDistinctCacheValid(column)) {
+            // Abort any previous in-flight distinct fetch (different column or stale)
+            if (this._distinctFetchController) {
+                this._distinctFetchController.abort();
+            }
+            this._distinctFetchController = new AbortController();
+
+            // Show loading state on the button so the user knows it's working
+            anchorElement.classList.add('filter-btn-loading');
+            anchorElement.disabled = true;
+            try {
+                await this.fetchDistinctValues(column, this._distinctFetchController.signal);
+            } catch (e) {
+                if (e.name === 'AbortError') return; // Superseded — another open is in progress
+                // Network or parse error: continue with empty values list
+            } finally {
+                anchorElement.classList.remove('filter-btn-loading');
+                anchorElement.disabled = false;
+                this._distinctFetchController = null;
+            }
+        }
+
+        // Bail out if a newer open overtook us while we were fetching
+        if (token !== this._filterOpenToken) return;
+
         const cached = this.distinctValues[column];
         const values = (cached && cached.values) ? cached.values : [];
         const selectedValues = this.columnFilters[column] || new Set();
-        
-        // Store values array for retrieval by data-index (avoids HTML escaping issues)
         const valuesArray = [...values];
-        
+
         // Create dropdown
         const dropdown = document.createElement('div');
         dropdown.className = 'lazy-table-filter-dropdown';
@@ -1415,31 +1482,34 @@ class LazyTable {
                 <button type="button" class="filter-apply-btn">${this.config.i18n.apply}</button>
             </div>
         `;
-        
+
         // Position dropdown
         const rect = anchorElement.getBoundingClientRect();
         dropdown.style.position = 'fixed';
         dropdown.style.top = `${rect.bottom + 4}px`;
         dropdown.style.left = `${rect.left}px`;
-        
+
         document.body.appendChild(dropdown);
         this.activeFilterDropdown = { element: dropdown, column };
-        
-        // Bind dropdown events
+
+        // Search: debounced so rapid keystrokes don't thrash the DOM
         const searchInput = dropdown.querySelector('.filter-search-input');
+        let _searchTimer;
         searchInput.addEventListener('input', (e) => {
-            const query = e.target.value.toLowerCase();
-            dropdown.querySelectorAll('.filter-option').forEach(opt => {
-                const text = opt.textContent.toLowerCase();
-                opt.style.display = text.includes(query) ? '' : 'none';
-            });
+            clearTimeout(_searchTimer);
+            _searchTimer = setTimeout(() => {
+                const query = e.target.value.toLowerCase();
+                dropdown.querySelectorAll('.filter-option').forEach(opt => {
+                    opt.style.display = opt.textContent.toLowerCase().includes(query) ? '' : 'none';
+                });
+            }, 150);
         });
-        
+
         dropdown.querySelector('.filter-clear-btn').addEventListener('click', () => {
             this.applyFilter(column, new Set());
             this.closeFilterDropdown();
         });
-        
+
         dropdown.querySelector('.filter-apply-btn').addEventListener('click', () => {
             const selected = new Set();
             dropdown.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
@@ -1451,20 +1521,31 @@ class LazyTable {
             this.applyFilter(column, selected);
             this.closeFilterDropdown();
         });
-        
-        // Close on outside click
-        setTimeout(() => {
+
+        // Outside-click: use rAF instead of setTimeout so the registration is
+        // deferred past the current event cycle without creating a race window.
+        // Guard with both activeFilterDropdown and token so stale rAF callbacks
+        // from cancelled opens never attach a listener.
+        requestAnimationFrame(() => {
+            if (token !== this._filterOpenToken) return;
+            if (!this.activeFilterDropdown || this.activeFilterDropdown.element !== dropdown) return;
             document.addEventListener('click', this.handleOutsideClick = (e) => {
                 if (!dropdown.contains(e.target) && !anchorElement.contains(e.target)) {
                     this.closeFilterDropdown();
                 }
             });
-        }, 0);
-        
+        });
+
         searchInput.focus();
     }
 
     closeFilterDropdown() {
+        // Abort any in-flight distinct-values fetch so it doesn't paint a
+        // stale dropdown after the user has already moved on
+        if (this._distinctFetchController) {
+            this._distinctFetchController.abort();
+            this._distinctFetchController = null;
+        }
         if (this.activeFilterDropdown) {
             this.activeFilterDropdown.element.remove();
             this.activeFilterDropdown = null;
@@ -1482,7 +1563,7 @@ class LazyTable {
      * @param {HTMLElement} anchorElement - Button to anchor dropdown to
      * @param {string} [placeholder] - Placeholder text for input
      */
-    showTextFilterDropdown(column, anchorElement, placeholder) {
+    showTextFilterDropdown(column, anchorElement, placeholder, token) {
         // Get current filter value (stored as Set with single value for text filters)
         const currentFilter = this.columnFilters[column];
         const currentValue = currentFilter && currentFilter.size > 0 ? Array.from(currentFilter)[0] : '';
@@ -1541,15 +1622,17 @@ class LazyTable {
             }
         });
         
-        // Close on outside click
-        setTimeout(() => {
+        // Outside-click: rAF + token guard (same pattern as showFilterDropdown)
+        requestAnimationFrame(() => {
+            if (token !== undefined && token !== this._filterOpenToken) return;
+            if (!this.activeFilterDropdown || this.activeFilterDropdown.element !== dropdown) return;
             document.addEventListener('click', this.handleOutsideClick = (e) => {
                 if (!dropdown.contains(e.target) && !anchorElement.contains(e.target)) {
                     this.closeFilterDropdown();
                 }
             });
-        }, 0);
-        
+        });
+
         textInput.focus();
         textInput.select();
     }
@@ -1561,7 +1644,7 @@ class LazyTable {
      * @param {string} column - Column key
      * @param {HTMLElement} anchorElement - Button to anchor dropdown to
      */
-    showDateRangeFilterDropdown(column, anchorElement) {
+    showDateRangeFilterDropdown(column, anchorElement, token) {
         // Get current filter value (stored as Set with single "from,to" value)
         const currentFilter = this.columnFilters[column];
         let fromValue = '', toValue = '';
@@ -1656,19 +1739,21 @@ class LazyTable {
             });
         });
         
-        // Close on outside click
-        setTimeout(() => {
+        // Outside-click: rAF + token guard (same pattern as showFilterDropdown)
+        requestAnimationFrame(() => {
+            if (token !== undefined && token !== this._filterOpenToken) return;
+            if (!this.activeFilterDropdown || this.activeFilterDropdown.element !== dropdown) return;
             document.addEventListener('click', this.handleOutsideClick = (e) => {
                 if (!dropdown.contains(e.target) && !anchorElement.contains(e.target)) {
                     this.closeFilterDropdown();
                 }
             });
-        }, 0);
-        
+        });
+
         fromInput.focus();
     }
 
-    async fetchDistinctValues(column) {
+    async fetchDistinctValues(column, signal = null) {
         try {
             // Build URL for distinct values endpoint
             // If fetchUrl has query params, append /distinct before them
@@ -1712,7 +1797,7 @@ class LazyTable {
                 distinctUrl.searchParams.set('filter_order', this.filterOrder.join(','));
             }
             
-            const response = await fetch(distinctUrl.toString());
+            const response = await fetch(distinctUrl.toString(), signal ? { signal } : undefined);
             if (response.ok) {
                 const data = await response.json();
                 // Cache with filter signature based on ORDER-AWARE prior filters
@@ -1723,11 +1808,53 @@ class LazyTable {
                 };
             }
         } catch (error) {
+            if (error.name === 'AbortError') throw error;  // Let caller handle cancellation
             console.error('LazyTable: error fetching distinct values', error);
             this.distinctValues[column] = { values: [], filterSignature: '' };
         }
     }
     
+    /**
+     * Preload distinct values for all filterable columns that need server data.
+     * Fires once at init via a single batch request so the first filter dropdown
+     * open is instant.  Non-fatal — on failure, dropdowns fall back to on-demand fetch.
+     */
+    async _preloadDistinctValues() {
+        // Collect columns that need server distinct values:
+        //   - filterable but NOT text/dateRange (those are sync UI, no fetch)
+        //   - NOT filterOptions (static enum, no fetch needed)
+        //   - must have a key (skip action/virtual columns)
+        const cols = this.config.columns
+            .filter(c => c.filterable && c.key && !c.filterType && !c.filterOptions)
+            .map(c => c.key);
+
+        if (cols.length === 0) return;
+
+        try {
+            const baseUrl = new URL(this.config.fetchUrl, window.location.origin);
+            const batchUrl = new URL(baseUrl.pathname + '/distinct', window.location.origin);
+            batchUrl.search = baseUrl.search;
+            batchUrl.searchParams.set('columns', cols.join(','));
+
+            const response = await fetch(batchUrl.toString());
+            if (!response.ok) return;
+
+            const data = await response.json();
+            if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+
+            // At init time there are no active filters, so the valid sig is 'order:'
+            const initSig = this.getCascadingFilterSignature(cols[0]);
+            Object.entries(data).forEach(([col, values]) => {
+                if (Array.isArray(values) && !this.distinctValues[col]) {
+                    this.distinctValues[col] = { values, filterSignature: initSig };
+                }
+            });
+        } catch (e) {
+            // Non-fatal — filter dropdowns will fetch on demand as before
+            console.debug('LazyTable: distinct preload failed', e);
+        }
+    }
+
     /**
      * Generate a signature of filters that apply to a column.
      * Used for cascading cache invalidation - cache is valid only if applicable filters unchanged.
@@ -1786,6 +1913,7 @@ class LazyTable {
     isDistinctCacheValid(column) {
         const cached = this.distinctValues[column];
         if (!cached || !cached.values) return false;
+        if (cached.filterSignature === '__static__') return true;  // Static enum — never stale
         return cached.filterSignature === this.getCascadingFilterSignature(column);
     }
 

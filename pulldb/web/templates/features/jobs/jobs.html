@@ -603,7 +603,7 @@
         active: [
             { key: 'id', label: 'Job ID', sortable: true, filterable: true, filterType: 'text', filterPlaceholder: 'b875* or *ef3c', width: '110px', render: Renderers.jobId },
             { key: 'owner_user_code', label: 'User', sortable: true, filterable: true, width: '78px', hideBelow: 660, render: Renderers.user },
-            { key: 'status', label: 'Status', sortable: true, filterable: true, width: '92px', hideBelow: 560, render: Renderers.activeStatus },
+            { key: 'status', label: 'Status', sortable: true, filterable: true, filterOptions: ['queued', 'running'], width: '92px', hideBelow: 560, render: Renderers.activeStatus },
             { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '92px', nowrap: true, hideBelow: 760, render: Renderers.date },
             { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, width: '150px', hideBelow: 860, render: Renderers.host },
             { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true },
@@ -613,7 +613,7 @@
         history: [
             { key: 'id', label: 'Job ID', sortable: true, filterable: true, filterType: 'text', filterPlaceholder: 'b875* or *ef3c', width: '110px', render: Renderers.jobIdHistory },
             { key: 'owner_user_code', label: 'User', sortable: true, filterable: true, width: '78px', hideBelow: 660, render: Renderers.user },
-            { key: 'status', label: 'Status', sortable: true, filterable: true, width: '92px', hideBelow: 560, render: Renderers.status },
+            { key: 'status', label: 'Status', sortable: true, filterable: true, filterOptions: ['canceled', 'complete', 'deleted', 'expired', 'failed', 'superseded'], width: '92px', hideBelow: 560, render: Renderers.status },
             { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '90px', hideBelow: 760, render: Renderers.date },
             { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, width: '150px', hideBelow: 860, render: Renderers.host },
             { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true },

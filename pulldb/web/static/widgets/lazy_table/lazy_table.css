@@ -367,6 +367,27 @@
     background: var(--primary-50, #eff6ff);
 }
 
+/* Loading state: shown while distinct values are being fetched.
+   Replaces the filter icon with a spinning ring so the user knows
+   the click registered and work is in progress. */
+.filter-btn.filter-btn-loading {
+    cursor: wait;
+    pointer-events: none;
+    color: transparent;   /* hide the SVG icon */
+}
+.filter-btn.filter-btn-loading::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    border: 2px solid var(--color-border-light, #e5e7eb);
+    border-top-color: var(--primary-500, #3b82f6);
+    animation: lt-filter-spin 0.6s linear infinite;
+}
+@keyframes lt-filter-spin {
+    to { transform: rotate(360deg); }
+}
+
 /* =========================================================================
    Body Container (Flex: 1, Scrollable)
    ========================================================================= */

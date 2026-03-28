@@ -1,9 +1,9 @@
 <!-- Overlord Companies Modal
      Feature: 54166071 - Button to update overlord.companies
      HCA Layer: features
-     
+
      Full-coverage modal for managing ALL 27 columns of overlord.companies.
-     Core fields always visible; extended fields in collapsible sections.
+     Core fields always visible; extended fields in tab panels.
      Uses combobox dropdowns for host selection, CSS tooltips, and
      semantic color tokens for dark/light mode compatibility.
 -->
@@ -11,11 +11,12 @@
 <div id="overlord-modal" class="modal modal-hidden">
     <div class="modal-backdrop" onclick="closeOverlordModal()"></div>
     <div class="modal-content overlord-modal-compact">
+
         <!-- Header -->
         <div class="modal-header overlord-modal__header">
             <div class="overlord-modal__title-group">
                 <h3 class="modal-title overlord-modal__title">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="3"/>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                     </svg>
@@ -31,20 +32,18 @@
             </button>
         </div>
 
-        <!-- ═══════════════════════════════════════════════════
-             TOP-LEVEL TABS: Companies vs Employees
-             ═══════════════════════════════════════════════════ -->
+        <!-- Top-level tabs -->
         <div class="overlord-top-tabs" role="tablist">
             <button type="button" class="overlord-top-tabs__tab overlord-top-tabs__tab--active"
                     role="tab" aria-selected="true" aria-controls="overlord-panel-companies"
                     onclick="switchOverlordTopTab(this, 'overlord-panel-companies')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09"/></svg>
                 overlord.companies
             </button>
             <button type="button" class="overlord-top-tabs__tab"
                     role="tab" aria-selected="false" aria-controls="overlord-panel-employees"
                     onclick="switchOverlordTopTab(this, 'overlord-panel-employees')">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 <span id="overlord-employees-tab-label">[db].employees</span>
             </button>
         </div>
@@ -53,8 +52,6 @@
         <div id="overlord-panel-companies" class="overlord-top-panel overlord-top-panel--active">
             <input type="hidden" id="overlord-job-id">
             <input type="hidden" id="overlord-database">
-
-            <!-- Shared datalist for host comboboxes (used by company edit card) -->
             <datalist id="overlord-hosts-list"></datalist>
 
             <div class="overlord-companies">
@@ -64,7 +61,7 @@
                     <span id="overlord-status-message" class="overlord-banner__text"></span>
                 </div>
 
-                <!-- Toolbar: count + Add Company button -->
+                <!-- Toolbar -->
                 <div class="overlord-companies__toolbar">
                     <span id="overlord-companies-count" class="overlord-companies__count">0 records</span>
                     <button type="button" class="btn btn-sm btn-primary" onclick="startAddCompany()">
@@ -74,13 +71,19 @@
                 </div>
 
                 <!-- Loading state -->
-                <div id="overlord-companies-loading" class="overlord-companies__loading js-hidden">
+                <div id="overlord-companies-loading" class="overlord-loading-state js-hidden">
                     Loading companies&hellip;
                 </div>
 
                 <!-- Company List Table -->
-                <div class="overlord-companies__table-wrap">
-                    <table class="overlord-companies__table" id="overlord-companies-table">
+                <div class="overlord-table-frame">
+                    <!-- Header: fixed, never scrolls -->
+                    <table class="overlord-table overlord-table-hdr" aria-hidden="true">
+                        <colgroup>
+                            <col class="co-col-id"><col class="co-col-subdomain">
+                            <col class="co-col-name"><col class="co-col-host">
+                            <col class="co-col-visible"><col class="co-col-actions">
+                        </colgroup>
                         <thead>
                             <tr>
                                 <th class="co-col-id">ID</th>
@@ -88,28 +91,36 @@
                                 <th class="co-col-name">Name</th>
                                 <th class="co-col-host">Primary Host</th>
                                 <th class="co-col-visible">Vis</th>
-                                <th class="co-col-actions">Actions</th>
+                                <th class="co-col-actions"></th>
                             </tr>
                         </thead>
-                        <tbody id="overlord-companies-tbody"></tbody>
                     </table>
+                    <!-- Body: scrollable rows only -->
+                    <div class="overlord-table-wrap">
+                        <table class="overlord-table" id="overlord-companies-table">
+                            <colgroup>
+                                <col class="co-col-id"><col class="co-col-subdomain">
+                                <col class="co-col-name"><col class="co-col-host">
+                                <col class="co-col-visible"><col class="co-col-actions">
+                            </colgroup>
+                            <tbody id="overlord-companies-tbody"></tbody>
+                        </table>
+                    </div>
                 </div>
 
-                <!-- Release Control (always visible below the list) -->
+                <!-- Release Control -->
                 <div class="overlord-release-row">
-                    <div class="overlord-field overlord-field--release">
-                        <label for="overlord-release-action" class="overlord-field__label">
-                            On Job Deletion
-                            <span class="overlord-tooltip" data-tooltip="Controls what happens to this overlord record when the pullDB job is deleted or expires.">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                            </span>
-                        </label>
-                        <select id="overlord-release-action" name="release_action" class="form-select overlord-release__select">
-                            <option value="delete" selected>Delete record completely</option>
-                            <option value="restore">Restore original values</option>
-                            <option value="clear">Clear host fields only</option>
-                        </select>
-                    </div>
+                    <span class="overlord-release-row__label">
+                        On Job Deletion
+                        <span class="overlord-tooltip" data-tooltip="Controls what happens to this overlord record when the pullDB job is deleted or expires.">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        </span>
+                    </span>
+                    <select id="overlord-release-action" name="release_action" class="form-select overlord-release__select">
+                        <option value="delete" selected>Delete record completely</option>
+                        <option value="restore">Restore original values</option>
+                        <option value="clear">Clear host fields only</option>
+                    </select>
                     <div id="overlord-original-values" class="overlord-originals js-hidden">
                         <div class="overlord-originals__item">
                             <span class="overlord-originals__label">Was:</span>
@@ -129,23 +140,21 @@
             <div class="overlord-employees">
                 <!-- Search / Filter Bar -->
                 <div class="overlord-employees__toolbar">
-                    <div class="overlord-employees__search">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <label class="overlord-search-wrap">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                         <input type="text" id="overlord-employees-search" class="form-input overlord-employees__search-input"
                                placeholder="Search employees..." oninput="filterEmployees(this.value)">
-                    </div>
-                    <div class="overlord-employees__filter">
-                        <select id="overlord-employees-active-filter" class="form-select" onchange="filterEmployees()">
-                            <option value="all">All</option>
-                            <option value="1" selected>Active</option>
-                            <option value="0">Inactive</option>
-                        </select>
-                    </div>
+                    </label>
+                    <select id="overlord-employees-active-filter" class="form-select overlord-employees__filter-select" onchange="filterEmployees()">
+                        <option value="all">All</option>
+                        <option value="1" selected>Active</option>
+                        <option value="0">Inactive</option>
+                    </select>
                     <span id="overlord-employees-count" class="overlord-employees__count">—</span>
                 </div>
 
                 <!-- Loading state -->
-                <div id="overlord-employees-loading" class="overlord-employees__loading js-hidden">
+                <div id="overlord-employees-loading" class="overlord-loading-state js-hidden">
                     Loading employees...
                 </div>
 
@@ -156,8 +165,16 @@
                 </div>
 
                 <!-- Employee Table -->
-                <div class="overlord-employees__table-wrap">
-                    <table class="overlord-employees__table" id="overlord-employees-table">
+                <div class="overlord-table-frame">
+                    <!-- Header: fixed, never scrolls -->
+                    <table class="overlord-table overlord-table-hdr" aria-hidden="true">
+                        <colgroup>
+                            <col class="emp-col-id"><col class="emp-col-name">
+                            <col class="emp-col-username"><col class="emp-col-email">
+                            <col class="emp-col-active"><col class="emp-col-type">
+                            <col class="emp-col-office"><col class="emp-col-2fa">
+                            <col class="emp-col-actions">
+                        </colgroup>
                         <thead>
                             <tr>
                                 <th class="emp-col-id">ID</th>
@@ -168,23 +185,34 @@
                                 <th class="emp-col-type">Type</th>
                                 <th class="emp-col-office">Office</th>
                                 <th class="emp-col-2fa">2FA</th>
-                                <th class="emp-col-actions">Actions</th>
+                                <th class="emp-col-actions"></th>
                             </tr>
                         </thead>
-                        <tbody id="overlord-employees-tbody">
-                        </tbody>
                     </table>
+                    <!-- Body: scrollable rows only -->
+                    <div class="overlord-table-wrap">
+                        <table class="overlord-table" id="overlord-employees-table">
+                            <colgroup>
+                                <col class="emp-col-id"><col class="emp-col-name">
+                                <col class="emp-col-username"><col class="emp-col-email">
+                                <col class="emp-col-active"><col class="emp-col-type">
+                                <col class="emp-col-office"><col class="emp-col-2fa">
+                                <col class="emp-col-actions">
+                            </colgroup>
+                            <tbody id="overlord-employees-tbody"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div><!-- /overlord-panel-employees -->
 
-    </div><!-- /modal-body -->
+    </div><!-- /modal-content -->
 
-    <!-- COMPANY EDIT CARD — slides over entire modal content -->
+    <!-- COMPANY EDIT CARD — slides over entire modal -->
     <div id="company-edit-card" class="emp-edit-card js-hidden">
         <div class="emp-edit-card__header">
             <button type="button" class="emp-edit-card__back" onclick="closeCompanyEditCard()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
                 Back to List
             </button>
             <div class="emp-edit-card__title">
@@ -193,7 +221,6 @@
         </div>
 
         <div class="emp-edit-card__body">
-            <!-- Tab bar inside the edit card -->
             <div class="ecard-tabs" role="tablist">
                 <button type="button" class="ecard-tabs__tab ecard-tabs__tab--active"
                         role="tab" aria-selected="true" aria-controls="co-panel-core"
@@ -212,182 +239,182 @@
                         onclick="switchEcardTab(this, 'co-panel-franchise')">Franchise</button>
             </div>
 
-            <!-- ── CORE TAB ── -->
+            <!-- CORE TAB -->
             <div id="co-panel-core" class="ecard-tabs__panel ecard-tabs__panel--active" role="tabpanel">
-                <fieldset class="emp-edit-card__section">
-                    <legend>Identity</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="overlord-field">
-                            <label class="overlord-field__label">Company ID</label>
-                            <div class="overlord-field__readonly" id="co-edit-companyid">—</div>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Identity</legend>
+                    <div class="ocard-grid ocard-grid--2">
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Company ID</label>
+                            <div class="ocard-field__readonly" id="co-edit-companyid">—</div>
                             <input type="hidden" id="co-edit-companyid-val">
                         </div>
-                        <div class="overlord-field">
-                            <label class="overlord-field__label">Database</label>
-                            <div class="overlord-field__readonly" id="co-edit-database">—</div>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Database</label>
+                            <div class="ocard-field__readonly" id="co-edit-database">—</div>
                         </div>
                     </div>
                 </fieldset>
-                <fieldset class="emp-edit-card__section">
-                    <legend>Core Fields</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="overlord-field">
-                            <label for="co-edit-subdomain" class="overlord-field__label overlord-field__label--required">Subdomain</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Core Fields</legend>
+                    <div class="ocard-grid ocard-grid--2">
+                        <div class="ocard-field">
+                            <label for="co-edit-subdomain" class="ocard-field__label ocard-field__label--required">Subdomain</label>
                             <input type="text" id="co-edit-subdomain" class="form-input" placeholder="company-name" required maxlength="30"
                                    pattern="[a-z0-9]([a-z0-9\-]{0,28}[a-z0-9])?"
                                    title="Lowercase letters, numbers, and hyphens (1-30 chars)">
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-company" class="overlord-field__label">Company Code</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-company" class="ocard-field__label">Company Code</label>
                             <input type="text" id="co-edit-company" class="form-input" placeholder="Company code" maxlength="50">
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-name" class="overlord-field__label">Display Name</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-name" class="ocard-field__label">Display Name</label>
                             <input type="text" id="co-edit-name" class="form-input" placeholder="Company display name" maxlength="50">
                         </div>
-                        <div class="overlord-field">
-                            <label class="overlord-field__label">Owner</label>
-                            <div class="overlord-field__readonly" id="co-edit-owner">—</div>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Owner</label>
+                            <div class="ocard-field__readonly" id="co-edit-owner">—</div>
                         </div>
                     </div>
                 </fieldset>
-                <fieldset class="emp-edit-card__section">
-                    <legend>Host Settings</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="overlord-field">
-                            <label for="co-edit-dbhost" class="overlord-field__label overlord-field__label--required">Primary Host</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Host Settings</legend>
+                    <div class="ocard-grid ocard-grid--2">
+                        <div class="ocard-field">
+                            <label for="co-edit-dbhost" class="ocard-field__label ocard-field__label--required">Primary Host</label>
                             <div class="overlord-combobox">
                                 <input type="text" id="co-edit-dbhost" class="form-input overlord-combobox__input"
                                        list="overlord-hosts-list" placeholder="Select or type host..." required autocomplete="off">
-                                <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+                                <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="6 9 12 15 18 9"/></svg>
                             </div>
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-dbhost-read" class="overlord-field__label">Read Replica</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-dbhost-read" class="ocard-field__label">Read Replica</label>
                             <div class="overlord-combobox">
                                 <input type="text" id="co-edit-dbhost-read" class="form-input overlord-combobox__input"
                                        list="overlord-hosts-list" placeholder="Select or type host..." autocomplete="off">
-                                <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+                                <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="6 9 12 15 18 9"/></svg>
                             </div>
                         </div>
                     </div>
                 </fieldset>
             </div>
 
-            <!-- ── ROUTING TAB ── -->
+            <!-- ROUTING TAB -->
             <div id="co-panel-routing" class="ecard-tabs__panel" role="tabpanel">
-                <fieldset class="emp-edit-card__section">
-                    <legend>Extended Routing</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="overlord-field">
-                            <label for="co-edit-dbserver" class="overlord-field__label">DB Server</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Extended Routing</legend>
+                    <div class="ocard-grid ocard-grid--2">
+                        <div class="ocard-field">
+                            <label for="co-edit-dbserver" class="ocard-field__label">DB Server</label>
                             <input type="text" id="co-edit-dbserver" class="form-input" placeholder="Server name" maxlength="20">
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-dbhost-api-read" class="overlord-field__label">API Read Host</label>
-                            <div class="overlord-combobox">
-                                <input type="text" id="co-edit-dbhost-api-read" class="form-input overlord-combobox__input"
-                                       list="overlord-hosts-list" placeholder="Select or type host..." autocomplete="off">
-                                <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
-                            </div>
-                        </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-dbhost-dynamic-read" class="overlord-field__label">Dynamic Read Host</label>
-                            <div class="overlord-combobox">
-                                <input type="text" id="co-edit-dbhost-dynamic-read" class="form-input overlord-combobox__input"
-                                       list="overlord-hosts-list" placeholder="Select or type host..." autocomplete="off">
-                                <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
-                            </div>
-                        </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-enable-dynamic-read" class="overlord-field__label">Enable Dynamic Read</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-enable-dynamic-read" class="ocard-field__label">Enable Dynamic Read</label>
                             <select id="co-edit-enable-dynamic-read" class="form-select">
                                 <option value="0">Disabled (0)</option>
                                 <option value="1">Enabled (1)</option>
                             </select>
                         </div>
+                        <div class="ocard-field">
+                            <label for="co-edit-dbhost-api-read" class="ocard-field__label">API Read Host</label>
+                            <div class="overlord-combobox">
+                                <input type="text" id="co-edit-dbhost-api-read" class="form-input overlord-combobox__input"
+                                       list="overlord-hosts-list" placeholder="Select or type host..." autocomplete="off">
+                                <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                        </div>
+                        <div class="ocard-field">
+                            <label for="co-edit-dbhost-dynamic-read" class="ocard-field__label">Dynamic Read Host</label>
+                            <div class="overlord-combobox">
+                                <input type="text" id="co-edit-dbhost-dynamic-read" class="form-input overlord-combobox__input"
+                                       list="overlord-hosts-list" placeholder="Select or type host..." autocomplete="off">
+                                <svg class="overlord-combobox__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                        </div>
                     </div>
                 </fieldset>
             </div>
 
-            <!-- ── BRANDING TAB ── -->
+            <!-- BRANDING TAB -->
             <div id="co-panel-branding" class="ecard-tabs__panel" role="tabpanel">
-                <fieldset class="emp-edit-card__section">
-                    <legend>Branding &amp; Display</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="overlord-field">
-                            <label for="co-edit-visible" class="overlord-field__label">Visible</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Branding &amp; Display</legend>
+                    <div class="ocard-grid ocard-grid--3">
+                        <div class="ocard-field">
+                            <label for="co-edit-visible" class="ocard-field__label">Visible</label>
                             <select id="co-edit-visible" class="form-select">
                                 <option value="1">Visible (1)</option>
                                 <option value="0">Hidden (0)</option>
                             </select>
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-order" class="overlord-field__label">Order</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-order" class="ocard-field__label">Order</label>
                             <input type="number" id="co-edit-order" class="form-input" placeholder="0">
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-branding-prefix" class="overlord-field__label">Branding Prefix</label>
-                            <input type="text" id="co-edit-branding-prefix" class="form-input" placeholder="Prefix">
-                        </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-branding-logo" class="overlord-field__label">Branding Logo</label>
-                            <input type="number" id="co-edit-branding-logo" class="form-input" placeholder="0">
-                        </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-logo" class="overlord-field__label">Logo</label>
-                            <input type="text" id="co-edit-logo" class="form-input" placeholder="Logo" maxlength="50">
-                        </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-branding" class="overlord-field__label">Branding</label>
-                            <input type="text" id="co-edit-branding" class="form-input" placeholder="Branding" maxlength="15">
-                        </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-legacy-branding" class="overlord-field__label">Legacy Branding</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-legacy-branding" class="ocard-field__label">Legacy Branding</label>
                             <select id="co-edit-legacy-branding" class="form-select">
                                 <option value="0">Off (0)</option>
                                 <option value="1">On (1)</option>
                             </select>
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-exclusive-domain" class="overlord-field__label">Exclusive Domain</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-branding-prefix" class="ocard-field__label">Branding Prefix</label>
+                            <input type="text" id="co-edit-branding-prefix" class="form-input" placeholder="Prefix">
+                        </div>
+                        <div class="ocard-field">
+                            <label for="co-edit-branding" class="ocard-field__label">Branding</label>
+                            <input type="text" id="co-edit-branding" class="form-input" placeholder="Branding" maxlength="15">
+                        </div>
+                        <div class="ocard-field">
+                            <label for="co-edit-branding-logo" class="ocard-field__label">Branding Logo ID</label>
+                            <input type="number" id="co-edit-branding-logo" class="form-input" placeholder="0">
+                        </div>
+                        <div class="ocard-field">
+                            <label for="co-edit-logo" class="ocard-field__label">Logo</label>
+                            <input type="text" id="co-edit-logo" class="form-input" placeholder="Logo" maxlength="50">
+                        </div>
+                        <div class="ocard-field">
+                            <label for="co-edit-exclusive-domain" class="ocard-field__label">Exclusive Domain</label>
                             <input type="text" id="co-edit-exclusive-domain" class="form-input" placeholder="custom.domain.com" maxlength="50">
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-mascot" class="overlord-field__label">Mascot</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-mascot" class="ocard-field__label">Mascot</label>
                             <input type="text" id="co-edit-mascot" class="form-input" placeholder="Mascot" maxlength="40">
                         </div>
                     </div>
                 </fieldset>
             </div>
 
-            <!-- ── CONTACT TAB ── -->
+            <!-- CONTACT TAB -->
             <div id="co-panel-contact" class="ecard-tabs__panel" role="tabpanel">
-                <fieldset class="emp-edit-card__section">
-                    <legend>Contact &amp; Billing</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="overlord-field">
-                            <label for="co-edit-admin-contact" class="overlord-field__label">Admin Contact</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Contact &amp; Billing</legend>
+                    <div class="ocard-grid ocard-grid--3">
+                        <div class="ocard-field">
+                            <label for="co-edit-admin-contact" class="ocard-field__label">Admin Contact</label>
                             <input type="text" id="co-edit-admin-contact" class="form-input" placeholder="Contact name" maxlength="40">
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-admin-phone" class="overlord-field__label">Admin Phone</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-admin-phone" class="ocard-field__label">Admin Phone</label>
                             <input type="text" id="co-edit-admin-phone" class="form-input" placeholder="Phone" maxlength="10">
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-admin-email" class="overlord-field__label">Admin Email</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-admin-email" class="ocard-field__label">Admin Email</label>
                             <input type="email" id="co-edit-admin-email" class="form-input" placeholder="admin@example.com" maxlength="80">
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-billing-email" class="overlord-field__label">Billing Email</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-billing-email" class="ocard-field__label">Billing Email</label>
                             <input type="email" id="co-edit-billing-email" class="form-input" placeholder="billing@example.com" maxlength="100">
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-billing-name" class="overlord-field__label">Billing Name</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-billing-name" class="ocard-field__label">Billing Name</label>
                             <input type="text" id="co-edit-billing-name" class="form-input" placeholder="Billing name" maxlength="30">
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-send-tr-invoice" class="overlord-field__label">Send TR Invoice</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-send-tr-invoice" class="ocard-field__label">Send TR Invoice</label>
                             <select id="co-edit-send-tr-invoice" class="form-select">
                                 <option value="0">No (0)</option>
                                 <option value="1">Yes (1)</option>
@@ -397,55 +424,52 @@
                 </fieldset>
             </div>
 
-            <!-- ── FRANCHISE TAB ── -->
+            <!-- FRANCHISE TAB -->
             <div id="co-panel-franchise" class="ecard-tabs__panel" role="tabpanel">
-                <fieldset class="emp-edit-card__section">
-                    <legend>Franchise &amp; Operations</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="overlord-field">
-                            <label for="co-edit-can-franchise" class="overlord-field__label">Can Franchise</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Franchise &amp; Operations</legend>
+                    <div class="ocard-grid ocard-grid--2">
+                        <div class="ocard-field">
+                            <label for="co-edit-can-franchise" class="ocard-field__label">Can Franchise</label>
                             <select id="co-edit-can-franchise" class="form-select">
                                 <option value="0">No (0)</option>
                                 <option value="1">Yes (1)</option>
                             </select>
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-franchise-name" class="overlord-field__label">Franchise Name</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-block-prt-date" class="ocard-field__label">Block PRT Date</label>
+                            <input type="date" id="co-edit-block-prt-date" class="form-input">
+                        </div>
+                        <div class="ocard-field">
+                            <label for="co-edit-franchise-name" class="ocard-field__label">Franchise Name</label>
                             <input type="text" id="co-edit-franchise-name" class="form-input" placeholder="Franchise name" maxlength="50">
                         </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-franchise-logo" class="overlord-field__label">Franchise Logo</label>
+                        <div class="ocard-field">
+                            <label for="co-edit-franchise-logo" class="ocard-field__label">Franchise Logo</label>
                             <input type="text" id="co-edit-franchise-logo" class="form-input" placeholder="Logo" maxlength="50">
-                        </div>
-                        <div class="overlord-field">
-                            <label for="co-edit-block-prt-date" class="overlord-field__label">Block PRT Date</label>
-                            <input type="date" id="co-edit-block-prt-date" class="form-input">
                         </div>
                     </div>
                 </fieldset>
             </div>
-        </div>
+        </div><!-- /emp-edit-card__body -->
 
-        <!-- Footer with Delete/Cancel/Save -->
         <div class="emp-edit-card__footer">
             <button type="button" class="btn btn-danger-ghost co-edit-delete-btn" id="co-edit-delete-btn" onclick="deleteCompanyRecord()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 Delete
             </button>
             <div class="co-edit-footer-right">
                 <button type="button" class="emp-edit-card__cancel" onclick="closeCompanyEditCard()">Cancel</button>
-                <button type="button" class="emp-edit-card__save" id="co-edit-save-btn" onclick="saveCompanyCard()">
-                    Save Changes
-                </button>
+                <button type="button" class="emp-edit-card__save" id="co-edit-save-btn" onclick="saveCompanyCard()">Save Changes</button>
             </div>
         </div>
     </div><!-- /company-edit-card -->
 
-    <!-- EMPLOYEE EDIT CARD — slides over entire modal content -->
+    <!-- EMPLOYEE EDIT CARD — slides over entire modal -->
     <div id="emp-edit-card" class="emp-edit-card js-hidden">
         <div class="emp-edit-card__header">
             <button type="button" class="emp-edit-card__back" onclick="closeEmployeeEditCard()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
                 Back to List
             </button>
             <div class="emp-edit-card__title">
@@ -455,7 +479,6 @@
         </div>
 
         <div class="emp-edit-card__body">
-            <!-- Tab bar -->
             <div class="ecard-tabs" role="tablist">
                 <button type="button" class="ecard-tabs__tab ecard-tabs__tab--active"
                         role="tab" aria-selected="true" aria-controls="ecard-panel-profile"
@@ -474,160 +497,160 @@
                         onclick="switchEcardTab(this, 'ecard-panel-linking')">Linking</button>
             </div>
 
-            <!-- TAB PANEL: Profile (Identity + Contact) -->
+            <!-- PROFILE TAB -->
             <div id="ecard-panel-profile" class="ecard-tabs__panel ecard-tabs__panel--active" role="tabpanel">
-                <fieldset class="emp-edit-card__section">
-                    <legend>Identity</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="emp-field">
-                            <label>Employee ID</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Identity</legend>
+                    <div class="ocard-grid ocard-grid--3">
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Employee ID</label>
                             <input type="text" id="ecard-employeeID" class="form-input" readonly disabled>
                         </div>
-                        <div class="emp-field">
-                            <label>First Name</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">First Name</label>
                             <input type="text" id="ecard-fname" class="form-input" maxlength="20">
                         </div>
-                        <div class="emp-field">
-                            <label>Last Name</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Last Name</label>
                             <input type="text" id="ecard-lname" class="form-input" maxlength="20">
                         </div>
-                        <div class="emp-field">
-                            <label>Nickname</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Nickname</label>
                             <input type="text" id="ecard-nickname" class="form-input" maxlength="40">
                         </div>
-                        <div class="emp-field">
-                            <label>Initials</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Initials</label>
                             <input type="text" id="ecard-initials" class="form-input" maxlength="8">
                         </div>
-                        <div class="emp-field">
-                            <label>Username</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Username</label>
                             <input type="text" id="ecard-username" class="form-input" maxlength="255">
                         </div>
                     </div>
                 </fieldset>
-                <fieldset class="emp-edit-card__section">
-                    <legend>Contact</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="emp-field">
-                            <label>Email</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Contact</legend>
+                    <div class="ocard-grid ocard-grid--3">
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Email</label>
                             <input type="email" id="ecard-email" class="form-input" maxlength="50">
                         </div>
-                        <div class="emp-field">
-                            <label>Phone</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Phone</label>
                             <input type="text" id="ecard-phone" class="form-input" maxlength="10">
                         </div>
-                        <div class="emp-field">
-                            <label>Pic URL</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Pic URL</label>
                             <input type="text" id="ecard-pic" class="form-input" maxlength="100">
                         </div>
-                        <div class="emp-field emp-field--wide">
-                            <label>About</label>
+                        <div class="ocard-field ocard-field--wide">
+                            <label class="ocard-field__label">About</label>
                             <textarea id="ecard-about" class="form-input" maxlength="500" rows="2"></textarea>
                         </div>
                     </div>
                 </fieldset>
             </div>
 
-            <!-- TAB PANEL: Role (Status & Role) -->
+            <!-- ROLE TAB -->
             <div id="ecard-panel-role" class="ecard-tabs__panel" role="tabpanel">
-                <fieldset class="emp-edit-card__section">
-                    <legend>Status &amp; Role</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="emp-field">
-                            <label>Active</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Status &amp; Role</legend>
+                    <div class="ocard-grid ocard-grid--4">
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Active</label>
                             <select id="ecard-active" class="form-select">
                                 <option value="1">Yes</option>
                                 <option value="0">No</option>
                             </select>
                         </div>
-                        <div class="emp-field">
-                            <label>Type</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Type</label>
                             <input type="number" id="ecard-type" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Office ID</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Office ID</label>
                             <input type="number" id="ecard-officeID" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Owner</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Owner</label>
                             <input type="number" id="ecard-owner" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Supervisor ID</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Supervisor ID</label>
                             <input type="number" id="ecard-supervisorID" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>System User</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">System User</label>
                             <select id="ecard-systemUser" class="form-select">
                                 <option value="0">No</option>
                                 <option value="1">Yes</option>
                             </select>
                         </div>
-                        <div class="emp-field">
-                            <label>Roaming Rep</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Roaming Rep</label>
                             <input type="number" id="ecard-roamingRep" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Experience</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Experience</label>
                             <input type="number" id="ecard-experience" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Gateway</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Gateway</label>
                             <input type="number" id="ecard-gateway" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Subscribed</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Subscribed</label>
                             <input type="number" id="ecard-subscribed" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Deals User</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Deals User</label>
                             <input type="number" id="ecard-dealsUser" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Recruiter</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Recruiter</label>
                             <input type="number" id="ecard-recruiter" class="form-input">
                         </div>
                     </div>
                 </fieldset>
             </div>
 
-            <!-- TAB PANEL: Access (Access Control + 2FA) -->
+            <!-- ACCESS TAB -->
             <div id="ecard-panel-access" class="ecard-tabs__panel" role="tabpanel">
-                <fieldset class="emp-edit-card__section">
-                    <legend>Access Control</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="emp-field">
-                            <label>Access Profile ID</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Access Control</legend>
+                    <div class="ocard-grid ocard-grid--4">
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Access Profile ID</label>
                             <input type="number" id="ecard-accessControlProfileID" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Login Location</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Login Location</label>
                             <input type="text" id="ecard-loginLocation" class="form-input" maxlength="25">
                         </div>
-                        <div class="emp-field">
-                            <label>Last Login</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Last Login</label>
                             <input type="text" id="ecard-lastLogin" class="form-input" readonly disabled>
                         </div>
-                        <div class="emp-field">
-                            <label>IP Jail</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">IP Jail</label>
                             <input type="text" id="ecard-IPJail" class="form-input" maxlength="15">
                         </div>
-                        <div class="emp-field">
-                            <label>Reset Password</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Reset Password</label>
                             <select id="ecard-resetPassword" class="form-select">
                                 <option value="0">No</option>
                                 <option value="1">Yes</option>
                             </select>
                         </div>
-                        <div class="emp-field">
-                            <label>Update Terms</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Update Terms</label>
                             <select id="ecard-updateTermsOfService" class="form-select">
                                 <option value="0">No</option>
                                 <option value="1">Yes</option>
                             </select>
                         </div>
-                        <div class="emp-field">
-                            <label>Update Privacy</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Update Privacy</label>
                             <select id="ecard-updatePrivacyPolicy" class="form-select">
                                 <option value="0">No</option>
                                 <option value="1">Yes</option>
@@ -635,47 +658,47 @@
                         </div>
                     </div>
                 </fieldset>
-                <fieldset class="emp-edit-card__section">
-                    <legend>Password &amp; Credentials</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="emp-field">
-                            <label>Set New Password</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Password &amp; Credentials</legend>
+                    <div class="ocard-grid ocard-grid--3">
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Set New Password</label>
                             <input type="text" id="ecard-password" class="form-input" placeholder="Leave blank to keep current">
-                            <span class="emp-field__hint">Setting a password will clear the hash for reset</span>
+                            <span class="ocard-field__hint">Setting a password will clear the hash for reset</span>
                         </div>
-                        <div class="emp-field">
-                            <label>Password Hash Status</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Password Hash Status</label>
                             <span id="ecard-passwordHash" class="emp-field__status-badge">—</span>
                         </div>
-                        <div class="emp-field">
-                            <label>PW Code Created</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">PW Code Created</label>
                             <input type="text" id="ecard-pwCodeCreated" class="form-input" readonly disabled>
                         </div>
                     </div>
                 </fieldset>
-                <fieldset class="emp-edit-card__section">
-                    <legend>Two-Factor Authentication</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="emp-field">
-                            <label>2FA Enabled</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Two-Factor Authentication</legend>
+                    <div class="ocard-grid ocard-grid--4">
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">2FA Enabled</label>
                             <select id="ecard-twoFactorEnabled" class="form-select">
                                 <option value="0">No</option>
                                 <option value="1">Yes</option>
                             </select>
                         </div>
-                        <div class="emp-field">
-                            <label>2FA Required</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">2FA Required</label>
                             <select id="ecard-twoFactorRequired" class="form-select">
                                 <option value="0">No</option>
                                 <option value="1">Yes</option>
                             </select>
                         </div>
-                        <div class="emp-field">
-                            <label>2FA Config Due</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">2FA Config Due</label>
                             <input type="text" id="ecard-twoFactorConfigDueDate" class="form-input" placeholder="YYYY-MM-DD HH:MM:SS">
                         </div>
-                        <div class="emp-field">
-                            <label>2FA Secret Key</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">2FA Secret Key</label>
                             <div class="emp-field__sensitive">
                                 <input type="text" id="ecard-twoFactorSecretBase32" class="form-input" readonly disabled>
                                 <button type="button" class="emp-copy-btn" onclick="ecardCopyField('ecard-twoFactorSecretBase32')" title="Copy to clipboard">📋</button>
@@ -685,105 +708,102 @@
                 </fieldset>
             </div>
 
-            <!-- TAB PANEL: Commissions -->
+            <!-- COMMISSIONS TAB -->
             <div id="ecard-panel-commissions" class="ecard-tabs__panel" role="tabpanel">
-                <fieldset class="emp-edit-card__section">
-                    <legend>Commissions</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="emp-field">
-                            <label>Commission Rate</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Commission Rates</legend>
+                    <div class="ocard-grid ocard-grid--4">
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Commission Rate</label>
                             <input type="number" step="0.0001" id="ecard-commissionRate" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Sales Commission</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Sales Commission</label>
                             <input type="number" step="0.0001" id="ecard-salesCommissionRate" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Service Commission</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Service Commission</label>
                             <input type="number" step="0.0001" id="ecard-serviceCommissionRate" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Schedule Commission</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Schedule Commission</label>
                             <input type="number" step="0.0001" id="ecard-scheduleCommissionRate" class="form-input">
                         </div>
                     </div>
                 </fieldset>
             </div>
 
-            <!-- TAB PANEL: Linking & Misc -->
+            <!-- LINKING TAB -->
             <div id="ecard-panel-linking" class="ecard-tabs__panel" role="tabpanel">
-                <fieldset class="emp-edit-card__section">
-                    <legend>Linking &amp; Miscellaneous</legend>
-                    <div class="emp-edit-card__grid">
-                        <div class="emp-field">
-                            <label>Employee Link</label>
+                <fieldset class="ocard-section">
+                    <legend class="ocard-section__legend">Linking &amp; Miscellaneous</legend>
+                    <div class="ocard-grid ocard-grid--4">
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Employee Link</label>
                             <input type="text" id="ecard-employeeLink" class="form-input" maxlength="40">
                         </div>
-                        <div class="emp-field">
-                            <label>Master Employee ID</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Master Employee ID</label>
                             <input type="number" id="ecard-masterEmployeeID" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Master Office ID</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Master Office ID</label>
                             <input type="number" id="ecard-masterOfficeID" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Latest News ID</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Latest News ID</label>
                             <input type="number" id="ecard-latestNewsID" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>License Number</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">License Number</label>
                             <input type="text" id="ecard-licenseNumber" class="form-input" maxlength="50">
                         </div>
-                        <div class="emp-field">
-                            <label>Inspection License</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Inspection License</label>
                             <input type="text" id="ecard-inspectionLicenseNumber" class="form-input" maxlength="50">
                         </div>
-                        <div class="emp-field">
-                            <label>Sentricon Cred ID</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Sentricon Cred ID</label>
                             <input type="number" id="ecard-sentriconCredentialID" class="form-input">
                         </div>
-                        <div class="emp-field">
-                            <label>Office Extension</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Office Extension</label>
                             <input type="text" id="ecard-officeExtention" class="form-input" maxlength="10">
                         </div>
-                        <div class="emp-field">
-                            <label>Extension Password</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Extension Password</label>
                             <div class="emp-field__sensitive">
                                 <input type="text" id="ecard-officeExtentionPassword" class="form-input" readonly disabled>
                                 <button type="button" class="emp-copy-btn" onclick="ecardCopyField('ecard-officeExtentionPassword')" title="Copy to clipboard">📋</button>
                             </div>
                         </div>
-                        <div class="emp-field">
-                            <label>Google Calendar</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Google Calendar</label>
                             <input type="text" id="ecard-googleCalendarAuth" class="form-input" maxlength="256">
                         </div>
-                        <div class="emp-field">
-                            <label>Update Needed</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Update Needed</label>
                             <select id="ecard-updateNeeded" class="form-select">
                                 <option value="0">No</option>
                                 <option value="1">Yes</option>
                             </select>
                         </div>
-                        <div class="emp-field">
-                            <label>Date Updated</label>
+                        <div class="ocard-field">
+                            <label class="ocard-field__label">Date Updated</label>
                             <input type="text" id="ecard-dateUpdated" class="form-input" readonly disabled>
                         </div>
                     </div>
                 </fieldset>
             </div>
-        </div>
+        </div><!-- /emp-edit-card__body -->
 
-        <!-- Footer with Save/Cancel -->
         <div class="emp-edit-card__footer">
             <button type="button" class="emp-edit-card__cancel" onclick="closeEmployeeEditCard()">Cancel</button>
-            <button type="button" class="emp-edit-card__save" id="emp-edit-card-save-btn" onclick="saveEmployeeCard()">
-                Save Changes
-            </button>
+            <button type="button" class="emp-edit-card__save" id="emp-edit-card-save-btn" onclick="saveEmployeeCard()">Save Changes</button>
         </div>
     </div><!-- /emp-edit-card -->
 
-</div><!-- /modal-content -->
+</div><!-- /overlord-modal -->
 
 <style>
 /* =============================================================================
@@ -792,16 +812,14 @@
    All 27 columns of overlord.companies exposed via collapsible sections.
    ============================================================================= */
 
-/* Modal sizing — wider to accommodate two panels */
+/* Modal sizing — flex column so the table-wrap can absorb remaining height */
 .overlord-modal-compact {
-    max-width: 900px;
+    max-width: 980px;
     width: 95vw;
-}
-
-/* Scrollable body for tall content */
-.overlord-modal-compact .modal-body {
-    max-height: 70vh;
-    overflow-y: auto;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 /* =============================================================================
@@ -848,12 +866,16 @@
     opacity: 1;
 }
 
-/* Top-level panels */
+/* Top-level panels — flex: 1 so panel fills space between header+tabs and modal bottom */
 .overlord-top-panel {
     display: none;
 }
 .overlord-top-panel--active {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* =============================================================================
@@ -864,8 +886,9 @@
     flex-direction: column;
     gap: var(--space-3);
     padding: var(--space-4);
-    max-height: 70vh;
-    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .overlord-companies__toolbar {
@@ -882,27 +905,49 @@
     white-space: nowrap;
 }
 
-.overlord-companies__loading {
+/* =============================================================================
+   SHARED LOADING STATE
+   ============================================================================= */
+.overlord-loading-state {
     text-align: center;
     padding: var(--space-6);
     color: var(--color-text-muted);
     font-size: var(--text-sm);
 }
 
-.overlord-companies__table-wrap {
-    overflow-x: auto;
-    border: 1px solid var(--color-border-light);
-    border-radius: var(--radius-md);
+/* Legacy aliases kept for safety */
+.overlord-companies__loading,
+.overlord-employees__loading {
+    text-align: center;
+    padding: var(--space-6);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
 }
 
-.overlord-companies__table {
+/* =============================================================================
+   SHARED TABLE — overlord-table / overlord-table-wrap
+   Used by both overlord.companies and [db].employees panels
+   ============================================================================= */
+/* Frame: flex column holding header table + scroll wrapper */
+.overlord-table-frame {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+/* Header table — sits above the scroll area, never moves */
+.overlord-table-hdr {
+    flex-shrink: 0;
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: var(--text-xs);
 }
-.overlord-companies__table th {
-    position: sticky;
-    top: 0;
+.overlord-table-hdr th {
     background: var(--color-bg-subtle);
     padding: var(--space-2) var(--space-2);
     text-align: left;
@@ -911,30 +956,67 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-text-secondary);
-    border-bottom: 1px solid var(--color-border-light);
+    border-bottom: 2px solid var(--color-border-light);
     white-space: nowrap;
 }
-.overlord-companies__table td {
+
+/* Scroll wrapper — data rows ONLY, no header */
+.overlord-table-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: auto;
+    scroll-snap-type: y proximity;
+}
+
+/* Body table — matches header table layout */
+.overlord-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: var(--text-xs);
+}
+.overlord-table td {
     padding: var(--space-2) var(--space-2);
     border-bottom: 1px solid var(--color-border-light);
     color: var(--color-text-primary);
     white-space: nowrap;
-    max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.overlord-companies__table tr:last-child td {
+.overlord-table tr:last-child td {
     border-bottom: none;
 }
-.overlord-companies__table tr:hover td {
+.overlord-table tbody tr:nth-child(even) td {
     background: var(--color-bg-subtle);
 }
+.overlord-table tbody tr:hover td {
+    background: var(--color-bg-tertiary) !important;
+}
+/* Snap to full row boundary */
+.overlord-table tbody tr {
+    scroll-snap-align: start;
+}
 
-/* Company column widths */
+/* Legacy table class aliases — kept so any JS that inspects classList still works */
+.overlord-companies__table-wrap,
+.overlord-employees__table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+}
+.overlord-companies__table,
+.overlord-employees__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-xs);
+}
+
+/* Company column widths — explicit width for table-layout:fixed */
 .co-col-id { width: 55px; }
-.co-col-subdomain { min-width: 120px; }
-.co-col-name { min-width: 140px; }
-.co-col-host { min-width: 180px; }
+.co-col-subdomain { width: 130px; }
+.co-col-name { width: 155px; }
+.co-col-host { width: auto; }        /* fills remaining space */
 .co-col-visible { width: 45px; text-align: center; }
 .co-col-actions { width: 50px; text-align: center; }
 
@@ -971,8 +1053,9 @@
     flex-direction: column;
     gap: var(--space-3);
     padding: var(--space-4);
-    max-height: 70vh;
-    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .overlord-employees__toolbar {
@@ -981,25 +1064,29 @@
     gap: var(--space-3);
 }
 
-.overlord-employees__search {
+/* Search label wrapper — icon + input together */
+.overlord-search-wrap {
     flex: 1;
     position: relative;
     display: flex;
     align-items: center;
+    cursor: text;
 }
-.overlord-employees__search svg {
+.overlord-search-wrap svg {
     position: absolute;
     left: var(--space-3);
     color: var(--color-text-muted);
     pointer-events: none;
+    flex-shrink: 0;
 }
 .overlord-employees__search-input {
     padding-left: var(--space-8) !important;
     font-size: var(--text-sm) !important;
     height: 34px !important;
+    width: 100%;
 }
 
-.overlord-employees__filter select {
+.overlord-employees__filter-select {
     font-size: var(--text-sm);
     height: 34px;
     min-width: 90px;
@@ -1012,62 +1099,17 @@
     white-space: nowrap;
 }
 
-.overlord-employees__loading {
-    text-align: center;
-    padding: var(--space-6);
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-}
-
-.overlord-employees__table-wrap {
-    overflow-x: auto;
-    border: 1px solid var(--color-border-light);
-    border-radius: var(--radius-md);
-}
-
-.overlord-employees__table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: var(--text-xs);
-}
-.overlord-employees__table th {
-    position: sticky;
-    top: 0;
-    background: var(--color-bg-subtle);
-    padding: var(--space-2) var(--space-2);
-    text-align: left;
-    font-size: 10px;
-    font-weight: var(--font-semibold);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-secondary);
-    border-bottom: 1px solid var(--color-border-light);
-    white-space: nowrap;
-}
-.overlord-employees__table td {
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--color-border-light);
-    color: var(--color-text-primary);
-    white-space: nowrap;
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.overlord-employees__table tr:last-child td {
-    border-bottom: none;
-}
-.overlord-employees__table tr:hover td {
-    background: var(--color-bg-subtle);
-}
+/* emp-row--inactive — JS-referenced, must remain */
+.overlord-table tr.emp-row--inactive td,
 .overlord-employees__table tr.emp-row--inactive td {
     opacity: 0.5;
 }
 
-/* Column widths */
+/* Employee column widths — explicit width for table-layout:fixed */
 .emp-col-id { width: 50px; }
-.emp-col-name { min-width: 140px; }
-.emp-col-username { min-width: 120px; }
-.emp-col-email { min-width: 160px; }
+.emp-col-name { width: 150px; }
+.emp-col-username { width: 125px; }
+.emp-col-email { width: auto; }      /* fills remaining space */
 .emp-col-active { width: 55px; text-align: center; }
 .emp-col-type { width: 50px; text-align: center; }
 .emp-col-office { width: 55px; text-align: center; }
@@ -1668,21 +1710,39 @@
     display: flex;
 }
 
-/* Release control row */
+/* Release control row — compact horizontal layout */
 .overlord-release-row {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--color-border-light);
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
 }
 
-.overlord-field--release {
-    flex: 1;
+.overlord-release-row__label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .overlord-release__select {
     font-size: var(--text-sm);
+    height: 30px;
+    flex-shrink: 0;
+}
+
+.overlord-field--release {
+    flex: 1;
 }
 
 /* Original values (inline, compact) */
@@ -1778,6 +1838,125 @@
 }
 
 /* =============================================================================
+   OCARD SYSTEM — Card sections inside edit slide-over panels
+   Replaces old emp-edit-card__section / emp-edit-card__grid classes.
+   ============================================================================= */
+
+/* Section card — styled fieldset */
+.ocard-section {
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+    padding: 0;
+    margin: 0;
+    background: var(--color-bg-secondary);
+    overflow: hidden;
+}
+
+.ocard-section__legend {
+    display: block;
+    width: 100%;
+    padding: var(--space-1-5) var(--space-3);
+    background: var(--color-bg-subtle);
+    border-bottom: 1px solid var(--color-border-light);
+    font-size: 10px;
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    float: left; /* makes fieldset legend work like a header */
+}
+
+/* Grid containers */
+.ocard-grid {
+    display: grid;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3);
+    clear: both;
+}
+.ocard-grid--2 { grid-template-columns: repeat(2, 1fr); }
+.ocard-grid--3 { grid-template-columns: repeat(3, 1fr); }
+.ocard-grid--4 { grid-template-columns: repeat(4, 1fr); }
+
+/* Individual field */
+.ocard-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.ocard-field--wide {
+    grid-column: 1 / -1;
+}
+
+/* Label */
+.ocard-field__label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: 10px;
+    font-weight: var(--font-medium);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.ocard-field__label--required::after {
+    content: "*";
+    color: var(--color-error, #dc2626);
+    font-weight: var(--font-bold);
+    margin-left: 1px;
+}
+
+/* Form controls inside ocard fields */
+.ocard-field .form-input,
+.ocard-field .form-select {
+    font-size: 12px;
+    height: 30px;
+    padding: var(--space-1) var(--space-2);
+}
+
+.ocard-field textarea.form-input {
+    height: auto;
+    min-height: 60px;
+    resize: vertical;
+}
+
+.ocard-field .form-input[readonly],
+.ocard-field .form-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: var(--color-bg-subtle);
+}
+
+/* Read-only display box */
+.ocard-field__readonly {
+    display: flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 var(--space-2);
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Hint text */
+.ocard-field__hint {
+    font-size: 9px;
+    color: var(--color-text-muted);
+    opacity: 0.75;
+    margin-top: 1px;
+    line-height: 1.3;
+}
+
+/* =============================================================================
    TOOLTIPS — CSS-only via data-tooltip attribute
    ============================================================================= */
 
@@ -1859,6 +2038,23 @@
     .overlord-originals {
         flex-direction: column;
         gap: var(--space-1);
+    }
+}
+
+/* ocard grid: 4-col → 2-col at 660px */
+@media (max-width: 660px) {
+    .ocard-grid--4 { grid-template-columns: repeat(2, 1fr); }
+    .ocard-grid--3 { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ocard grid: all → 1-col at 440px */
+@media (max-width: 440px) {
+    .ocard-grid--2,
+    .ocard-grid--3,
+    .ocard-grid--4 { grid-template-columns: 1fr; }
+    .overlord-release-row {
+        flex-direction: column;
+        align-items: flex-start;
     }
 }
 </style>

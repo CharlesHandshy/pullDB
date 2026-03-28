@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from pulldb.domain.models import Job, JobStatus, User, UserRole
+from pulldb.infra.distinct_cache import jobs_distinct_cache
 from pulldb.web.dependencies import get_api_state, require_login, templates
 from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
@@ -1925,51 +1926,88 @@ async def api_jobs_paginated(
     }
 
 
-@router.get("/api/paginated/distinct")
-async def api_jobs_distinct(
-    request: Request,
-    column: str,
-    view: str = "active",
-    state: Any = Depends(get_api_state),
-    user: User = Depends(require_login),
-) -> list:
-    """Get distinct values for a column (for filter dropdowns)."""
-    jobs = []
-    
-    if not hasattr(state, "job_repo") or not state.job_repo:
-        return []
-    
-    # Fetch jobs based on view
-    if view == "history":
-        if hasattr(state.job_repo, "get_recent_jobs"):
-            jobs = state.job_repo.get_recent_jobs(limit=10000)
-            jobs = [j for j in jobs if j.status not in (JobStatus.QUEUED, JobStatus.RUNNING)]
-        else:
-            jobs = list(getattr(state.job_repo, "history_jobs", []))
-    else:
-        if hasattr(state.job_repo, "get_active_jobs"):
-            jobs = state.job_repo.get_active_jobs()
-        else:
-            jobs = list(getattr(state.job_repo, "active_jobs", []))
-    
-    # Extract distinct values
-    values = set()
+def _extract_distinct_for_column(jobs: list, column: str) -> list:
+    """Extract sorted distinct non-empty values for *column* from *jobs*."""
+    values: set = set()
     for j in jobs:
         if column == "status":
             val = j.status.value if hasattr(j.status, "value") else str(j.status)
-        elif column == "dbhost":
-            val = j.dbhost
-        elif column == "owner_user_code":
-            val = getattr(j, "owner_user_code", None)
-        elif column == "target":
-            val = j.target
         else:
             val = getattr(j, column, None)
-        
         if val:
             values.add(val)
-    
     return sorted(values)
+
+
+def _load_jobs_for_view(view: str, state: Any) -> list:
+    """Load the job list for the given view from job_repo."""
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return []
+    if view == "history":
+        if hasattr(state.job_repo, "get_recent_jobs"):
+            jobs = state.job_repo.get_recent_jobs(limit=10000)
+            return [j for j in jobs if j.status not in (JobStatus.QUEUED, JobStatus.RUNNING)]
+        return list(getattr(state.job_repo, "history_jobs", []))
+    else:
+        if hasattr(state.job_repo, "get_active_jobs"):
+            return state.job_repo.get_active_jobs()
+        return list(getattr(state.job_repo, "active_jobs", []))
+
+
+@router.get("/api/paginated/distinct")
+async def api_jobs_distinct(
+    request: Request,
+    view: str = "active",
+    column: str = "",
+    columns: str = "",
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+):
+    """Get distinct values for one or more columns (for filter dropdowns).
+
+    Single column mode (original):
+        GET ?column=dbhost&view=active  →  ["host1", "host2", ...]
+
+    Batch mode (preload):
+        GET ?columns=owner_user_code,dbhost,target&view=active
+        →  { "owner_user_code": [...], "dbhost": [...], "target": [...] }
+
+    Results are cached server-side for 5 minutes per (view, column) pair so
+    repeated calls (e.g. different users, page reloads) do not re-scan memory.
+    """
+    # Determine which columns to resolve
+    batch_mode = bool(columns)
+    if columns:
+        col_list = [c.strip() for c in columns.split(",") if c.strip()]
+    elif column:
+        col_list = [column]
+    else:
+        return {} if batch_mode else []
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return {} if batch_mode else []
+
+    # Only load jobs once even when multiple columns are requested
+    jobs_loaded: list | None = None
+    result: dict = {}
+
+    for col in col_list:
+        cached = jobs_distinct_cache.get(view=view, column=col)
+        if cached is not None:
+            result[col] = cached
+            continue
+
+        # Cache miss — load jobs lazily (only once per request)
+        if jobs_loaded is None:
+            jobs_loaded = _load_jobs_for_view(view, state)
+
+        values = _extract_distinct_for_column(jobs_loaded, col)
+        jobs_distinct_cache.set(view=view, column=col, values=values)
+        result[col] = values
+
+    if batch_mode:
+        return result
+    return result.get(col_list[0], [])
 
 
 @router.post("/bulk-delete")
