@@ -601,23 +601,23 @@
     
     const COLUMNS = {
         active: [
-            { key: 'id', label: 'Job ID', sortable: true, filterable: true, filterType: 'text', filterPlaceholder: 'b875* or *ef3c', width: '125px', render: Renderers.jobId },
-            { key: 'owner_user_code', label: 'User', sortable: true, filterable: true, width: '95px', render: Renderers.user },
-            { key: 'status', label: 'Status', sortable: true, filterable: true, width: '100px', render: Renderers.activeStatus },
-            { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '110px', nowrap: true, render: Renderers.date },
-            { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, maxWidth: '140px', render: Renderers.host },
-            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, maxWidth: '160px' },
-            { key: 'retention', label: 'Expires', sortable: false, width: '100px', render: Renderers.retention },
-            { type: 'actions', label: 'Actions', width: '110px', render: Renderers.activeActions }
+            { key: 'id', label: 'Job ID', sortable: true, filterable: true, filterType: 'text', filterPlaceholder: 'b875* or *ef3c', width: '110px', render: Renderers.jobId },
+            { key: 'owner_user_code', label: 'User', sortable: true, filterable: true, width: '78px', render: Renderers.user },
+            { key: 'status', label: 'Status', sortable: true, filterable: true, width: '92px', render: Renderers.activeStatus },
+            { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '92px', nowrap: true, render: Renderers.date },
+            { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, width: '150px', render: Renderers.host },
+            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, width: '220px' },
+            { key: 'retention', label: 'Expires', sortable: false, width: '88px', render: Renderers.retention },
+            { type: 'actions', label: 'Actions', width: '108px', render: Renderers.activeActions }
         ],
         history: [
-            { key: 'id', label: 'Job ID', sortable: true, filterable: true, filterType: 'text', filterPlaceholder: 'b875* or *ef3c', width: '125px', render: Renderers.jobIdHistory },
-            { key: 'owner_user_code', label: 'User', sortable: true, filterable: true, width: '95px', render: Renderers.user },
-            { key: 'status', label: 'Status', sortable: true, filterable: true, width: '110px', render: Renderers.status },
-            { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '100px', render: Renderers.date },
-            { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, maxWidth: '150px', render: Renderers.host },
-            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, maxWidth: '160px' },
-            { key: 'expires_at', label: 'Expires', sortable: false, width: '90px', render: Renderers.historyExpires },
+            { key: 'id', label: 'Job ID', sortable: true, filterable: true, filterType: 'text', filterPlaceholder: 'b875* or *ef3c', width: '110px', render: Renderers.jobIdHistory },
+            { key: 'owner_user_code', label: 'User', sortable: true, filterable: true, width: '78px', render: Renderers.user },
+            { key: 'status', label: 'Status', sortable: true, filterable: true, width: '92px', render: Renderers.status },
+            { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '90px', render: Renderers.date },
+            { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, width: '150px', render: Renderers.host },
+            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, width: '220px' },
+            { key: 'expires_at', label: 'Expires', sortable: false, width: '80px', render: Renderers.historyExpires },
             // Actions column - resubmit button for failed jobs, delete button in header for selection
             { 
                 type: 'actions', 
