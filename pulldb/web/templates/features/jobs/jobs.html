@@ -606,7 +606,7 @@
             { key: 'status', label: 'Status', sortable: true, filterable: true, width: '92px', render: Renderers.activeStatus },
             { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '92px', nowrap: true, render: Renderers.date },
             { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, width: '150px', render: Renderers.host },
-            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, width: '220px' },
+            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true },
             { key: 'retention', label: 'Expires', sortable: false, width: '88px', render: Renderers.retention },
             { type: 'actions', label: 'Actions', width: '108px', render: Renderers.activeActions }
         ],
@@ -616,7 +616,7 @@
             { key: 'status', label: 'Status', sortable: true, filterable: true, width: '92px', render: Renderers.status },
             { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '90px', render: Renderers.date },
             { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, width: '150px', render: Renderers.host },
-            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, width: '220px' },
+            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true },
             { key: 'expires_at', label: 'Expires', sortable: false, width: '80px', render: Renderers.historyExpires },
             // Actions column - resubmit button for failed jobs, delete button in header for selection
             { 
