@@ -50,11 +50,7 @@ docker start "$BLUE_CONTAINER" >> "$LOG_FILE" 2>&1 || {
         -v "${BLUE_CONFIG_DIR}:/etc/pulldb:ro" \
         -v "${BLUE_DATA_DIR}:/mnt/data" \
         -v "${BLUE_MYSQL_VOL}:/var/lib/mysql" \
-        --entrypoint /bin/bash \
         "$BLUE_IMAGE" \
-        -c 'grep -q "^PULLDB_AWS_PROFILE=" /opt/pulldb.service/.env 2>/dev/null \
-            || cat /etc/pulldb/service.env >> /opt/pulldb.service/.env; \
-            exec /entrypoint.sh' \
         >> "$LOG_FILE" 2>&1 || die "Could not restart blue container"
 }
 ok "Blue started"

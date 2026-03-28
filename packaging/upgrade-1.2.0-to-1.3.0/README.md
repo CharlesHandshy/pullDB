@@ -6,17 +6,22 @@
 upgrade-1.2.0-to-1.3.0/
 ├── upgrade.sh                   # Main upgrade orchestration
 ├── rollback.sh                  # Rollback to 1.2.0 if needed
+├── inject-production-settings.sh  # Run migration 014 with dry-run support
 ├── migrations/
 │   ├── 010_overlord_tracking_subdomain.sql   # ADD COLUMN current_subdomain
 │   ├── 011_fix_settings_keys.sql             # Rename 3 settings keys
 │   ├── 012_add_origin_column.sql             # ADD COLUMN jobs.origin
-│   └── 013_overlord_tracking_idx_user.sql    # ADD INDEX idx_user
-├── Dockerfile                   # 1.3.0 image build file   (copy from docker/)
-├── pulldb_1.3.0_amd64.deb       # 1.3.0 package            (copy from build output)
-├── entrypoint.sh                # Container entrypoint      (copy from docker/)
-├── wait-for-mysql.sh            # Healthcheck helper        (copy from docker/)
-└── pulldb-mysql.cnf             # MySQL socket config       (copy from docker/)
+│   ├── 013_overlord_tracking_idx_user.sql    # ADD INDEX idx_user
+│   └── 014_inject_production_settings.sql    # Seed 1.3.0 settings, clean up 1.2.0 data
+├── Dockerfile                   # 1.3.0 image build file
+├── entrypoint.sh                # Container entrypoint (baked into image)
+├── supervisord.conf             # Process supervisor config (baked into image)
+├── wait-for-mysql.sh            # MySQL readiness gate (baked into image)
+└── pulldb-mysql.cnf             # MySQL socket config (baked into image)
 ```
+
+> **Note**: `pulldb_1.3.0_amd64.deb` is not committed to git (too large).
+> Transfer it separately or use a pre-built image tar — see Step 1 below.
 
 ## Schema changes from 1.2.0 → 1.3.0
 
@@ -31,6 +36,8 @@ data modified (except 3 settings key renames which are idempotent).
 | `settings` (data) | `max_retention_months` → `max_retention_days` (×30) |
 | `settings` (data) | `max_retention_increment` deleted |
 | `settings` (data) | `expiring_notice_days` → `expiring_warning_days` |
+| `settings` (data) | 14 new 1.3.0 myloader settings seeded (INSERT IGNORE) |
+| `db_hosts` (data) | Spurious `localhost` placeholder removed |
 
 ## Prerequisites on the target server
 
@@ -38,85 +45,123 @@ data modified (except 3 settings key renames which are idempotent).
 - Docker installed
 - `sudo` access
 - ~4× the MySQL data directory size in free disk space
-- The 1.3.0 Docker image **or** the `.deb` file + Dockerfile
+- The 1.3.0 Docker image **or** the `.deb` file
 
-## Step 1: Transfer this package to the target server
+## Step 1: Get the package on the target server
+
+### Option A — Pre-built image (recommended, avoids building on target)
+
+On the dev machine:
 
 ```bash
-# On this dev machine — build the .deb and Docker files into the package
-make server        # builds pulldb_1.3.0_amd64.deb
-cp pulldb_1.3.0_amd64.deb packaging/upgrade-1.2.0-to-1.3.0/
-cp docker/Dockerfile docker/entrypoint.sh docker/wait-for-mysql.sh \
-   docker/pulldb-mysql.cnf packaging/upgrade-1.2.0-to-1.3.0/
+# Build the 1.3.0 image
+make image
 
-# Package it up
-tar -czf pulldb-upgrade-1.2.0-to-1.3.0.tar.gz \
-    -C packaging upgrade-1.2.0-to-1.3.0/
+# Save it as a transferable tar
+docker save pulldb:1.3.0 | gzip > /tmp/pulldb-1.3.0.tar.gz
 
-# Transfer to target
-scp pulldb-upgrade-1.2.0-to-1.3.0.tar.gz user@target-server:/tmp/
+# Push scripts + package files to GitHub
+git push
 ```
 
-Alternatively, save the 1.3.0 Docker image as a tar to avoid building on the target:
+On the target server:
 
 ```bash
-docker save pulldb:1.3.0 | gzip > pulldb-1.3.0-image.tar.gz
-# Then transfer and pass --image-tar /tmp/pulldb-1.3.0-image.tar.gz
+# Pull the upgrade scripts
+git pull   # or: git clone <repo-url> && cd pullDB
+
+# Transfer the image tar from the dev machine
+scp dev-machine:/tmp/pulldb-1.3.0.tar.gz /tmp/
+
+cd packaging/upgrade-1.2.0-to-1.3.0/
+sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0.tar.gz
+```
+
+### Option B — Build from .deb on target
+
+On the dev machine:
+
+```bash
+make server   # produces pulldb_1.3.0_amd64.deb
+git push
+```
+
+On the target server:
+
+```bash
+git pull
+
+# Transfer the .deb
+scp dev-machine:/path/to/pulldb_1.3.0_amd64.deb /tmp/
+
+cd packaging/upgrade-1.2.0-to-1.3.0/
+sudo ./upgrade.sh --deb /tmp/pulldb_1.3.0_amd64.deb
 ```
 
 ## Step 2: Run the upgrade
 
 ```bash
-# On the target server
-cd /tmp
-tar -xzf pulldb-upgrade-1.2.0-to-1.3.0.tar.gz
-cd upgrade-1.2.0-to-1.3.0/
-chmod +x upgrade.sh rollback.sh
+cd packaging/upgrade-1.2.0-to-1.3.0/
 
-# Default — auto-detects blue container name and ports
-sudo ./upgrade.sh
+# Default — auto-detects the running 1.2.0 container name and ports
+sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0.tar.gz
 
-# If your blue container has a non-default name:
-sudo ./upgrade.sh --blue-container pulldb-prod
+# Dry run first (shows what would happen, makes no changes)
+sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0.tar.gz --dry-run
 
-# If using a pre-built image tar:
-sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0-image.tar.gz
+# If your 1.2.0 container has a non-default name (default is 'pulldb'):
+sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0.tar.gz --blue-container pulldb-prod
 
-# Test green first, cut over manually:
-sudo ./upgrade.sh --skip-cutover
+# Test green on temporary ports first, cut over manually later:
+sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0.tar.gz --skip-cutover
 # ... verify green on ports 8002/8082 ...
-sudo ./upgrade.sh --blue-container pulldb-blue --green-container pulldb-green
-# (re-running without --skip-cutover will do the cutover)
+# Then re-run without --skip-cutover to do the cutover
+sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0.tar.gz
 ```
 
 ## Step 3: Verify
 
-After the cutover, verify the upgrade succeeded:
+After the cutover, the new container runs under the original container name (default: `pulldb`)
+on the original ports. Verify:
 
 ```bash
-# Health check on original ports (default 8001/8081)
-curl -fsk https://localhost:8001/api/health | python3 -m json.tool
+# Health check (use the original API port — typically 8080 or 8084)
+curl -fsk https://localhost:<api-port>/api/health | python3 -m json.tool
 
-# Check version in UI footer or API
-curl -fsk https://localhost:8081/api/health | python3 -m json.tool
-
-# Check migration columns exist
-docker exec pulldb-green mysql -u root -S /tmp/mysql.sock -N \
+# Check migration columns exist in the new container
+docker exec pulldb mysql -u root -S /tmp/mysql.sock -N \
   -e "DESCRIBE pulldb_service.jobs;" | grep origin
 
-docker exec pulldb-green mysql -u root -S /tmp/mysql.sock -N \
+docker exec pulldb mysql -u root -S /tmp/mysql.sock -N \
   -e "DESCRIBE pulldb_service.overlord_tracking;" | grep current_subdomain
+
+# Check new 1.3.0 settings were seeded
+docker exec pulldb mysql -u root -S /tmp/mysql.sock \
+  pulldb_service -e "SELECT setting_key, setting_value FROM settings ORDER BY setting_key;"
+```
+
+If you want to preview or re-run migration 014 (settings injection) independently:
+
+```bash
+# Preview (dry run)
+sudo ./inject-production-settings.sh --dry-run
+
+# Apply (idempotent — safe to run multiple times)
+sudo ./inject-production-settings.sh
 ```
 
 ## Step 4: Clean up (after 24h verification window)
 
 ```bash
-# Remove old blue container and its MySQL volume
-docker rm pulldb-blue
-docker volume rm $(docker volume ls -q | grep blue-mysql)
+# The old blue container is stopped but not removed — check rollback-state.env for its name
+cat rollback-state.env
+
+# Remove old container and its MySQL volume
+docker rm <old-container-name>
+docker volume rm <old-mysql-volume>
 
 # Remove the upgrade dump (keep for 7 days in case of issues)
-# ls /mnt/data/upgrade-dumps/
+ls /mnt/data/upgrade-dumps/
 ```
 
 ## Rollback procedure
@@ -127,8 +172,8 @@ If 1.3.0 is broken and you need to go back:
 sudo ./rollback.sh
 ```
 
-This stops the green container and restarts the original blue container on the
-original ports. The blue container was stopped but not removed during the upgrade.
+This stops the new container and restarts the original 1.2.0 container on the
+original ports. The old container was stopped but not removed during the upgrade.
 
 > **Note**: Rollback is only clean if no production writes have hit 1.3.0's
 > new `origin` column with non-default values. Since the default is 'restore'
@@ -159,11 +204,13 @@ Step 4: Wait for health
   └── Poll /api/health every 10s, timeout 5 minutes
 
 Step 5: Run migrations
-  └── Applies migrations/ in order (all guarded with IF NOT EXISTS)
+  └── Applies migrations/ in order (all guarded with IF NOT EXISTS / INSERT IGNORE)
       010 → overlord_tracking.current_subdomain
       011 → settings key renames
       012 → jobs.origin
       013 → overlord_tracking idx_user
+      014 → seed 1.3.0 myloader settings, remove localhost placeholder,
+             update default_dbhost
 
 Step 6: Final checks
   ├── API health
@@ -172,8 +219,9 @@ Step 6: Final checks
 
 Step 7: Cutover  ← ~5 second downtime window
   ├── Write rollback-state.env
+  ├── Rename blue to <name>-prev (if green uses same container name)
   ├── docker stop blue
-  ├── docker stop green + restart on blue's original ports
+  ├── docker stop green + restart on blue's original ports under original name
   └── Wait for health on production ports
 ```
 

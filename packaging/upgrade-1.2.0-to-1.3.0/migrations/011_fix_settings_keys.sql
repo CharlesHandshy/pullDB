@@ -22,3 +22,7 @@ WHERE setting_key = 'expiring_notice_days'
   AND NOT EXISTS (
       SELECT 1 FROM (SELECT 1 FROM settings WHERE setting_key = 'expiring_warning_days') t
   );
+
+-- If expiring_warning_days already existed (rename was skipped), remove the
+-- orphaned expiring_notice_days row so the old key doesn't persist.
+DELETE FROM settings WHERE setting_key = 'expiring_notice_days';

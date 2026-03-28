@@ -97,9 +97,15 @@ mysql_stop() {
 # Apply schema files in order (idempotent — all use IF NOT EXISTS / INSERT IGNORE)
 # ---------------------------------------------------------------------------
 apply_schema() {
+    # skip_seed=1 during upgrade scenarios to avoid re-seeding into restored data
+    local skip_seed="${1:-0}"
     log "Applying schema..."
     mysql -e "CREATE DATABASE IF NOT EXISTS pulldb_service CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
     for subdir in 00_tables 01_views 02_seed 03_users; do
+        if [[ "$subdir" == "02_seed" && "$skip_seed" == "1" ]]; then
+            log "  Skipping 02_seed (upgrade — data already present in dump)"
+            continue
+        fi
         if [[ -d "${SCHEMA_DIR}/${subdir}" ]]; then
             for sql_file in "${SCHEMA_DIR}/${subdir}"/*.sql; do
                 [[ -f "$sql_file" ]] || continue
@@ -315,7 +321,7 @@ init_from_volume_copy() {
     mysql_start_wait
 
     log "Applying any new schema migrations..."
-    apply_schema
+    apply_schema 1  # skip_seed: data already present in volume copy
 
     ensure_mysql_users
     mysql_stop
@@ -337,7 +343,7 @@ init_from_dump() {
     log "Dump imported"
 
     log "Applying any new schema migrations..."
-    apply_schema
+    apply_schema 1  # skip_seed: data already present in dump
 
     ensure_mysql_users
     mysql_stop
@@ -395,14 +401,30 @@ main() {
     # Wire up AWS config from /etc/pulldb/aws/ so boto3 can find named profiles.
     # boto3 resolves credentials in order: env vars → ~/.aws/ → instance metadata.
     # The operator mounts their AWS config at /etc/pulldb/aws/ — link it into place.
+    #
+    # Two mechanisms for robustness:
+    #   1. Symlinks into ~/.aws/ for each OS user that runs app processes.
+    #      API and worker run as pulldb_service (home: /opt/pulldb.service), NOT root,
+    #      so both /root/.aws/ and ${INSTALL_PREFIX}/.aws/ must be linked.
+    #   2. AWS_CONFIG_FILE env var written into runtime .env — boto3 reads this
+    #      directly regardless of which OS user runs the process. This is the
+    #      authoritative fix; symlinks above are belt-and-suspenders for tools
+    #      (aws CLI, etc.) that don't honour AWS_CONFIG_FILE.
     if [[ -d "/etc/pulldb/aws" ]]; then
-        mkdir -p /root/.aws
-        for f in config credentials; do
-            if [[ -f "/etc/pulldb/aws/${f}" ]]; then
-                ln -sf "/etc/pulldb/aws/${f}" "/root/.aws/${f}"
-                log "Linked /etc/pulldb/aws/${f} → /root/.aws/${f}"
-            fi
+        for aws_home in /root/.aws "${INSTALL_PREFIX}/.aws"; do
+            mkdir -p "$aws_home"
+            for f in config credentials; do
+                if [[ -f "/etc/pulldb/aws/${f}" ]]; then
+                    ln -sf "/etc/pulldb/aws/${f}" "${aws_home}/${f}"
+                    log "Linked /etc/pulldb/aws/${f} → ${aws_home}/${f}"
+                fi
+            done
         done
+        # Set AWS_CONFIG_FILE so boto3 finds profiles without relying on ~/.aws/ symlinks.
+        if [[ -f "/etc/pulldb/aws/config" ]] && ! grep -q '^AWS_CONFIG_FILE=' "$ENV_FILE" 2>/dev/null; then
+            echo "AWS_CONFIG_FILE=/etc/pulldb/aws/config" >> "$ENV_FILE"
+            log "Set AWS_CONFIG_FILE=/etc/pulldb/aws/config"
+        fi
     fi
 
     write_credentials_to_env

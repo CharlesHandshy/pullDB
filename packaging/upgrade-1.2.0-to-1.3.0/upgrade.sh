@@ -258,11 +258,7 @@ if ! $DRY_RUN; then
         -v "${GREEN_DATA_DIR}:/mnt/data" \
         -v "${GREEN_MYSQL_VOL}:/var/lib/mysql" \
         -e "PULLDB_IMPORT_DUMP=/mnt/data/import.sql" \
-        --entrypoint /bin/bash \
         "$IMAGE_NAME" \
-        -c 'grep -q "^PULLDB_AWS_PROFILE=" /opt/pulldb.service/.env 2>/dev/null \
-            || cat /etc/pulldb/service.env >> /opt/pulldb.service/.env; \
-            exec /entrypoint.sh' \
         >> "$LOG_FILE" 2>&1 || die "docker run for green failed"
     ok "Green container started (import in progress)"
 fi
@@ -442,11 +438,7 @@ EOF
         -v "${CONFIG_DIR}:/etc/pulldb:ro" \
         -v "${GREEN_DATA_DIR}:/mnt/data" \
         -v "${GREEN_MYSQL_VOL}:/var/lib/mysql" \
-        --entrypoint /bin/bash \
         "$IMAGE_NAME" \
-        -c 'grep -q "^PULLDB_AWS_PROFILE=" /opt/pulldb.service/.env 2>/dev/null \
-            || cat /etc/pulldb/service.env >> /opt/pulldb.service/.env; \
-            exec /entrypoint.sh' \
         >> "$LOG_FILE" 2>&1 || die "Failed to restart green on production ports"
 
     # Wait for green to be healthy on production ports
