@@ -47,28 +47,24 @@ data modified (except 3 settings key renames which are idempotent).
 - ~4× the MySQL data directory size in free disk space
 - The 1.3.0 Docker image **or** the `.deb` file
 
-## Step 1: Build the bundle and transfer to the target server
+## Step 1: Publish the release and download on the target
 
-On the dev machine, one command builds the image and packages everything:
+On the dev machine:
 
 ```bash
-make bundle
+make release
 ```
 
-This produces `pulldb-upgrade-1.3.0.tar.gz` — a self-contained archive with the
-upgrade scripts, migrations, and the pre-built Docker image tar. No git, ECR, or
-internet access required on the target.
+This builds the image, packages everything into `pulldb-upgrade-1.3.0.tar.gz`, creates
+a GitHub release, and uploads the bundle as an asset. The download URL is printed at the
+end.
 
-Transfer it:
-
-```bash
-scp pulldb-upgrade-1.3.0.tar.gz user@target:/tmp/
-```
-
-On the target server, extract it:
+On the target server (no git, ECR, or build tools required):
 
 ```bash
-tar -xzf /tmp/pulldb-upgrade-1.3.0.tar.gz -C /tmp/
+wget https://github.com/CharlesHandshy/pullDB/releases/download/v1.3.0/pulldb-upgrade-1.3.0.tar.gz
+tar -xzf pulldb-upgrade-1.3.0.tar.gz
+cd upgrade-1.2.0-to-1.3.0/
 ```
 
 ## Step 2: Run the upgrade

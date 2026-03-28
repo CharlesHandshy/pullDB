@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PIP ?= pip
 
-.PHONY: all wheel client server server-signed client-signed all-signed clean help dev-install changes lint image push deploy bundle
+.PHONY: all wheel client server server-signed client-signed all-signed clean help dev-install changes lint image push deploy bundle release
 
 help:
 	@echo "pullDB Build System"
@@ -24,7 +24,8 @@ help:
 	@echo "Docker / ECR Targets (requires ECR_REGISTRY and ECR_REGION env vars):"
 	@echo "  make image            - Build Docker image (tags as pulldb:<version>)"
 	@echo "  make bundle           - Build image + package into self-contained upgrade tar.gz"
-	@echo "                         (no ECR or git required on target — just scp and run)"
+	@echo "  make release          - bundle + create GitHub release + upload asset"
+	@echo "                         (target: wget <url>, no git/ECR required)"
 	@echo "  make push             - ECR login + push image (requires dev IAM permissions)"
 	@echo "  make deploy HOST=...  - SSH to HOST and run upgrade.sh with latest image"
 	@echo ""
@@ -160,6 +161,32 @@ bundle: server
 	@echo "  # On target:"
 	@echo "  #   tar -xzf /tmp/$(BUNDLE_NAME) -C /tmp/"
 	@echo "  #   sudo /tmp/upgrade-1.2.0-to-1.3.0/upgrade.sh"
+
+# Create a GitHub release and upload the upgrade bundle as an asset.
+# The bundle can then be downloaded on the target with wget — no git required.
+#
+# Usage:
+#   make release
+#   # On target (no git/ECR needed):
+#   #   wget <url printed by this target>
+#   #   tar -xzf $(BUNDLE_NAME) && sudo ./upgrade-1.2.0-to-1.3.0/upgrade.sh
+#
+# Requires: gh CLI authenticated (gh auth login)
+RELEASE_TAG    := v$(IMAGE_TAG)
+REPO_URL       := $(shell git remote get-url origin 2>/dev/null | sed 's/\.git$$//')
+RELEASE_DL_URL  = $(REPO_URL)/releases/download/$(RELEASE_TAG)/$(BUNDLE_NAME)
+
+release: bundle
+	@echo "=== Creating GitHub release $(RELEASE_TAG) ==="
+	gh release create $(RELEASE_TAG) $(BUNDLE_NAME) \
+		--title "pullDB $(IMAGE_TAG)" \
+		--notes "1.2.0 → $(IMAGE_TAG) upgrade bundle. Self-contained: includes Docker image, scripts, and migrations." \
+		|| (echo "Release may already exist — uploading asset only..." && \
+		    gh release upload $(RELEASE_TAG) $(BUNDLE_NAME) --clobber)
+	@echo ""
+	@echo "=== Download on target ==="
+	@echo "  wget $(RELEASE_DL_URL)"
+	@echo "  tar -xzf $(BUNDLE_NAME) && sudo ./upgrade-1.2.0-to-1.3.0/upgrade.sh"
 
 # Deploy to a host via SSH — copies upgrade script and runs it
 # Usage: make deploy HOST=ubuntu@10.0.0.5
