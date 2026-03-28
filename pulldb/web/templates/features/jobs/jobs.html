@@ -359,9 +359,11 @@
             if (val === 'running') {
                 if (row.cancel_requested_at) {
                     cls += ' badge-cancel-pending';
-                } else if (row.is_locked) {
+                } else if (!row.can_cancel) {
+                    // can_cancel=false means job entered loading phase (myloader/rename) — not cancellable
                     cls += ' badge-running-locked';
-                } else if (row.can_cancel) {
+                } else {
+                    // can_cancel=true means job is in early phase (download/extract) — can be cancelled
                     cls += ' badge-running-cancellable';
                 }
             }
@@ -385,9 +387,9 @@
             if (val === 'running') {
                 if (row.cancel_requested_at) {
                     cls += ' badge-cancel-pending';
-                } else if (row.is_locked) {
+                } else if (!row.can_cancel) {
                     cls += ' badge-running-locked';
-                } else if (row.can_cancel) {
+                } else {
                     cls += ' badge-running-cancellable';
                 }
             }
