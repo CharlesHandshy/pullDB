@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PIP ?= pip
 
-.PHONY: all wheel client server server-signed client-signed all-signed clean help dev-install changes lint image push deploy
+.PHONY: all wheel client server server-signed client-signed all-signed clean help dev-install changes lint image push deploy bundle
 
 help:
 	@echo "pullDB Build System"
@@ -23,6 +23,8 @@ help:
 	@echo ""
 	@echo "Docker / ECR Targets (requires ECR_REGISTRY and ECR_REGION env vars):"
 	@echo "  make image            - Build Docker image (tags as pulldb:<version>)"
+	@echo "  make bundle           - Build image + package into self-contained upgrade tar.gz"
+	@echo "                         (no ECR or git required on target — just scp and run)"
 	@echo "  make push             - ECR login + push image (requires dev IAM permissions)"
 	@echo "  make deploy HOST=...  - SSH to HOST and run upgrade.sh with latest image"
 	@echo ""
@@ -119,6 +121,45 @@ push: image
 		| docker login --username AWS --password-stdin $(ECR_REGISTRY)
 	docker push $(FULL_IMAGE)
 	@echo "Pushed: $(FULL_IMAGE)"
+
+# Create a self-contained upgrade bundle for transfer to servers without git/ECR.
+# Builds the image locally, saves it as a tar, and packages everything into a
+# single archive that can be scp'd to the target and run with no dependencies.
+#
+# Usage:
+#   make bundle
+#   scp pulldb-upgrade-1.3.0.tar.gz user@target:/tmp/
+#   # On target:
+#   #   tar -xzf /tmp/pulldb-upgrade-1.3.0.tar.gz -C /tmp/
+#   #   sudo /tmp/upgrade-1.2.0-to-1.3.0/upgrade.sh
+BUNDLE_NAME := pulldb-upgrade-$(IMAGE_TAG).tar.gz
+BUNDLE_PKG  := packaging/upgrade-1.2.0-to-1.3.0
+
+bundle: server
+	@echo "=== Building Docker image (local, no ECR required) ==="
+	cp pulldb_$(IMAGE_TAG)_amd64.deb docker/pulldb_$(IMAGE_TAG)_amd64.deb
+	docker build \
+		--build-arg PULLDB_VERSION=$(IMAGE_TAG) \
+		-t $(IMAGE_NAME):$(IMAGE_TAG) \
+		-t $(IMAGE_NAME):latest \
+		docker/
+	rm -f docker/pulldb_$(IMAGE_TAG)_amd64.deb
+	@echo "=== Saving image tar (this may take a minute) ==="
+	docker save $(IMAGE_NAME):$(IMAGE_TAG) | gzip > $(BUNDLE_PKG)/pulldb-$(IMAGE_TAG).tar.gz
+	@echo "=== Creating upgrade bundle: $(BUNDLE_NAME) ==="
+	tar -czf $(BUNDLE_NAME) \
+		--exclude='upgrade-1.2.0-to-1.3.0/*.deb' \
+		--exclude='upgrade-1.2.0-to-1.3.0/rollback-state.env' \
+		--exclude='upgrade-1.2.0-to-1.3.0/upgrade-*.log' \
+		--exclude='upgrade-1.2.0-to-1.3.0/rollback-*.log' \
+		-C packaging upgrade-1.2.0-to-1.3.0/
+	rm -f $(BUNDLE_PKG)/pulldb-$(IMAGE_TAG).tar.gz
+	@ls -lh $(BUNDLE_NAME)
+	@echo ""
+	@echo "  scp $(BUNDLE_NAME) user@target:/tmp/"
+	@echo "  # On target:"
+	@echo "  #   tar -xzf /tmp/$(BUNDLE_NAME) -C /tmp/"
+	@echo "  #   sudo /tmp/upgrade-1.2.0-to-1.3.0/upgrade.sh"
 
 # Deploy to a host via SSH — copies upgrade script and runs it
 # Usage: make deploy HOST=ubuntu@10.0.0.5

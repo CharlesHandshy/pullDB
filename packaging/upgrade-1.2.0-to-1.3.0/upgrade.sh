@@ -206,29 +206,37 @@ if ! $DRY_RUN; then
         docker load -i "$IMAGE_TAR" >> "$LOG_FILE" 2>&1 || die "docker load failed"
         ok "Loaded $IMAGE_NAME from $IMAGE_TAR"
     else
-        # Build from .deb + Dockerfile
-        if [[ -z "$DEB_PATH" ]]; then
-            DEB_PATH=$(ls "${SCRIPT_DIR}"/pulldb_1.3.0_amd64.deb 2>/dev/null | head -1 || echo "")
+        # Auto-detect image tar in script directory (produced by 'make bundle')
+        AUTO_TAR=$(ls "${SCRIPT_DIR}"/pulldb-*.tar.gz "${SCRIPT_DIR}"/pulldb_*.tar.gz 2>/dev/null | head -1 || echo "")
+        if [[ -n "$AUTO_TAR" ]]; then
+            log "  Auto-detected image tar: $AUTO_TAR"
+            docker load -i "$AUTO_TAR" >> "$LOG_FILE" 2>&1 || die "docker load failed"
+            ok "Loaded $IMAGE_NAME from $AUTO_TAR"
+        else
+            # Build from .deb + Dockerfile
+            if [[ -z "$DEB_PATH" ]]; then
+                DEB_PATH=$(ls "${SCRIPT_DIR}"/pulldb_1.3.0_amd64.deb 2>/dev/null | head -1 || echo "")
+            fi
+            [[ -n "$DEB_PATH" && -f "$DEB_PATH" ]] || \
+                die "No 1.3.0 image found. Pass --image-tar pulldb-1.3.0.tar.gz  OR  --deb pulldb_1.3.0_amd64.deb"
+
+            BUILD_DIR=$(mktemp -d)
+            cp "$DEB_PATH" "${BUILD_DIR}/pulldb_1.3.0_amd64.deb"
+            # Dockerfile must be in the same directory as the .deb
+            DOCKERFILE_SRC="${SCRIPT_DIR}/Dockerfile"
+            [[ -f "$DOCKERFILE_SRC" ]] || die "Dockerfile not found at $DOCKERFILE_SRC"
+            cp "$DOCKERFILE_SRC" "${BUILD_DIR}/Dockerfile"
+            # Copy other files needed by Dockerfile
+            for f in entrypoint.sh wait-for-mysql.sh pulldb-mysql.cnf install-pulldb-docker.sh; do
+                [[ -f "${SCRIPT_DIR}/$f" ]] && cp "${SCRIPT_DIR}/$f" "${BUILD_DIR}/$f"
+            done
+
+            log "  Building $IMAGE_NAME from $(basename "$DEB_PATH") ..."
+            docker build -t "$IMAGE_NAME" "$BUILD_DIR" >> "$LOG_FILE" 2>&1 \
+                || die "docker build failed — check $LOG_FILE"
+            rm -rf "$BUILD_DIR"
+            ok "Built $IMAGE_NAME"
         fi
-        [[ -n "$DEB_PATH" && -f "$DEB_PATH" ]] || \
-            die "No 1.3.0 image found. Pass --image-tar pulldb-1.3.0.tar.gz  OR  --deb pulldb_1.3.0_amd64.deb"
-
-        BUILD_DIR=$(mktemp -d)
-        cp "$DEB_PATH" "${BUILD_DIR}/pulldb_1.3.0_amd64.deb"
-        # Dockerfile must be in the same directory as the .deb
-        DOCKERFILE_SRC="${SCRIPT_DIR}/Dockerfile"
-        [[ -f "$DOCKERFILE_SRC" ]] || die "Dockerfile not found at $DOCKERFILE_SRC"
-        cp "$DOCKERFILE_SRC" "${BUILD_DIR}/Dockerfile"
-        # Copy other files needed by Dockerfile
-        for f in entrypoint.sh wait-for-mysql.sh pulldb-mysql.cnf install-pulldb-docker.sh; do
-            [[ -f "${SCRIPT_DIR}/$f" ]] && cp "${SCRIPT_DIR}/$f" "${BUILD_DIR}/$f"
-        done
-
-        log "  Building $IMAGE_NAME from $(basename "$DEB_PATH") ..."
-        docker build -t "$IMAGE_NAME" "$BUILD_DIR" >> "$LOG_FILE" 2>&1 \
-            || die "docker build failed — check $LOG_FILE"
-        rm -rf "$BUILD_DIR"
-        ok "Built $IMAGE_NAME"
     fi
 fi
 

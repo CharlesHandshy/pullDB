@@ -47,77 +47,53 @@ data modified (except 3 settings key renames which are idempotent).
 - ~4× the MySQL data directory size in free disk space
 - The 1.3.0 Docker image **or** the `.deb` file
 
-## Step 1: Get the package on the target server
+## Step 1: Build the bundle and transfer to the target server
 
-### Option A — Pre-built image (recommended, avoids building on target)
-
-On the dev machine:
+On the dev machine, one command builds the image and packages everything:
 
 ```bash
-# Build the 1.3.0 image
-make image
-
-# Save it as a transferable tar
-docker save pulldb:1.3.0 | gzip > /tmp/pulldb-1.3.0.tar.gz
-
-# Push scripts + package files to GitHub
-git push
+make bundle
 ```
 
-On the target server:
+This produces `pulldb-upgrade-1.3.0.tar.gz` — a self-contained archive with the
+upgrade scripts, migrations, and the pre-built Docker image tar. No git, ECR, or
+internet access required on the target.
+
+Transfer it:
 
 ```bash
-# Pull the upgrade scripts
-git pull   # or: git clone <repo-url> && cd pullDB
-
-# Transfer the image tar from the dev machine
-scp dev-machine:/tmp/pulldb-1.3.0.tar.gz /tmp/
-
-cd packaging/upgrade-1.2.0-to-1.3.0/
-sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0.tar.gz
+scp pulldb-upgrade-1.3.0.tar.gz user@target:/tmp/
 ```
 
-### Option B — Build from .deb on target
-
-On the dev machine:
+On the target server, extract it:
 
 ```bash
-make server   # produces pulldb_1.3.0_amd64.deb
-git push
-```
-
-On the target server:
-
-```bash
-git pull
-
-# Transfer the .deb
-scp dev-machine:/path/to/pulldb_1.3.0_amd64.deb /tmp/
-
-cd packaging/upgrade-1.2.0-to-1.3.0/
-sudo ./upgrade.sh --deb /tmp/pulldb_1.3.0_amd64.deb
+tar -xzf /tmp/pulldb-upgrade-1.3.0.tar.gz -C /tmp/
 ```
 
 ## Step 2: Run the upgrade
 
 ```bash
-cd packaging/upgrade-1.2.0-to-1.3.0/
+cd /tmp/upgrade-1.2.0-to-1.3.0/
 
-# Default — auto-detects the running 1.2.0 container name and ports
-sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0.tar.gz
+# Default — auto-detects the running 1.2.0 container name, ports, and image tar
+sudo ./upgrade.sh
 
 # Dry run first (shows what would happen, makes no changes)
-sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0.tar.gz --dry-run
+sudo ./upgrade.sh --dry-run
 
 # If your 1.2.0 container has a non-default name (default is 'pulldb'):
-sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0.tar.gz --blue-container pulldb-prod
+sudo ./upgrade.sh --blue-container pulldb-prod
 
 # Test green on temporary ports first, cut over manually later:
-sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0.tar.gz --skip-cutover
+sudo ./upgrade.sh --skip-cutover
 # ... verify green on ports 8002/8082 ...
-# Then re-run without --skip-cutover to do the cutover
-sudo ./upgrade.sh --image-tar /tmp/pulldb-1.3.0.tar.gz
+# Then re-run without --skip-cutover to complete the cutover
+sudo ./upgrade.sh
 ```
+
+> The image tar (`pulldb-1.3.0.tar.gz`) is auto-detected from the same directory.
+> No `--image-tar` flag needed when using a bundle produced by `make bundle`.
 
 ## Step 3: Verify
 
