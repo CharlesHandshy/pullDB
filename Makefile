@@ -172,21 +172,27 @@ bundle: server
 #   #   tar -xzf $(BUNDLE_NAME) && sudo ./upgrade-1.2.0-to-1.3.0/upgrade.sh
 #
 # Requires: gh CLI authenticated (gh auth login)
-RELEASE_TAG    := v$(IMAGE_TAG)
-REPO_URL       := $(shell git remote get-url origin 2>/dev/null | sed 's/\.git$$//')
-RELEASE_DL_URL  = $(REPO_URL)/releases/download/$(RELEASE_TAG)/$(BUNDLE_NAME)
+RELEASE_TAG      := v$(IMAGE_TAG)
+REPO_URL         := $(shell git remote get-url origin 2>/dev/null | sed 's/\.git$$//')
+CLIENT_DEB       := pulldb-client_$(IMAGE_TAG)_amd64.deb
+RELEASE_DL_BASE   = $(REPO_URL)/releases/download/$(RELEASE_TAG)
 
-release: bundle
+release: bundle client
 	@echo "=== Creating GitHub release $(RELEASE_TAG) ==="
-	gh release create $(RELEASE_TAG) $(BUNDLE_NAME) \
+	gh release create $(RELEASE_TAG) $(BUNDLE_NAME) $(CLIENT_DEB) \
 		--title "pullDB $(IMAGE_TAG)" \
-		--notes "1.2.0 → $(IMAGE_TAG) upgrade bundle. Self-contained: includes Docker image, scripts, and migrations." \
-		|| (echo "Release may already exist — uploading asset only..." && \
-		    gh release upload $(RELEASE_TAG) $(BUNDLE_NAME) --clobber)
+		--notes "$(IMAGE_TAG) release assets:\n- \`$(BUNDLE_NAME)\` — 1.2.0→$(IMAGE_TAG) upgrade bundle (Docker image + scripts + migrations)\n- \`$(CLIENT_DEB)\` — CLI-only client package" \
+		|| (echo "Release may already exist — uploading assets only..." && \
+		    gh release upload $(RELEASE_TAG) $(BUNDLE_NAME) $(CLIENT_DEB) --clobber)
 	@echo ""
 	@echo "=== Download on target ==="
-	@echo "  wget $(RELEASE_DL_URL)"
+	@echo "  # Upgrade bundle (server):"
+	@echo "  wget $(RELEASE_DL_BASE)/$(BUNDLE_NAME)"
 	@echo "  tar -xzf $(BUNDLE_NAME) && sudo ./upgrade-1.2.0-to-1.3.0/upgrade.sh"
+	@echo ""
+	@echo "  # Client CLI:"
+	@echo "  wget $(RELEASE_DL_BASE)/$(CLIENT_DEB)"
+	@echo "  sudo dpkg -i $(CLIENT_DEB)"
 
 # Deploy to a host via SSH — copies upgrade script and runs it
 # Usage: make deploy HOST=ubuntu@10.0.0.5

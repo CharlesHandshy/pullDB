@@ -62,9 +62,14 @@ end.
 On the target server (no git, ECR, or build tools required):
 
 ```bash
+# Upgrade bundle (includes Docker image + scripts + migrations)
 wget https://github.com/CharlesHandshy/pullDB/releases/download/v1.3.0/pulldb-upgrade-1.3.0.tar.gz
 tar -xzf pulldb-upgrade-1.3.0.tar.gz
 cd upgrade-1.2.0-to-1.3.0/
+
+# Client CLI (optional — install on any machine that needs the pulldb CLI)
+wget https://github.com/CharlesHandshy/pullDB/releases/download/v1.3.0/pulldb-client_1.3.0_amd64.deb
+sudo dpkg -i pulldb-client_1.3.0_amd64.deb
 ```
 
 ## Step 2: Run the upgrade
