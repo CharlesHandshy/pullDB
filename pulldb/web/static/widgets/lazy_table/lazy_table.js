@@ -142,6 +142,9 @@ class LazyTable {
         // Column filter distinct values cache
         this.distinctValues = {};  // { columnKey: [] }
 
+        // Responsive column hiding: keys of columns currently collapsed
+        this._hiddenColumns = new Set();
+
         // Build and initialize
         this.buildDOM();
         this.bindEvents();
@@ -152,6 +155,9 @@ class LazyTable {
             this.updateFilterIndicators();
         }
         
+        // Compute initial responsive column visibility before first fetch
+        this.updateResponsiveColumns(true);
+
         // Fetch initial data unless deferInitialLoad is true
         if (!this.config.deferInitialLoad) {
             this.fetchInitialData();
@@ -362,13 +368,15 @@ class LazyTable {
             colgroup.appendChild(col);
         }
         
-        // Data columns
+        // Data columns (skip hidden)
         columns.forEach(colDef => {
+            const key = colDef.key || colDef.type || '';
+            if (this._hiddenColumns.has(key)) return;
             const col = document.createElement('col');
             if (colDef.width) col.style.width = colDef.width;
             colgroup.appendChild(col);
         });
-        
+
         return colgroup;
     }
 
@@ -507,12 +515,95 @@ class LazyTable {
     }
 
     handleResize() {
+        this.updateResponsiveColumns();
         const prevVisibleCount = this.visibleRowCount;
         this.calculateViewport();
-        
         if (this.visibleRowCount !== prevVisibleCount) {
             this.render();
         }
+    }
+
+    /**
+     * Compute which columns should be hidden based on container width and
+     * each column's `hideBelow` threshold. Rebuilds colgroups + header row
+     * and forces a re-render if the visible column set changed.
+     * @param {boolean} [force=false] - Skip change-detection and always rebuild
+     */
+    updateResponsiveColumns(force = false) {
+        const containerWidth = this.elements.wrapper.offsetWidth;
+        if (!containerWidth) return;
+
+        const prevHidden = new Set(this._hiddenColumns);
+        this._hiddenColumns.clear();
+
+        this.config.columns.forEach(col => {
+            const key = col.key || col.type || '';
+            if (col.hideBelow && containerWidth < col.hideBelow) {
+                this._hiddenColumns.add(key);
+            }
+        });
+
+        // Detect change
+        const changed = force ||
+            prevHidden.size !== this._hiddenColumns.size ||
+            [...this._hiddenColumns].some(k => !prevHidden.has(k)) ||
+            [...prevHidden].some(k => !this._hiddenColumns.has(k));
+
+        if (!changed) return;
+
+        // Rebuild colgroups (both header and body tables)
+        const replaceColgroup = (table) => {
+            const old = table.querySelector('colgroup');
+            if (old) old.remove();
+            table.insertBefore(this.createColgroup(), table.firstChild);
+        };
+        replaceColgroup(this.elements.headerTable);
+        replaceColgroup(this.elements.bodyTable);
+
+        // Rebuild header thead row
+        const thead = this.elements.headerTable.querySelector('thead');
+        if (thead) {
+            const { columns, selectable, selectionMode } = this.config;
+            const tr = document.createElement('tr');
+
+            if (selectable && selectionMode === 'multiple') {
+                tr.appendChild(thead.querySelector('tr').firstElementChild.cloneNode(true));
+            }
+
+            columns.forEach((col, index) => {
+                const key = col.key || col.type || '';
+                if (this._hiddenColumns.has(key)) return;
+                const existing = thead.querySelector(`th[data-column-key="${col.key || `action-${index}`}"]`);
+                if (existing) {
+                    tr.appendChild(existing.cloneNode(true));
+                } else {
+                    // Rebuild th from scratch
+                    const th = document.createElement('th');
+                    th.className = 'lazy-table-th';
+                    th.dataset.columnKey = col.key || `action-${index}`;
+                    th.dataset.columnIndex = index;
+                    if (col.type === 'actions' || (!col.sortable && !col.filterable)) {
+                        if (col.type === 'actions') th.classList.add('lazy-table-th-actions');
+                        if (col.headerRender) {
+                            th.innerHTML = col.headerRender();
+                        } else {
+                            th.innerHTML = `<span class="th-label">${col.label != null ? col.label : ''}</span>`;
+                        }
+                    } else {
+                        th.innerHTML = this.createColumnHeaderContent(col);
+                        if (col.sortable) th.classList.add('sortable');
+                        if (col.filterable) th.classList.add('filterable');
+                    }
+                    tr.appendChild(th);
+                }
+            });
+
+            thead.innerHTML = '';
+            thead.appendChild(tr);
+        }
+
+        this._forceRender = true;
+        this.render();
     }
 
     handleScroll() {
@@ -832,8 +923,9 @@ class LazyTable {
             tr.appendChild(td);
         }
         
-        // Data columns
+        // Data columns (skip hidden)
         columns.forEach((col, colIndex) => {
+            if (this._hiddenColumns.has(col.key || col.type || '')) return;
             const td = document.createElement('td');
             td.className = 'lazy-table-td';
             
@@ -899,8 +991,9 @@ class LazyTable {
             tr.appendChild(td);
         }
         
-        // Placeholder cells
+        // Placeholder cells (skip hidden)
         columns.forEach(col => {
+            if (this._hiddenColumns.has(col.key || col.type || '')) return;
             const td = document.createElement('td');
             td.className = 'lazy-table-td';
             td.innerHTML = '<div class="placeholder-shimmer"></div>';
